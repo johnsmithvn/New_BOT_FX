@@ -52,7 +52,7 @@ Examples:
   - Order type decision matrix using live bid/ask
   - MT5 request builder and executor with bounded retry
   - Execution result normalization and logging
-- Status: `pending`
+- Status: `in progress`
 
 ### P3 - Reliability for 24/7 Runtime
 - Roadmap reference: `R4`

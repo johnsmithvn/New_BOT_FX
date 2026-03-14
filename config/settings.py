@@ -54,6 +54,7 @@ class TelegramConfig:
     api_id: int
     api_hash: str
     session_name: str
+    phone: str
     source_chats: list[str]
 
 
@@ -122,6 +123,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         api_id=_env_int("TELEGRAM_API_ID", 0),
         api_hash=_env("TELEGRAM_API_HASH"),
         session_name=_env("TELEGRAM_SESSION_NAME", "forex_bot"),
+        phone=_env("TELEGRAM_PHONE"),
         source_chats=_env_list("TELEGRAM_SOURCE_CHATS"),
     )
 

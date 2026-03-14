@@ -1,70 +1,58 @@
 # TASKS
 
 ## Current Phase
-- `P1 - Signal Understanding (R2)`
+- `P2 - Trade Decision and Execution (R3 + R3.5)`
 
 ## High Priority
-- [x] Define `ParsedSignal` schema in code (`symbol`, `side`, `entry`, `sl`, `tp`, source metadata).
-- [x] Implement message cleaner for uppercase normalization and noise cleanup.
-- [x] Implement symbol detector with alias map and broker symbol normalization.
-- [x] Implement side detector for BUY/SELL and LONG/SHORT mapping.
-- [x] Implement entry detector for market, explicit entry, LIMIT, STOP patterns.
-- [x] Implement SL detector with strict numeric extraction.
-- [x] Implement TP detector supporting `TP`, `TP1`, `TP2`, `TP3`.
-- [x] Implement parser orchestrator that returns normalized output or explicit parse failure reason.
-- [x] Implement signal fingerprint generator (hash of normalized fields).
-- [x] Add parser guard for extremely large or malformed messages.
-- [x] Implement entry distance validation logic.
-- [x] Implement signal fingerprint generator.
-- [x] Add structured logging for signal_received event.
-- [x] Add structured logging for parse_success and parse_failed.
-- [x] Add structured logging for validation_rejected.
-- [x] Add structured logging for order_submitted and order_result.
-- [x] Implement signal age validation logic
-- [x] Implement risk manager for trade volume calculation
-- [x] Add configuration for fixed lot or risk percent
-- [x] Ensure order decision uses correct Bid/Ask reference prices
 
-## Medium Priority additions
-- [x] Create signal format dataset for parser testing.
-- [x] Implement MessageEdited handler prototype.
-- [x] Ensure every log entry contains signal fingerprint.
-- [x] Add database event storage for signal lifecycle.
+### Telegram Listener
+- [x] Implement `core/telegram_listener.py` — Telethon user session, subscribe to source chats, forward raw messages to parser pipeline.
+- [x] Wire listener into `main.py` startup with async event loop.
+
+### Order Builder
+- [x] Implement `core/order_builder.py` — read live bid/ask from MT5 tick, decide order type (MARKET, BUY_LIMIT, BUY_STOP, SELL_LIMIT, SELL_STOP).
+- [x] Enforce correct price reference: BUY uses ASK, SELL uses BID.
+- [x] Build MT5 request payload with action, type, price, SL, TP, deviation, magic number, comment.
+
+### Trade Executor
+- [x] Implement `core/trade_executor.py` — initialize MT5 connection, verify terminal state.
+- [x] Implement symbol selection and tradability check.
+- [x] Implement `order_send` with bounded retry (max retries, backoff, failure logging).
+- [x] Normalize MT5 return codes into `ExecutionResult`.
+
+### Spread Gate
+- [x] Implement spread threshold check in validator using live tick data.
+- [x] Reject signal if current spread exceeds `MAX_SPREAD_POINTS`.
+
+### Max Open Trades Gate
+- [x] Implement max open trades check using MT5 `positions_total()`.
+- [x] Reject signal if open positions >= `MAX_OPEN_TRADES`.
+
+### Duplicate Signal Filter
+- [x] Wire fingerprint duplicate check via `Storage.is_duplicate()` before order submission.
+
+### Order Lifecycle
+- [x] Implement `core/order_lifecycle_manager.py` — track pending orders, auto-cancel after TTL.
+- [x] Wire lifecycle manager into main event loop.
+
+### MT5 Watchdog
+- [x] Implement `core/mt5_watchdog.py` — periodic health check via `account_info()`, trigger reinit on connection loss.
+
+### Pipeline Integration
+- [x] Wire full pipeline: listener → parser → validator → risk_manager → order_builder → executor → storage.
+- [x] Emit structured log events at each pipeline stage with fingerprint.
+- [x] Store signal, order, and event records in SQLite at appropriate stages.
 
 ## Medium Priority
-- [x] Add structured parser logs: `parse_success`, `parse_failed`, reason code.
-- [x] Add deterministic ordering for multiple TP values.
-- [x] Add TODO list for unsupported formats discovered during testing.
+- [x] Handle multi-TP by sending first TP to MT5 and logging remaining TPs for manual management.
+- [x] Implement MT5 error code mapping to human-readable messages.
+- [x] Wire `MessageUpdateHandler` into Telegram `MessageEdited` event.
+- [ ] Add Telegram notification on execution result (optional, send back to user/admin chat).
 
 ## Low Priority
-- [x] Add parser benchmark script for throughput and latency snapshot.
-- [x] Add parser debug CLI to parse a local text sample file.
+- [ ] Add execution dry-run mode (log intent without sending to MT5).
+- [ ] Add CLI command to manually submit a signal for execution testing.
 
-## Completed
-- [x] Create `docs/PROJECT.md`.
-- [x] Create `docs/ARCHITECTURE.md`.
-- [x] Create `docs/RULES.md`.
-- [x] Create `docs/ROADMAP.md`.
-- [x] Create `docs/PLAN.md`.
-- [x] Create `docs/AGENT.md`.
-- [x] Create `README.md`.
-- [x] Create `CHANGELOG.md`.
-- [x] Create project virtual environment.
-- [x] Create `config/settings.py`.
-- [x] Create `core/models.py`.
-- [x] Create `utils/logger.py`.
-- [x] Create `utils/symbol_mapper.py`.
-- [x] Create `core/storage.py`.
-- [x] Create `core/signal_validator.py`.
-- [x] Create `core/risk_manager.py`.
-- [x] Create signal parser pipeline (7 modules).
-- [x] Create `main.py`.
-- [x] Create `tools/parse_cli.py`.
-- [x] Create `docs/SIGNAL_DATASET.md`.
-- [x] Create `core/message_update_handler.py`.
-- [x] Create `docs/UNSUPPORTED_FORMATS.md`.
-- [x] Create `tools/benchmark.py`.
-
-## Note
-- Parser unit tests not generated per project rule: "Do NOT generate automated tests".
-- User is responsible for manual testing via `tools/parse_cli.py` and `docs/SIGNAL_DATASET.md`.
+## Completed (from previous phases)
+- [x] All P0 tasks (documentation foundation).
+- [x] All P1 tasks (signal parser pipeline, validation, risk manager, storage, tooling).

@@ -29,28 +29,40 @@ class SignalValidator:
     2. SL/TP numeric coherence relative to entry and side.
     3. Entry distance from reference price.
     4. Signal age (reject stale signals).
-    5. Duplicate filtering via fingerprint (requires storage).
+    5. Spread threshold check.
+    6. Max open trades gate.
+    7. Duplicate filtering via fingerprint.
     """
 
     def __init__(
         self,
         max_entry_distance_points: int = 500,
         signal_age_ttl_seconds: int = 60,
+        max_spread_points: int = 50,
+        max_open_trades: int = 5,
     ) -> None:
         self._max_entry_distance = max_entry_distance_points
         self._signal_age_ttl = signal_age_ttl_seconds
+        self._max_spread = max_spread_points
+        self._max_open_trades = max_open_trades
 
     def validate(
         self,
         signal: ParsedSignal,
         current_price: float | None = None,
+        current_spread: float | None = None,
+        open_positions: int | None = None,
+        is_duplicate: bool = False,
     ) -> ValidationResult:
         """Run all validation checks on a parsed signal.
 
         Args:
             signal: The parsed signal to validate.
             current_price: Current market reference price (bid for SELL,
-                          ask for BUY). None if unavailable (P2 dependency).
+                          ask for BUY). None if unavailable.
+            current_spread: Current spread in points. None if unavailable.
+            open_positions: Number of currently open positions. None if unavailable.
+            is_duplicate: True if signal fingerprint was found in dedupe window.
 
         Returns:
             ValidationResult with valid=True or reason for rejection.
@@ -62,27 +74,64 @@ class SignalValidator:
         if not signal.side:
             return ValidationResult(False, "missing side")
 
-        # Rule 2: SL coherence
+        # Rule 2: Duplicate filter
+        if is_duplicate:
+            return ValidationResult(
+                False,
+                f"duplicate signal (fingerprint: {signal.fingerprint[:8]})",
+            )
+
+        # Rule 3: SL coherence
         result = self._validate_sl_coherence(signal)
         if not result.valid:
             return result
 
-        # Rule 3: TP coherence
+        # Rule 4: TP coherence
         result = self._validate_tp_coherence(signal)
         if not result.valid:
             return result
 
-        # Rule 4: Entry distance (requires current_price)
+        # Rule 5: Entry distance (requires current_price)
         if current_price is not None and signal.entry is not None:
             result = self._validate_entry_distance(signal, current_price)
             if not result.valid:
                 return result
 
-        # Rule 5: Signal age
+        # Rule 6: Signal age
         result = self._validate_signal_age(signal)
         if not result.valid:
             return result
 
+        # Rule 7: Spread gate
+        if current_spread is not None:
+            result = self._validate_spread(current_spread)
+            if not result.valid:
+                return result
+
+        # Rule 8: Max open trades gate
+        if open_positions is not None:
+            result = self._validate_max_trades(open_positions)
+            if not result.valid:
+                return result
+
+        return ValidationResult(True)
+
+    def _validate_spread(self, spread: float) -> ValidationResult:
+        """Reject if spread exceeds configured max."""
+        if spread > self._max_spread:
+            return ValidationResult(
+                False,
+                f"spread ({spread:.1f} pts) exceeds max ({self._max_spread})",
+            )
+        return ValidationResult(True)
+
+    def _validate_max_trades(self, open_count: int) -> ValidationResult:
+        """Reject if max open trades limit reached."""
+        if open_count >= self._max_open_trades:
+            return ValidationResult(
+                False,
+                f"max open trades reached ({open_count}/{self._max_open_trades})",
+            )
         return ValidationResult(True)
 
     def _validate_sl_coherence(self, signal: ParsedSignal) -> ValidationResult:
