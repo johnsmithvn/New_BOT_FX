@@ -1,0 +1,28 @@
+# Virtual environment
+venv/
+
+# Environment
+.env
+
+# Logs
+logs/
+
+# Data
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Telethon session
+*.session
+
+# SQLite
+*.db

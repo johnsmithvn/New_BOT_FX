@@ -1,0 +1,59 @@
+# ROADMAP
+
+## Milestone R1 - Foundation and Safety Baseline
+- Goal:
+  - Establish a stable project base and explicit safety constraints.
+- Expected outcomes:
+  - Clear architecture and operating rules documented.
+  - Core repo structure prepared for bot runtime.
+  - Baseline observability and safety policy defined.
+
+## Milestone R2 - Signal Understanding
+- Goal:
+  - Reliably transform Telegram signal text into normalized trade intent.
+- Expected outcomes:
+  - Parser pipeline handles primary message variants.
+  - Symbol alias normalization is consistent.
+  - Parse quality and failure reasons are observable.
+
+## Milestone R3 - Trade Decision and Execution
+- Goal:
+  - Convert validated signals into correct MT5 order actions.
+- Expected outcomes:
+  - Deterministic market/pending order decisions.
+  - SL/TP and spread gates enforced before order send.
+  - MT5 execution outcomes captured and traceable.
+
+## Milestone R3.5 - Order Lifecycle Safety
+
+Goal:
+- Prevent stale or delayed signal execution.
+
+Expected outcomes:
+- Pending order expiration logic implemented.
+- Signal age validation before execution.
+- Entry distance protection enforced.
+
+## Milestone R4 - Reliability for 24/7 Runtime
+- Goal:
+  - Operate continuously with recoverable failures and state continuity.
+- Expected outcomes:
+  - Duplicate filtering and audit persistence active.
+  - Bounded retry and reconnect behavior validated.
+  - Runtime logging supports incident diagnosis.
+
+## Milestone R5 - Production Operations
+- Goal:
+  - Reach repeatable deployment and maintenance quality.
+- Expected outcomes:
+  - VPS deployment runbook and operating playbook ready.
+  - Monitoring and alerting strategy documented.
+  - Controlled release process for updates defined.
+
+## Milestone R6 - Controlled Expansion
+- Goal:
+  - Extend capabilities without reducing safety and determinism.
+- Expected outcomes:
+  - Additional symbols/formats added via modular parser updates.
+  - Advanced execution options evaluated (example: multi-TP split).
+  - Backward-compatible evolution strategy documented.

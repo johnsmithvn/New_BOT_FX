@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Spec Guardrails"
+  short_description: "Enforce strict planning and spec workflow"
+  default_prompt: "Use $plan-spec-guardrails to handle plan and spec requests with strict confirmation gates."
