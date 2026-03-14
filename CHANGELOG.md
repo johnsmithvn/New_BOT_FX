@@ -1,32 +1,41 @@
 # CHANGELOG
 
+## 0.3.0 - 2026-03-14
+
+### Added
+- Smart dry-run mode: `DRY_RUN=true` simulates execution with dynamic bid/ask derived from signal entry price
+- Circuit breaker: `core/circuit_breaker.py` — CLOSED/OPEN/HALF_OPEN states, pause trading after N consecutive failures
+- Telegram alerter: `core/telegram_alerter.py` — rate-limited critical alerts to admin chat
+- Pipeline summary logging: one-line console output per signal with outcome
+- Signal lifecycle events stored in DB: `signal_received`, `signal_parsed`, `signal_rejected`, `signal_submitted`, `signal_executed`, `signal_failed`
+- Background storage cleanup: auto-delete records older than `STORAGE_RETENTION_DAYS`
+- Startup self-check: MT5 account info, config summary, component status
+
+### Changed
+- `config/settings.py` — added `RuntimeConfig` (DRY_RUN, ALERT_COOLDOWN, CIRCUIT_BREAKER, STORAGE_RETENTION), `TELEGRAM_ADMIN_CHAT`, `SESSION_RESET_HOURS`
+- `core/storage.py` — WAL mode, retry on OperationalError, `cleanup_old_records()` method
+- `core/telegram_listener.py` — auto-reconnect with exponential backoff, proactive session reset every N hours
+- `core/mt5_watchdog.py` — weekend/market-close detection, exponential backoff, alert callbacks
+- `main.py` — global exception handling, circuit breaker integration, smart dry-run, pipeline summary, graceful shutdown
+
 ## 0.2.0 - 2026-03-14
 
 ### Added
-- Telegram listener: `core/telegram_listener.py` — Telethon user session with NewMessage and MessageEdited handlers
-- Order builder: `core/order_builder.py` — BUY→ASK / SELL→BID price reference rule, decision matrix, MT5 request payload construction
-- Trade executor: `core/trade_executor.py` — MT5 init/shutdown, bounded retry (3 attempts), 35+ retcode mappings, pending order management
-- Order lifecycle manager: `core/order_lifecycle_manager.py` — async monitoring loop, auto-cancel pending orders exceeding TTL
-- MT5 watchdog: `core/mt5_watchdog.py` — periodic health check with bounded reinit attempts
-- Full pipeline wiring in `main.py` — listener→parser→validator→risk→builder→executor→storage with async lifecycle and graceful shutdown
-- Multi-TP handling: first TP sent to MT5, remaining TPs logged for manual management
+- Telegram listener: `core/telegram_listener.py`
+- Order builder: `core/order_builder.py` — BUY→ASK / SELL→BID price reference rule
+- Trade executor: `core/trade_executor.py` — bounded retry, 35+ retcode mappings
+- Order lifecycle manager: `core/order_lifecycle_manager.py`
+- MT5 watchdog: `core/mt5_watchdog.py`
+- Full pipeline wiring in `main.py`
 
 ### Changed
-- `core/signal_validator.py` — added spread threshold check, max open trades gate, duplicate signal filtering
-- `main.py` — rewritten as async Bot class with full pipeline integration
-- `requirements.txt` — pinned `numpy<2` for MetaTrader5 compatibility
+- `core/signal_validator.py` — spread gate, max trades gate, duplicate filter
+- `requirements.txt` — pinned `numpy<2`
 
 ## 0.1.0 - 2026-03-14
 
 ### Added
-- Project foundation: `requirements.txt`, `.env.example`, `.gitignore`, `main.py`, `README.md`
-- Configuration: `config/settings.py` with typed env loading and validation
-- Data contracts: `ParsedSignal`, `ParseFailure`, `TradeDecision`, `ExecutionResult`, enums in `core/models.py`
-- Signal parser pipeline (7 modules): cleaner, symbol/side/entry/SL/TP detectors, orchestrator with fingerprint
-- Signal validation: `core/signal_validator.py` — SL/TP coherence, entry distance, signal age
-- Risk management: `core/risk_manager.py` — fixed lot + risk-based sizing
-- Storage: `core/storage.py` — SQLite for signals, orders, events
-- MessageEdited handler prototype: `core/message_update_handler.py`
-- Utils: `utils/logger.py` (structured JSON logging), `utils/symbol_mapper.py` (50+ aliases)
-- Tools: `tools/parse_cli.py`, `tools/benchmark.py`
-- Documentation: `docs/SIGNAL_DATASET.md`, `docs/UNSUPPORTED_FORMATS.md`
+- Project foundation and configuration
+- Signal parser pipeline (7 modules)
+- Signal validation, risk management, SQLite storage
+- MessageEdited handler prototype, parser CLI, benchmark tool

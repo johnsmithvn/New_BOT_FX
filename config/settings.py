@@ -56,6 +56,8 @@ class TelegramConfig:
     session_name: str
     phone: str
     source_chats: list[str]
+    admin_chat: str
+    session_reset_hours: int
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,15 @@ class ParserConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeConfig:
+    dry_run: bool
+    alert_cooldown_seconds: int
+    circuit_breaker_threshold: int
+    circuit_breaker_cooldown: int
+    storage_retention_days: int
+
+
+@dataclass(frozen=True)
 class Settings:
     telegram: TelegramConfig
     mt5: MT5Config
@@ -105,6 +116,7 @@ class Settings:
     safety: SafetyConfig
     log: LogConfig
     parser: ParserConfig
+    runtime: RuntimeConfig
 
 
 def load_settings(env_path: str | Path | None = None) -> Settings:
@@ -125,6 +137,8 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         session_name=_env("TELEGRAM_SESSION_NAME", "forex_bot"),
         phone=_env("TELEGRAM_PHONE"),
         source_chats=_env_list("TELEGRAM_SOURCE_CHATS"),
+        admin_chat=_env("TELEGRAM_ADMIN_CHAT"),
+        session_reset_hours=_env_int("SESSION_RESET_HOURS", 12),
     )
 
     mt5 = MT5Config(
@@ -161,6 +175,15 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         max_message_length=_env_int("MAX_MESSAGE_LENGTH", 2000),
     )
 
+    _dry_run_raw = _env("DRY_RUN", "false").lower()
+    runtime = RuntimeConfig(
+        dry_run=_dry_run_raw in ("true", "1", "yes"),
+        alert_cooldown_seconds=_env_int("ALERT_COOLDOWN_SECONDS", 300),
+        circuit_breaker_threshold=_env_int("CIRCUIT_BREAKER_THRESHOLD", 3),
+        circuit_breaker_cooldown=_env_int("CIRCUIT_BREAKER_COOLDOWN", 300),
+        storage_retention_days=_env_int("STORAGE_RETENTION_DAYS", 30),
+    )
+
     return Settings(
         telegram=telegram,
         mt5=mt5,
@@ -168,4 +191,5 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         safety=safety,
         log=log,
         parser=parser,
+        runtime=runtime,
     )

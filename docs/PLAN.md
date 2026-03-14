@@ -1,9 +1,9 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P2 - Trade Decision and Execution (aligned to R3)`
+- Phase: `P3 - Reliability for 24/7 Runtime (aligned to R4)`
 - Goal:
-  - Build deterministic order decision and MT5 execution flow.
+  - Ensure runtime resilience and state continuity.
 
 ## Execution Phases
 
@@ -52,7 +52,7 @@ Examples:
   - Order type decision matrix using live bid/ask
   - MT5 request builder and executor with bounded retry
   - Execution result normalization and logging
-- Status: `in progress`
+- Status: `complete`
 
 ### P3 - Reliability for 24/7 Runtime
 - Roadmap reference: `R4`
@@ -62,7 +62,7 @@ Examples:
   - SQLite dedupe + audit storage
   - Reconnect/retry hardening
   - Operational error handling and incident-ready logs
-- Status: `pending`
+- Status: `in progress`
 
 ### P4 - Production Operations
 - Roadmap reference: `R5`

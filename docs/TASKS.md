@@ -1,58 +1,56 @@
 # TASKS
 
 ## Current Phase
-- `P2 - Trade Decision and Execution (R3 + R3.5)`
+- `P3 - Reliability for 24/7 Runtime (R4)`
 
 ## High Priority
 
-### Telegram Listener
-- [x] Implement `core/telegram_listener.py` — Telethon user session, subscribe to source chats, forward raw messages to parser pipeline.
-- [x] Wire listener into `main.py` startup with async event loop.
+### Smart Dry-Run Mode
+- [x] Add `DRY_RUN` setting to config.
+- [x] In pipeline: derive bid/ask dynamically from signal entry.
+- [x] Skip `order_send()` in dry-run, log full request, return mock success.
 
-### Order Builder
-- [x] Implement `core/order_builder.py` — read live bid/ask from MT5 tick, decide order type (MARKET, BUY_LIMIT, BUY_STOP, SELL_LIMIT, SELL_STOP).
-- [x] Enforce correct price reference: BUY uses ASK, SELL uses BID.
-- [x] Build MT5 request payload with action, type, price, SL, TP, deviation, magic number, comment.
+### Telegram Alerting
+- [x] Implement `core/telegram_alerter.py` — rate-limited alerts to admin chat.
+- [x] Add `TELEGRAM_ADMIN_CHAT` and `ALERT_COOLDOWN_SECONDS` to config.
+- [x] Wire alerts: circuit breaker, MT5 reinit exhausted, bot startup/shutdown.
 
-### Trade Executor
-- [x] Implement `core/trade_executor.py` — initialize MT5 connection, verify terminal state.
-- [x] Implement symbol selection and tradability check.
-- [x] Implement `order_send` with bounded retry (max retries, backoff, failure logging).
-- [x] Normalize MT5 return codes into `ExecutionResult`.
+### Improved Console Logging + Pipeline Summary
+- [x] Add one-line pipeline summary per signal to console.
+- [x] Show rejection reason in console log.
+- [x] Add startup self-check: MT5 account info, config summary.
 
-### Spread Gate
-- [x] Implement spread threshold check in validator using live tick data.
-- [x] Reject signal if current spread exceeds `MAX_SPREAD_POINTS`.
+### Global Error Handling
+- [x] Wrap `_process_signal` in try/except — never crash event loop.
+- [x] Add graceful shutdown with storage flush and clean disconnect.
 
-### Max Open Trades Gate
-- [x] Implement max open trades check using MT5 `positions_total()`.
-- [x] Reject signal if open positions >= `MAX_OPEN_TRADES`.
+### Circuit Breaker
+- [x] Implement `core/circuit_breaker.py` — CLOSED/OPEN/HALF_OPEN states.
+- [x] Open after N consecutive failures, auto-reset after cooldown.
+- [x] Trigger Telegram alert on state change.
 
-### Duplicate Signal Filter
-- [x] Wire fingerprint duplicate check via `Storage.is_duplicate()` before order submission.
+### Telegram Reconnect + Proactive Session Reset
+- [x] Add auto-reconnect on disconnect with exponential backoff.
+- [x] Add proactive session reset every `SESSION_RESET_HOURS`.
 
-### Order Lifecycle
-- [x] Implement `core/order_lifecycle_manager.py` — track pending orders, auto-cancel after TTL.
-- [x] Wire lifecycle manager into main event loop.
+### MT5 Watchdog Improvements
+- [x] Detect weekend/market-close — suppress false alarms.
+- [x] Exponential backoff on reinit failures.
+- [x] Alert callbacks for connection lost and reinit exhausted.
 
-### MT5 Watchdog
-- [x] Implement `core/mt5_watchdog.py` — periodic health check via `account_info()`, trigger reinit on connection loss.
+### Storage Hardening
+- [x] Enable WAL mode.
+- [x] Add retry on `sqlite3.OperationalError` (database locked).
+- [x] Implement `cleanup_old_records(retention_days)` as background task.
 
-### Pipeline Integration
-- [x] Wire full pipeline: listener → parser → validator → risk_manager → order_builder → executor → storage.
-- [x] Emit structured log events at each pipeline stage with fingerprint.
-- [x] Store signal, order, and event records in SQLite at appropriate stages.
+### Signal Lifecycle Events (DB tracing)
+- [x] Store `signal_received`, `signal_parsed`, `signal_rejected`, `signal_submitted`, `signal_executed`, `signal_failed` in events table.
 
 ## Medium Priority
-- [x] Handle multi-TP by sending first TP to MT5 and logging remaining TPs for manual management.
-- [x] Implement MT5 error code mapping to human-readable messages.
-- [x] Wire `MessageUpdateHandler` into Telegram `MessageEdited` event.
-- [ ] Add Telegram notification on execution result (optional, send back to user/admin chat).
-
-## Low Priority
-- [ ] Add execution dry-run mode (log intent without sending to MT5).
-- [ ] Add CLI command to manually submit a signal for execution testing.
+- [ ] Add signal processing metrics (count parsed/rejected/executed per session).
+- [ ] Add heartbeat log every N minutes.
 
 ## Completed (from previous phases)
 - [x] All P0 tasks (documentation foundation).
 - [x] All P1 tasks (signal parser pipeline, validation, risk manager, storage, tooling).
+- [x] All P2 tasks (trade executor, order builder, Telegram listener, lifecycle manager, watchdog, pipeline wiring).

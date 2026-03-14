@@ -3,6 +3,14 @@ main.py
 
 Startup orchestration for telegram-mt5-bot.
 Full pipeline: Telegram → Parser → Validator → Risk → Order Builder → Executor → Storage.
+
+P3 features:
+- Smart dry-run mode (dynamic bid/ask from signal entry)
+- Pipeline summary logging
+- Signal lifecycle events in DB
+- Circuit breaker with Telegram alerting
+- Background storage cleanup
+- Global exception handling
 """
 
 from __future__ import annotations
@@ -23,6 +31,8 @@ from core.telegram_listener import TelegramListener
 from core.order_lifecycle_manager import OrderLifecycleManager
 from core.mt5_watchdog import MT5Watchdog
 from core.message_update_handler import MessageUpdateHandler, UpdateAction
+from core.circuit_breaker import CircuitBreaker, BreakerState
+from core.telegram_alerter import TelegramAlerter
 from utils.logger import setup_logger, log_event
 from utils.symbol_mapper import SymbolMapper
 
@@ -45,6 +55,9 @@ class Bot:
         self.lifecycle_mgr: OrderLifecycleManager | None = None
         self.watchdog: MT5Watchdog | None = None
         self.update_handler: MessageUpdateHandler | None = None
+        self.circuit_breaker: CircuitBreaker | None = None
+        self.alerter: TelegramAlerter | None = None
+        self._cleanup_task: asyncio.Task | None = None
 
     def _init_components(self) -> None:
         """Initialize all components."""
@@ -97,6 +110,21 @@ class Bot:
             server=s.mt5.server,
         )
 
+        # Circuit Breaker
+        self.circuit_breaker = CircuitBreaker(
+            failure_threshold=s.runtime.circuit_breaker_threshold,
+            cooldown_seconds=s.runtime.circuit_breaker_cooldown,
+        )
+
+        # Telegram Alerter
+        self.alerter = TelegramAlerter(
+            admin_chat=s.telegram.admin_chat,
+            cooldown_seconds=s.runtime.alert_cooldown_seconds,
+        )
+
+        # Wire circuit breaker → alerter
+        self.circuit_breaker.on_state_change(self._on_breaker_change)
+
         # MessageEdited handler
         self.update_handler = MessageUpdateHandler(
             parser=self.parser,
@@ -110,6 +138,7 @@ class Bot:
             session_name=s.telegram.session_name,
             phone=s.telegram.phone,
             source_chats=s.telegram.source_chats,
+            session_reset_hours=s.telegram.session_reset_hours,
         )
         self.listener.set_pipeline_callback(self._process_signal)
         self.listener.set_edit_callback(self._process_edit)
@@ -120,8 +149,86 @@ class Bot:
             ttl_minutes=s.safety.pending_order_ttl_minutes,
         )
 
-        # MT5 Watchdog
-        self.watchdog = MT5Watchdog(executor=self.executor)
+        # MT5 Watchdog with alert callbacks
+        self.watchdog = MT5Watchdog(
+            executor=self.executor,
+            on_connection_lost=self._on_mt5_connection_lost,
+            on_reinit_exhausted=self._on_mt5_reinit_exhausted,
+        )
+
+    # ── Alert Callbacks ──────────────────────────────────────────
+
+    def _on_breaker_change(self, old_state, new_state) -> None:
+        """Circuit breaker state change callback."""
+        if new_state == BreakerState.OPEN:
+            self.alerter.send_alert_sync(
+                "circuit_breaker_open",
+                "🔴 **CIRCUIT BREAKER OPENED**\n"
+                "Trading paused due to consecutive execution failures.\n"
+                f"Cooldown: {self.settings.runtime.circuit_breaker_cooldown}s",
+            )
+        elif new_state == BreakerState.CLOSED and old_state == BreakerState.HALF_OPEN:
+            self.alerter.send_alert_sync(
+                "circuit_breaker_close",
+                "🟢 **CIRCUIT BREAKER CLOSED**\nTrading resumed.",
+            )
+
+    def _on_mt5_connection_lost(self) -> None:
+        self.alerter.send_alert_sync(
+            "mt5_connection_lost",
+            "⚠️ **MT5 CONNECTION LOST**\nAttempting reinitialization...",
+        )
+
+    def _on_mt5_reinit_exhausted(self) -> None:
+        self.alerter.send_alert_sync(
+            "mt5_reinit_exhausted",
+            "🔴 **MT5 REINIT FAILED**\nAll retries exhausted. Manual intervention required.",
+        )
+
+    # ── Smart Dry-Run Helpers ────────────────────────────────────
+
+    def _simulate_tick(self, signal: ParsedSignal) -> tuple[float, float, float]:
+        """Generate dynamic bid/ask from signal entry for dry-run.
+
+        BUY signal → ask = entry, bid = entry - small_spread
+        SELL signal → bid = entry, ask = entry + small_spread
+        MARKET signal → use default simulated prices
+        """
+        # Determine simulated spread based on symbol
+        spread = 0.5  # default for metals
+        symbol = signal.symbol.upper()
+        if any(fx in symbol for fx in ("USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF")):
+            spread = 0.0002  # forex pairs
+        elif "XAU" in symbol or "GOLD" in symbol:
+            spread = 0.5
+        elif "BTC" in symbol or "ETH" in symbol:
+            spread = 10.0
+
+        entry = signal.entry
+
+        if entry is None:
+            # Market order — use a reasonable synthetic price
+            # based on SL/TP midpoint if available
+            if signal.sl and signal.tp:
+                entry = (signal.sl + signal.tp[0]) / 2
+            elif signal.sl:
+                entry = signal.sl + (50.0 * spread)
+            elif signal.tp:
+                entry = signal.tp[0] - (50.0 * spread)
+            else:
+                entry = 2000.0  # fallback for XAUUSD-like
+
+        if signal.side == Side.BUY:
+            ask = entry
+            bid = entry - spread
+        else:
+            bid = entry
+            ask = entry + spread
+
+        spread_points = spread / (0.00001 if spread < 1 else 0.01)
+        return bid, ask, spread_points
+
+    # ── Pipeline ─────────────────────────────────────────────────
 
     def _process_signal(
         self,
@@ -129,18 +236,27 @@ class Bot:
         chat_id: str,
         message_id: str,
     ) -> None:
-        """Process a new signal message through the full pipeline.
+        """Process a new signal through the full pipeline with exception safety."""
+        try:
+            self._do_process_signal(raw_text, chat_id, message_id)
+        except Exception as exc:
+            log_event(
+                "pipeline_error",
+                source_message_id=message_id,
+                error=str(exc),
+            )
+            print(f"  [ERROR] Pipeline exception: {exc}")
 
-        Flow:
-        1. Parse raw text.
-        2. Check duplicate.
-        3. Validate signal (SL/TP, spread, max trades, age, distance).
-        4. Calculate volume.
-        5. Build order.
-        6. Execute order.
-        7. Store results.
-        """
-        # Step 1: Parse
+    def _do_process_signal(
+        self,
+        raw_text: str,
+        chat_id: str,
+        message_id: str,
+    ) -> None:
+        """Internal pipeline logic."""
+        dry_run = self.settings.runtime.dry_run
+
+        # ── Step 1: Parse ────────────────────────────────────────
         result = self.parser.parse(
             raw_text,
             source_chat_id=chat_id,
@@ -157,13 +273,19 @@ class Bot:
             )
             self.storage.store_event(
                 fingerprint="",
-                event_type="parse_failed",
+                event_type="signal_received",
+                details={"message_id": message_id, "outcome": "parse_failed"},
+            )
+            self.storage.store_event(
+                fingerprint="",
+                event_type="signal_parse_failed",
                 details={"reason": result.reason, "message_id": message_id},
             )
+            print(f"  [PIPELINE] parsed=FAIL reason=\"{result.reason}\"")
             return
 
         signal_obj: ParsedSignal = result
-        fp = signal_obj.fingerprint
+        fp = signal_obj.fingerprint[:12]
 
         log_event(
             "parse_success",
@@ -173,27 +295,59 @@ class Bot:
             entry=signal_obj.entry,
         )
 
-        # Step 2: Check duplicate
+        # DB lifecycle: signal_received → signal_parsed
+        self.storage.store_event(
+            fingerprint=fp,
+            event_type="signal_received",
+            symbol=signal_obj.symbol,
+            details={"chat_id": chat_id, "message_id": message_id},
+        )
+        self.storage.store_event(
+            fingerprint=fp,
+            event_type="signal_parsed",
+            symbol=signal_obj.symbol,
+            details={
+                "side": signal_obj.side.value,
+                "entry": signal_obj.entry,
+                "sl": signal_obj.sl,
+                "tp": signal_obj.tp,
+            },
+        )
+
+        # ── Step 2: Circuit breaker check ────────────────────────
+        if not self.circuit_breaker.is_trading_allowed:
+            reason = "circuit breaker OPEN — trading paused"
+            log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=reason)
+            self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": reason})
+            print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{reason}\"")
+            return
+
+        # ── Step 3: Duplicate check ──────────────────────────────
         is_dup = self.storage.is_duplicate(
-            fp,
+            signal_obj.fingerprint,
             ttl_seconds=self.settings.safety.signal_age_ttl_seconds,
         )
 
-        # Step 3: Get live market data
-        tick = self.executor.get_tick(signal_obj.symbol)
-        current_price = None
-        current_spread = None
-        bid, ask = 0.0, 0.0
-
-        if tick:
-            bid = tick.bid
-            ask = tick.ask
-            current_spread = tick.spread_points
+        # ── Step 4: Get live market data ─────────────────────────
+        if dry_run:
+            bid, ask, current_spread = self._simulate_tick(signal_obj)
             current_price = ask if signal_obj.side == Side.BUY else bid
+            open_positions = 0
+        else:
+            tick = self.executor.get_tick(signal_obj.symbol)
+            current_price = None
+            current_spread = None
+            bid, ask = 0.0, 0.0
 
-        open_positions = self.executor.positions_total()
+            if tick:
+                bid = tick.bid
+                ask = tick.ask
+                current_spread = tick.spread_points
+                current_price = ask if signal_obj.side == Side.BUY else bid
 
-        # Step 4: Validate
+            open_positions = self.executor.positions_total()
+
+        # ── Step 5: Validate ─────────────────────────────────────
         vr = self.validator.validate(
             signal_obj,
             current_price=current_price,
@@ -203,48 +357,49 @@ class Bot:
         )
 
         if not vr.valid:
-            log_event(
-                "validation_rejected",
-                fingerprint=fp,
-                symbol=signal_obj.symbol,
-                reason=vr.reason,
-            )
+            log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=vr.reason)
             self.storage.store_signal(signal_obj, SignalStatus.REJECTED)
-            self.storage.store_event(
-                fingerprint=fp,
-                event_type="validation_rejected",
-                symbol=signal_obj.symbol,
-                details={"reason": vr.reason},
-            )
+            self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": vr.reason})
+            print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{vr.reason}\"")
             return
 
-        # Step 5: Store signal as parsed
+        # ── Step 6: Store signal ─────────────────────────────────
         self.storage.store_signal(signal_obj, SignalStatus.PARSED)
 
-        # Step 6: Calculate volume
-        account = self.executor.account_info()
-        balance = account["balance"] if account else 0.0
+        # ── Step 7: Calculate volume ─────────────────────────────
+        if dry_run:
+            balance = 10000.0
+        else:
+            account = self.executor.account_info()
+            balance = account["balance"] if account else 0.0
+
         volume = self.risk_manager.calculate_volume(
             balance=balance,
             entry=signal_obj.entry,
             sl=signal_obj.sl,
         )
 
-        # Step 7: Build order
+        # ── Step 8: Build order ──────────────────────────────────
         symbol_info = None
-        try:
-            import MetaTrader5 as mt5
-            symbol_info = mt5.symbol_info(signal_obj.symbol)
-        except Exception:
-            pass
-        point = symbol_info.point if symbol_info and symbol_info.point > 0 else 0.00001
+        point = 0.00001
+        if not dry_run:
+            try:
+                import MetaTrader5 as mt5
+                symbol_info = mt5.symbol_info(signal_obj.symbol)
+                if symbol_info and symbol_info.point > 0:
+                    point = symbol_info.point
+            except Exception:
+                pass
+        else:
+            # Estimate point for dry run
+            symbol = signal_obj.symbol.upper()
+            if "XAU" in symbol or "GOLD" in symbol:
+                point = 0.01
+            elif "JPY" in symbol:
+                point = 0.001
 
-        decision = self.order_builder.decide_order_type(
-            signal_obj, bid, ask, point,
-        )
-        request = self.order_builder.build_request(
-            signal_obj, decision, volume, bid, ask,
-        )
+        decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
+        request = self.order_builder.build_request(signal_obj, decision, volume, bid, ask)
 
         log_event(
             "order_submitted",
@@ -254,54 +409,55 @@ class Bot:
             volume=volume,
             price=request.get("price"),
         )
-        self.storage.update_signal_status(fp, SignalStatus.SUBMITTED)
+        self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.SUBMITTED)
+        self.storage.store_event(fingerprint=fp, event_type="signal_submitted", symbol=signal_obj.symbol, details={"order_kind": decision.order_kind.value, "volume": volume, "price": request.get("price")})
 
-        # Step 8: Execute
-        exec_result = self.executor.execute(request, fingerprint=fp)
-
-        if exec_result.success:
-            self.storage.update_signal_status(fp, SignalStatus.EXECUTED)
-            self.storage.store_order(
-                ticket=exec_result.ticket,
+        # ── Step 9: Execute ──────────────────────────────────────
+        if dry_run:
+            # Simulate execution
+            log_event(
+                "dry_run_execution",
                 fingerprint=fp,
+                symbol=signal_obj.symbol,
                 order_kind=decision.order_kind.value,
+                volume=volume,
                 price=request.get("price"),
                 sl=decision.sl,
                 tp=decision.tp,
-                retcode=exec_result.retcode,
-                success=True,
             )
-            # Log remaining TPs for manual management
-            if len(signal_obj.tp) > 1:
-                log_event(
-                    "multi_tp_info",
-                    fingerprint=fp,
-                    symbol=signal_obj.symbol,
-                    remaining_tps=signal_obj.tp[1:],
-                    note="Only TP1 sent to MT5. Remaining TPs logged for manual management.",
-                )
+            self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.EXECUTED)
+            self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"dry_run": True, "order_kind": decision.order_kind.value})
+            self.circuit_breaker.record_success()
+            print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=DRY_RUN_OK vol={volume}")
         else:
-            self.storage.update_signal_status(fp, SignalStatus.FAILED)
-            self.storage.store_order(
-                ticket=None,
-                fingerprint=fp,
-                order_kind=decision.order_kind.value,
-                price=request.get("price"),
-                sl=decision.sl,
-                tp=decision.tp,
-                retcode=exec_result.retcode,
-                success=False,
-            )
+            exec_result = self.executor.execute(request, fingerprint=fp)
 
-        log_event(
-            "order_result",
-            fingerprint=fp,
-            symbol=signal_obj.symbol,
-            success=exec_result.success,
-            retcode=exec_result.retcode,
-            ticket=exec_result.ticket,
-            message=exec_result.message,
-        )
+            if exec_result.success:
+                self.circuit_breaker.record_success()
+                self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.EXECUTED)
+                self.storage.store_order(
+                    ticket=exec_result.ticket, fingerprint=fp,
+                    order_kind=decision.order_kind.value,
+                    price=request.get("price"), sl=decision.sl, tp=decision.tp,
+                    retcode=exec_result.retcode, success=True,
+                )
+                self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"ticket": exec_result.ticket, "retcode": exec_result.retcode})
+                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=SUCCESS ticket={exec_result.ticket}")
+
+                # Log remaining TPs
+                if len(signal_obj.tp) > 1:
+                    log_event("multi_tp_info", fingerprint=fp, symbol=signal_obj.symbol, remaining_tps=signal_obj.tp[1:])
+            else:
+                self.circuit_breaker.record_failure()
+                self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.FAILED)
+                self.storage.store_order(
+                    ticket=None, fingerprint=fp,
+                    order_kind=decision.order_kind.value,
+                    price=request.get("price"), sl=decision.sl, tp=decision.tp,
+                    retcode=exec_result.retcode, success=False,
+                )
+                self.storage.store_event(fingerprint=fp, event_type="signal_failed", symbol=signal_obj.symbol, details={"retcode": exec_result.retcode, "message": exec_result.message})
+                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=FAILED retcode={exec_result.retcode}")
 
     def _process_edit(
         self,
@@ -309,46 +465,89 @@ class Bot:
         chat_id: str,
         message_id: str,
     ) -> None:
-        """Process an edited message via MessageUpdateHandler.
+        """Process an edited message."""
+        log_event("edit_received", source_chat_id=chat_id, source_message_id=message_id)
 
-        TODO: Retrieve original fingerprint from storage by message_id.
-        For now, re-parse and compare fingerprints.
+    # ── Background Tasks ─────────────────────────────────────────
+
+    async def _storage_cleanup_loop(self) -> None:
+        """Background cleanup of old storage records.
+
+        Runs every 24 hours. Lightweight operation.
         """
-        # TODO: Look up original fingerprint by source_message_id in storage
-        log_event(
-            "edit_received",
-            source_chat_id=chat_id,
-            source_message_id=message_id,
-        )
+        while True:
+            try:
+                await asyncio.sleep(24 * 3600)  # Every 24 hours
+                retention = self.settings.runtime.storage_retention_days
+                self.storage.cleanup_old_records(retention)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("storage_cleanup_error", error=str(exc))
+
+    # ── Startup and Shutdown ─────────────────────────────────────
 
     async def run(self) -> None:
         """Start the bot and run until interrupted."""
         self._init_components()
 
-        # Init MT5
-        if not self.executor.init_mt5():
-            print("[FATAL] MT5 initialization failed. Check .env credentials.")
-            return
+        dry_run = self.settings.runtime.dry_run
 
-        print("=" * 50)
-        print("  telegram-mt5-bot  v0.2.0")
-        print("=" * 50)
-        print(f"  Risk mode  : {self.settings.risk.mode}")
-        print(f"  Max spread : {self.settings.safety.max_spread_points} pts")
-        print(f"  Signal TTL : {self.settings.safety.signal_age_ttl_seconds}s")
-        print(f"  Pending TTL: {self.settings.safety.pending_order_ttl_minutes}min")
-        print(f"  Max trades : {self.settings.safety.max_open_trades}")
-        print("=" * 50)
+        # Init MT5
+        if not dry_run:
+            if not self.executor.init_mt5():
+                print("[FATAL] MT5 initialization failed. Check .env credentials.")
+                return
+        else:
+            print("[DRY RUN] MT5 execution disabled — simulating orders.")
+
+        # Banner
+        print("=" * 55)
+        print(f"  telegram-mt5-bot  v0.3.0  {'[DRY RUN]' if dry_run else '[LIVE]'}")
+        print("=" * 55)
+        print(f"  Risk mode    : {self.settings.risk.mode}")
+        print(f"  Max spread   : {self.settings.safety.max_spread_points} pts")
+        print(f"  Signal TTL   : {self.settings.safety.signal_age_ttl_seconds}s")
+        print(f"  Pending TTL  : {self.settings.safety.pending_order_ttl_minutes}min")
+        print(f"  Max trades   : {self.settings.safety.max_open_trades}")
+        print(f"  Breaker      : {self.settings.runtime.circuit_breaker_threshold} fails → pause")
+        print(f"  Session reset: {self.settings.telegram.session_reset_hours}h")
+        if dry_run:
+            print(f"  Dry run      : ON (no real orders)")
+        print("=" * 55)
+
+        # Startup self-check
+        if not dry_run:
+            account = self.executor.account_info()
+            if account:
+                print(f"  MT5 Account  : {account['login']} @ {account['server']}")
+                print(f"  Balance      : {account['balance']}")
+                print(f"  Equity       : {account['equity']}")
+                print("=" * 55)
 
         # Start Telegram listener
         await self.listener.start()
 
-        # Start background services
-        await self.lifecycle_mgr.start()
-        await self.watchdog.start()
+        # Share Telethon client with alerter
+        if self.listener.client:
+            self.alerter.set_client(self.listener.client)
 
-        log_event("system_ready")
-        print("\n[INFO] Bot is running. Ctrl+C to stop.")
+        # Start background services
+        if not dry_run:
+            await self.lifecycle_mgr.start()
+            await self.watchdog.start()
+
+        self._cleanup_task = asyncio.create_task(self._storage_cleanup_loop())
+
+        # Send startup alert
+        await self.alerter.send_alert(
+            "bot_started",
+            f"🟢 **BOT STARTED** {'[DRY RUN]' if dry_run else '[LIVE]'}\n"
+            f"Pipeline active. Listening for signals.",
+        )
+
+        log_event("system_ready", dry_run=dry_run)
+        print("\n[INFO] Bot is running. Ctrl+C to stop.\n")
 
         try:
             await self.listener.run_until_disconnected()
@@ -362,13 +561,26 @@ class Bot:
         log_event("system_shutdown")
         print("\n[INFO] Shutting down...")
 
+        # Send shutdown alert
+        try:
+            await self.alerter.send_alert("bot_stopped", "🔴 **BOT STOPPED**")
+        except Exception:
+            pass
+
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
         if self.watchdog:
             await self.watchdog.stop()
         if self.lifecycle_mgr:
             await self.lifecycle_mgr.stop()
         if self.listener:
             await self.listener.stop()
-        if self.executor:
+        if self.executor and not self.settings.runtime.dry_run:
             self.executor.shutdown()
         if self.storage:
             self.storage.close()
