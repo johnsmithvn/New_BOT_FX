@@ -81,11 +81,11 @@ class Bot:
             max_message_length=s.parser.max_message_length,
         )
 
-        # Validator
+        # Validator — all thresholds in PIPS
         self.validator = SignalValidator(
-            max_entry_distance_points=s.safety.max_entry_distance_points,
+            max_entry_distance_pips=s.safety.max_entry_distance_pips,
             signal_age_ttl_seconds=s.safety.signal_age_ttl_seconds,
-            max_spread_points=s.safety.max_spread_points,
+            max_spread_pips=s.safety.max_spread_pips,
             max_open_trades=s.safety.max_open_trades,
         )
 
@@ -338,11 +338,48 @@ class Bot:
         )
 
         # ── Step 4: Get live market data ─────────────────────────
+        #    Also resolve point / pip_size for this symbol.
+        #    pip_size used by both validator (entry distance, spread)
+        #    and order_builder (market tolerance).
+        #
+        #    XAUUSD: point=0.01, pip_size=0.1 (1 pip = 10 points)
+        #    Forex:  point=0.00001, pip_size=0.0001
+        #    JPY:    point=0.001, pip_size=0.01
+        point = 0.00001
+        pip_size = 0.0001  # forex default
+
         if dry_run:
             bid, ask, current_spread = self._simulate_tick(signal_obj)
             current_price = ask if signal_obj.side == Side.BUY else bid
             open_positions = 0
+            # Estimate point/pip for dry run
+            symbol = signal_obj.symbol.upper()
+            if "XAU" in symbol or "GOLD" in symbol:
+                point = 0.01
+                pip_size = 0.1
+            elif "JPY" in symbol:
+                point = 0.001
+                pip_size = 0.01
+            else:
+                point = 0.00001
+                pip_size = 0.0001
         else:
+            # Live: get point from MT5, derive pip_size
+            try:
+                import MetaTrader5 as mt5
+                symbol_info = mt5.symbol_info(signal_obj.symbol)
+                if symbol_info and symbol_info.point > 0:
+                    point = symbol_info.point
+                    # pip_size = point * 10 for 5-digit brokers,
+                    # point itself for metals/JPY (2-3 digit)
+                    digits = symbol_info.digits
+                    if digits <= 3:
+                        pip_size = point * 10  # XAU: 0.01*10=0.1
+                    else:
+                        pip_size = point * 10  # EUR: 0.00001*10=0.0001
+            except Exception:
+                pass
+
             tick = self.executor.get_tick(signal_obj.symbol)
             current_price = None
             current_spread = None
@@ -351,18 +388,24 @@ class Bot:
             if tick:
                 bid = tick.bid
                 ask = tick.ask
-                current_spread = tick.spread_points
+                current_spread = tick.spread_points  # still in points here
                 current_price = ask if signal_obj.side == Side.BUY else bid
 
             open_positions = self.executor.positions_total()
+
+        # Convert spread from points to pips for validator
+        current_spread_pips = None
+        if current_spread is not None:
+            current_spread_pips = current_spread / 10.0  # 10 points = 1 pip
 
         # ── Step 5: Validate ─────────────────────────────────────
         vr = self.validator.validate(
             signal_obj,
             current_price=current_price,
-            current_spread=current_spread,
+            current_spread_pips=current_spread_pips,
             open_positions=open_positions,
             is_duplicate=is_dup,
+            pip_size=pip_size,
         )
 
         if not vr.valid:
@@ -389,23 +432,7 @@ class Bot:
         )
 
         # ── Step 8: Build order ──────────────────────────────────
-        symbol_info = None
-        point = 0.00001
-        if not dry_run:
-            try:
-                import MetaTrader5 as mt5
-                symbol_info = mt5.symbol_info(signal_obj.symbol)
-                if symbol_info and symbol_info.point > 0:
-                    point = symbol_info.point
-            except Exception:
-                pass
-        else:
-            # Estimate point for dry run
-            symbol = signal_obj.symbol.upper()
-            if "XAU" in symbol or "GOLD" in symbol:
-                point = 0.01
-            elif "JPY" in symbol:
-                point = 0.001
+        # point and pip_size already resolved in Step 4
 
         decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
         request = self.order_builder.build_request(signal_obj, decision, volume, bid, ask)
@@ -512,10 +539,11 @@ class Bot:
 
         # Banner
         print("=" * 55)
-        print(f"  telegram-mt5-bot  v0.3.0  {'[DRY RUN]' if dry_run else '[LIVE]'}")
+        print(f"  telegram-mt5-bot  v0.3.2  {'[DRY RUN]' if dry_run else '[LIVE]'}")
         print("=" * 55)
         print(f"  Risk mode    : {self.settings.risk.mode}")
-        print(f"  Max spread   : {self.settings.safety.max_spread_points} pts")
+        print(f"  Max spread   : {self.settings.safety.max_spread_pips} pips")
+        print(f"  Max distance : {self.settings.safety.max_entry_distance_pips} pips")
         print(f"  Signal TTL   : {self.settings.safety.signal_age_ttl_seconds}s")
         print(f"  Pending TTL  : {self.settings.safety.pending_order_ttl_minutes}min")
         print(f"  Max trades   : {self.settings.safety.max_open_trades}")

@@ -238,6 +238,27 @@ Avoid:
 * magic constants without explanation
 * hidden global state
 
+## 5a. Unit Consistency — Pips vs Points
+
+All distance/spread thresholds in this project use **PIPS** as the standard unit.
+
+**NEVER** compare raw price difference against pip-based config directly.
+Always convert: `distance_pips = abs(price_a - price_b) / pip_size`
+
+| Symbol | point (MT5) | pip_size | 1 pip = | Example |
+|--------|-------------|----------|---------|---------|
+| XAUUSD | 0.01 | 0.1 | $0.10 | 2030.0 → 2030.1 = 1 pip |
+| EURUSD | 0.00001 | 0.0001 | 1 pip | 1.08500 → 1.08510 = 1 pip |
+| USDJPY | 0.001 | 0.01 | 1 pip | 150.000 → 150.010 = 1 pip |
+
+Config keys using pips:
+- `MAX_SPREAD_PIPS` (default 5.0)
+- `MAX_ENTRY_DISTANCE_PIPS` (default 50.0)
+
+Config keys using points (MT5 native):
+- `DEVIATION_POINTS` (default 20 — passed directly to MT5)
+- `MARKET_TOLERANCE_POINTS` (default 5.0 — multiplied by `point` in code)
+
 
 # Environment
 

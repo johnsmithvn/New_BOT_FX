@@ -162,9 +162,9 @@ Giá sinh ra:
 | 2. Duplicate | 78-82 | `is_duplicate` flag | `SIGNAL_AGE_TTL_SECONDS` | 60 | Reject |
 | 3. SL coherence | 85-87 | BUY: SL < entry · SELL: SL > entry | — | — | Reject |
 | 4. TP coherence | 90-92 | BUY: TP > entry · SELL: TP < entry | — | — | Reject |
-| 5. Entry distance | 95-98 | \|entry - live_price\| ≤ max | `MAX_ENTRY_DISTANCE_POINTS` | 500 | Reject |
+| 5. Entry distance | 95-98 | \|entry - live_price\| / pip_size ≤ max | `MAX_ENTRY_DISTANCE_PIPS` | 50 | Reject |
 | 6. Signal age | 101-103 | age ≤ TTL | `SIGNAL_AGE_TTL_SECONDS` | 60 | Reject |
-| 7. Spread | 106-109 | spread ≤ max | `MAX_SPREAD_POINTS` | 50 | Reject |
+| 7. Spread | 106-109 | spread_pips ≤ max | `MAX_SPREAD_PIPS` | 5 | Reject |
 | 8. Max trades | 112-115 | open_positions < max | `MAX_OPEN_TRADES` | 5 | Reject |
 
 ### Chi tiết từng rule:
@@ -202,8 +202,8 @@ MAX_ENTRY_DISTANCE_POINTS = 500
 ```
 
 ### ⚠️ Nếu bạn muốn thay đổi:
-- **Nới lỏng spread gate**: Tăng `MAX_SPREAD_POINTS` trong `.env`. Ví dụ: `100` cho phép spread rộng (ban đêm, tin tức).
-- **Tắt entry distance check**: Set `MAX_ENTRY_DISTANCE_POINTS=99999`.
+- **Nới lỏng spread gate**: Tăng `MAX_SPREAD_PIPS` trong `.env`. Ví dụ: `10` cho phép 10 pips spread ($1.00 XAUUSD).
+- **Tắt entry distance check**: Set `MAX_ENTRY_DISTANCE_PIPS=99999`.
 - **Bắt buộc có SL**: Thêm rule mới trong `validate()`: `if signal.sl is None: return ValidationResult(False, "missing SL")`.
 - **Bắt buộc có TP**: Tương tự, check `if not signal.tp:`.
 

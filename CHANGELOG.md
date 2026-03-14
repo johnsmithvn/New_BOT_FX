@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## 0.3.2 - 2026-03-14
+
+### Fixed
+- **CRITICAL**: `_validate_entry_distance` was comparing raw price difference against pip-based config — gate was effectively useless for XAUUSD (500 meant $500 instead of 50 pips = $5)
+
+### Changed
+- All distance/spread units standardized to **PIPS** (not points)
+- `signal_validator.py` — rewritten with `pip_size` param, all thresholds in pips
+- `config/settings.py` — `SafetyConfig`: renamed `max_spread_points`→`max_spread_pips` (default 5.0), `max_entry_distance_points`→`max_entry_distance_pips` (default 50.0)
+- `.env.example` — renamed `MAX_SPREAD_POINTS`→`MAX_SPREAD_PIPS`, `MAX_ENTRY_DISTANCE_POINTS`→`MAX_ENTRY_DISTANCE_PIPS`, with XAUUSD pip explanations
+- `main.py` — resolve `point`/`pip_size` BEFORE validation (was incorrectly after), pass `pip_size` to validator, convert spread points→pips
+- `docs/RULES.md` — added §5a "Unit Consistency — Pips vs Points" rule
+
+### ⚠️ Breaking: .env rename required
+- `MAX_SPREAD_POINTS=50` → `MAX_SPREAD_PIPS=5.0`
+- `MAX_ENTRY_DISTANCE_POINTS=500` → `MAX_ENTRY_DISTANCE_PIPS=50.0`
+
 ## 0.3.1 - 2026-03-14
 
 ### Changed

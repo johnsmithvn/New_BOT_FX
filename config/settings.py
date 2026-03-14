@@ -80,11 +80,11 @@ class RiskConfig:
 
 @dataclass(frozen=True)
 class SafetyConfig:
-    max_spread_points: int
+    max_spread_pips: float         # XAUUSD: 5 pips = $0.50
     max_open_trades: int
     pending_order_ttl_minutes: int
     signal_age_ttl_seconds: int
-    max_entry_distance_points: int
+    max_entry_distance_pips: float  # XAUUSD: 50 pips = $5.00
 
 
 @dataclass(frozen=True)
@@ -171,11 +171,11 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     )
 
     safety = SafetyConfig(
-        max_spread_points=_env_int("MAX_SPREAD_POINTS", 50),
+        max_spread_pips=_env_float("MAX_SPREAD_PIPS", 5.0),
         max_open_trades=_env_int("MAX_OPEN_TRADES", 5),
         pending_order_ttl_minutes=_env_int("PENDING_ORDER_TTL_MINUTES", 15),
         signal_age_ttl_seconds=_env_int("SIGNAL_AGE_TTL_SECONDS", 60),
-        max_entry_distance_points=_env_int("MAX_ENTRY_DISTANCE_POINTS", 500),
+        max_entry_distance_pips=_env_float("MAX_ENTRY_DISTANCE_PIPS", 50.0),
     )
 
     log = LogConfig(

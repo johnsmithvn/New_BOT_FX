@@ -3,6 +3,11 @@ core/signal_validator.py
 
 Validate parsed signals before trade execution.
 Enforces safety rules and coherence checks.
+
+UNITS: All distance/spread thresholds are in PIPS.
+  - XAUUSD: 1 pip = 0.1 ($0.10 per pip), 1 point = 0.01
+  - Forex:  1 pip = 0.0001, 1 point = 0.00001
+  - To convert: pips = raw_price_distance / pip_size
 """
 
 from __future__ import annotations
@@ -24,45 +29,61 @@ class ValidationResult:
 class SignalValidator:
     """Validate parsed signals against safety rules.
 
-    Rules enforced:
-    1. Required fields present (symbol, side).
-    2. SL/TP numeric coherence relative to entry and side.
-    3. Entry distance from reference price.
-    4. Signal age (reject stale signals).
-    5. Spread threshold check.
-    6. Max open trades gate.
-    7. Duplicate filtering via fingerprint.
+    All distance/spread values use PIPS as unit.
+
+    Rules enforced (priority order — first reject wins):
+    1. Required fields (symbol, side).
+    2. Duplicate filter (fingerprint within TTL).
+    3. SL coherence (BUY: SL < entry, SELL: SL > entry).
+    4. TP coherence (BUY: TP > entry, SELL: TP < entry).
+    5. Entry distance from live price (in pips).
+    6. Signal age (reject stale signals).
+    7. Spread gate (in pips).
+    8. Max open trades.
     """
 
     def __init__(
         self,
-        max_entry_distance_points: int = 500,
+        max_entry_distance_pips: float = 50.0,
         signal_age_ttl_seconds: int = 60,
-        max_spread_points: int = 50,
+        max_spread_pips: float = 5.0,
         max_open_trades: int = 5,
     ) -> None:
-        self._max_entry_distance = max_entry_distance_points
+        """Args:
+            max_entry_distance_pips: Max allowed distance between signal entry
+                and live price, in pips. XAUUSD: 50 pips = $5.0 price difference.
+            signal_age_ttl_seconds: Max age of signal before rejection.
+            max_spread_pips: Max allowed spread in pips.
+                XAUUSD: 5 pips = $0.50 spread.
+            max_open_trades: Max simultaneous open positions allowed.
+        """
+        self._max_entry_distance_pips = max_entry_distance_pips
         self._signal_age_ttl = signal_age_ttl_seconds
-        self._max_spread = max_spread_points
+        self._max_spread_pips = max_spread_pips
         self._max_open_trades = max_open_trades
 
     def validate(
         self,
         signal: ParsedSignal,
         current_price: float | None = None,
-        current_spread: float | None = None,
+        current_spread_pips: float | None = None,
         open_positions: int | None = None,
         is_duplicate: bool = False,
+        pip_size: float = 0.1,
     ) -> ValidationResult:
         """Run all validation checks on a parsed signal.
 
         Args:
             signal: The parsed signal to validate.
-            current_price: Current market reference price (bid for SELL,
-                          ask for BUY). None if unavailable.
-            current_spread: Current spread in points. None if unavailable.
-            open_positions: Number of currently open positions. None if unavailable.
-            is_duplicate: True if signal fingerprint was found in dedupe window.
+            current_price: Current market reference price
+                (ASK for BUY, BID for SELL). None if unavailable.
+            current_spread_pips: Current spread in pips. None if unavailable.
+            open_positions: Number of currently open positions.
+            is_duplicate: True if fingerprint found in dedupe window.
+            pip_size: Size of 1 pip in price units.
+                XAUUSD: 0.1 (so $2030.0 → $2030.1 = 1 pip).
+                EURUSD: 0.0001.
+                USDJPY: 0.01.
 
         Returns:
             ValidationResult with valid=True or reason for rejection.
@@ -91,9 +112,11 @@ class SignalValidator:
         if not result.valid:
             return result
 
-        # Rule 5: Entry distance (requires current_price)
+        # Rule 5: Entry distance (requires current_price + pip_size)
         if current_price is not None and signal.entry is not None:
-            result = self._validate_entry_distance(signal, current_price)
+            result = self._validate_entry_distance(
+                signal, current_price, pip_size
+            )
             if not result.valid:
                 return result
 
@@ -103,8 +126,8 @@ class SignalValidator:
             return result
 
         # Rule 7: Spread gate
-        if current_spread is not None:
-            result = self._validate_spread(current_spread)
+        if current_spread_pips is not None:
+            result = self._validate_spread(current_spread_pips)
             if not result.valid:
                 return result
 
@@ -116,12 +139,13 @@ class SignalValidator:
 
         return ValidationResult(True)
 
-    def _validate_spread(self, spread: float) -> ValidationResult:
-        """Reject if spread exceeds configured max."""
-        if spread > self._max_spread:
+    def _validate_spread(self, spread_pips: float) -> ValidationResult:
+        """Reject if spread exceeds configured max (in pips)."""
+        if spread_pips > self._max_spread_pips:
             return ValidationResult(
                 False,
-                f"spread ({spread:.1f} pts) exceeds max ({self._max_spread})",
+                f"spread ({spread_pips:.1f} pips) exceeds "
+                f"max ({self._max_spread_pips} pips)",
             )
         return ValidationResult(True)
 
@@ -180,17 +204,27 @@ class SignalValidator:
         self,
         signal: ParsedSignal,
         current_price: float,
+        pip_size: float,
     ) -> ValidationResult:
-        """Reject if entry is too far from current market price."""
+        """Reject if entry is too far from current market price.
+
+        Converts raw price distance to pips before comparison.
+
+        Example XAUUSD (pip_size=0.1):
+            entry=2030, price=2035 → distance = $5.0 = 50 pips
+            max_entry_distance_pips=50 → 50 ≤ 50 → PASS
+        """
         if signal.entry is None:
             return ValidationResult(True)
 
-        distance = abs(signal.entry - current_price)
-        if distance > self._max_entry_distance:
+        raw_distance = abs(signal.entry - current_price)
+        distance_pips = raw_distance / pip_size if pip_size > 0 else raw_distance
+
+        if distance_pips > self._max_entry_distance_pips:
             return ValidationResult(
                 False,
-                f"entry distance ({distance:.1f} points) exceeds "
-                f"max ({self._max_entry_distance})",
+                f"entry distance ({distance_pips:.1f} pips) exceeds "
+                f"max ({self._max_entry_distance_pips} pips)",
             )
 
         return ValidationResult(True)
