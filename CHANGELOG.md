@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.3.1 - 2026-03-14
+
+### Changed
+- Moved 8 hardcoded trade execution values to `.env`: `BOT_MAGIC_NUMBER`, `DEVIATION_POINTS`, `MARKET_TOLERANCE_POINTS`, `ORDER_MAX_RETRIES`, `ORDER_RETRY_DELAY_SECONDS`, `WATCHDOG_INTERVAL_SECONDS`, `WATCHDOG_MAX_REINIT`, `LIFECYCLE_CHECK_INTERVAL_SECONDS`
+- `config/settings.py` — added `ExecutionConfig` dataclass
+- `core/order_builder.py` — removed hardcoded `BOT_MAGIC_NUMBER=234000` and `DEFAULT_DEVIATION=20`, now from config
+- `main.py` — wires all ExecutionConfig values into OrderBuilder, TradeExecutor, MT5Watchdog, OrderLifecycleManager
+- `.env.example` — added Trade Execution section with ⚠️ CRITICAL warnings and explanations
+- `README.md` — added CRITICAL warning section at top: price reference rule, market tolerance, deviation, risk sizing, all safety gates
+
 ## 0.3.0 - 2026-03-14
 
 ### Added

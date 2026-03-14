@@ -100,6 +100,18 @@ class ParserConfig:
 
 
 @dataclass(frozen=True)
+class ExecutionConfig:
+    bot_magic_number: int
+    deviation_points: int
+    market_tolerance_points: float
+    max_retries: int
+    retry_delay_seconds: float
+    watchdog_interval_seconds: int
+    watchdog_max_reinit: int
+    lifecycle_check_interval_seconds: int
+
+
+@dataclass(frozen=True)
 class RuntimeConfig:
     dry_run: bool
     alert_cooldown_seconds: int
@@ -116,6 +128,7 @@ class Settings:
     safety: SafetyConfig
     log: LogConfig
     parser: ParserConfig
+    execution: ExecutionConfig
     runtime: RuntimeConfig
 
 
@@ -175,6 +188,17 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         max_message_length=_env_int("MAX_MESSAGE_LENGTH", 2000),
     )
 
+    execution = ExecutionConfig(
+        bot_magic_number=_env_int("BOT_MAGIC_NUMBER", 234000),
+        deviation_points=_env_int("DEVIATION_POINTS", 20),
+        market_tolerance_points=_env_float("MARKET_TOLERANCE_POINTS", 5.0),
+        max_retries=_env_int("ORDER_MAX_RETRIES", 3),
+        retry_delay_seconds=_env_float("ORDER_RETRY_DELAY_SECONDS", 1.0),
+        watchdog_interval_seconds=_env_int("WATCHDOG_INTERVAL_SECONDS", 30),
+        watchdog_max_reinit=_env_int("WATCHDOG_MAX_REINIT", 5),
+        lifecycle_check_interval_seconds=_env_int("LIFECYCLE_CHECK_INTERVAL_SECONDS", 30),
+    )
+
     _dry_run_raw = _env("DRY_RUN", "false").lower()
     runtime = RuntimeConfig(
         dry_run=_dry_run_raw in ("true", "1", "yes"),
@@ -191,5 +215,6 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         safety=safety,
         log=log,
         parser=parser,
+        execution=execution,
         runtime=runtime,
     )

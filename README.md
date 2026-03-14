@@ -1,121 +1,173 @@
 # telegram-mt5-bot
 
-Low-latency Python bot that reads Telegram trading signals and executes MT5 orders safely.
+Automated Forex / CFD signal → MT5 execution bot.
 
-## Requirements
+Listens to Telegram channels for trading signals, parses them, validates safety rules, and executes orders on MetaTrader 5.
 
-- Python 3.11+
-- MetaTrader 5 terminal (for execution phases)
-- Telegram API credentials (for listener phases)
+---
 
-## Setup
+## ⚠️ CRITICAL: Trading Logic You MUST Understand
+
+> **This bot trades REAL MONEY. Misconfiguration can cause financial loss.**
+
+### 🔴 Price Reference Rule (Order Type Decision)
+
+The order type (MARKET / LIMIT / STOP) is determined by comparing the signal entry price against LIVE market prices:
+
+| Side | Reference Price | Logic |
+|------|----------------|-------|
+| **BUY** | **ASK** | `entry < ASK` → BUY_LIMIT · `entry > ASK` → BUY_STOP · `entry ≈ ASK` → MARKET |
+| **SELL** | **BID** | `entry > BID` → SELL_LIMIT · `entry < BID` → SELL_STOP · `entry ≈ BID` → MARKET |
+
+> ⚠️ **BUY uses ASK, SELL uses BID.** Getting this wrong means wrong order type, wrong execution price.
+
+### 🔴 Market Tolerance (`MARKET_TOLERANCE_POINTS`)
+
+If `|entry - reference_price| ≤ MARKET_TOLERANCE_POINTS × point`, the order is treated as **MARKET** (immediate execution) instead of LIMIT/STOP.
+
+- Default: `5.0` points
+- Setting too high → signals that should be pending become market orders
+- Setting too low → signals near market price become pending when they should execute immediately
+
+### 🔴 Deviation (`DEVIATION_POINTS`)
+
+Maximum acceptable price slippage for MARKET orders. MT5 will reject the order if price moves more than this during execution.
+
+- Default: `20` points
+- Too low → frequent rejections during volatility
+- Too high → poor fill prices
+
+### 🔴 Risk Sizing
+
+| Mode | Formula | Config |
+|------|---------|--------|
+| `FIXED_LOT` | Use `FIXED_LOT_SIZE` directly | `FIXED_LOT_SIZE=0.01` |
+| `RISK_PERCENT` | `volume = (balance × risk%) / (SL_distance × pip_value)` | `RISK_PERCENT=1.0` |
+
+Volume is always clamped to `[LOT_MIN, LOT_MAX]` and rounded to `LOT_STEP`.
+
+### 🔴 Safety Gates (Validation Rules)
+
+| Gate | Config Key | Default | Effect |
+|------|-----------|---------|--------|
+| Max spread | `MAX_SPREAD_POINTS` | 50 | Reject if current spread > max |
+| Max open trades | `MAX_OPEN_TRADES` | 5 | Reject if open positions ≥ max |
+| Signal age | `SIGNAL_AGE_TTL_SECONDS` | 60 | Reject if signal older than TTL |
+| Entry distance | `MAX_ENTRY_DISTANCE_POINTS` | 500 | Reject if entry too far from market |
+| Pending TTL | `PENDING_ORDER_TTL_MINUTES` | 15 | Auto-cancel unfilled pending orders |
+| Duplicate | fingerprint | — | SHA-256 hash, reject within TTL window |
+
+### 🔴 Circuit Breaker
+
+After `CIRCUIT_BREAKER_THRESHOLD` consecutive execution failures:
+- **Trading pauses** automatically (OPEN state)
+- After `CIRCUIT_BREAKER_COOLDOWN` seconds → probe with one trade
+- Success → resume all trading · Failure → pause again
+
+---
+
+## Quick Start
 
 ```bash
-# Clone repository
+# 1. Clone and setup
 git clone <repo-url>
-cd Forex
-
-# Create virtual environment
+cd telegram-mt5-bot
 python -m venv venv
-
-# Activate virtual environment
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# Install dependencies
+venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 
-# Copy and configure environment
+# 2. Configure
 cp .env.example .env
 # Edit .env with your credentials and settings
+
+# 3. Run
+python main.py
 ```
 
 ## Configuration
 
-All configuration is via environment variables in `.env`. See `.env.example` for all available keys:
+All values are in `.env`. Copy from `.env.example` for the full list with explanations.
 
-| Category | Key | Description |
-|----------|-----|-------------|
-| Telegram | `TELEGRAM_API_ID` | Telegram API ID |
-| Telegram | `TELEGRAM_API_HASH` | Telegram API hash |
-| Telegram | `TELEGRAM_SOURCE_CHATS` | Comma-separated chat IDs |
-| MT5 | `MT5_PATH` | Path to terminal64.exe |
-| Risk | `RISK_MODE` | `FIXED_LOT` or `RISK_PERCENT` |
-| Safety | `MAX_SPREAD_POINTS` | Max allowed spread |
-| Safety | `SIGNAL_AGE_TTL_SECONDS` | Reject signals older than this |
-| Safety | `PENDING_ORDER_TTL_MINUTES` | Auto-cancel pending orders after this |
+### Required Credentials
+| Key | Description |
+|-----|-------------|
+| `TELEGRAM_API_ID` | Telegram API ID from my.telegram.org |
+| `TELEGRAM_API_HASH` | Telegram API hash |
+| `TELEGRAM_PHONE` | Your phone in international format: `+84327279393` |
+| `TELEGRAM_SOURCE_CHATS` | Comma-separated chat IDs or usernames to monitor |
+| `MT5_LOGIN` | MetaTrader 5 login number |
+| `MT5_PASSWORD` | MT5 password |
+| `MT5_SERVER` | MT5 broker server name |
 
-## Running
+### Critical Trade Execution Settings
+| Key | Default | Description |
+|-----|---------|-------------|
+| `BOT_MAGIC_NUMBER` | `234000` | Unique ID to tag bot orders in MT5 |
+| `DEVIATION_POINTS` | `20` | Max price slippage for market orders |
+| `MARKET_TOLERANCE_POINTS` | `5.0` | Entry-vs-price threshold for market/pending decision |
+| `ORDER_MAX_RETRIES` | `3` | Retry count for failed `order_send` calls |
+| `ORDER_RETRY_DELAY_SECONDS` | `1.0` | Base delay between retries (exponential) |
 
-```bash
-# Activate virtual environment first
-venv\Scripts\activate
-
-# Run the bot
-python main.py
+### Dry Run Mode
+```env
+DRY_RUN=true
 ```
-
-## Testing the Parser
-
-Use the debug CLI to test signal parsing without running the full bot:
-
-```bash
-# Parse a single signal
-python tools/parse_cli.py --text "GOLD BUY @ 2030 SL 2020 TP 2040 TP2 2050"
-
-# Parse from a file (signals separated by blank lines)
-python tools/parse_cli.py --file docs/SIGNAL_DATASET.md
-
-# Pipe from stdin
-echo "EURUSD SELL 1.0800 SL 1.0850 TP 1.0750" | python tools/parse_cli.py
-```
+Simulates execution without sending real orders. **Bid/Ask prices are dynamically derived from the signal entry** to maintain correct validation and order type logic.
 
 ## Project Structure
 
 ```
-Forex/
-├── config/
-│   └── settings.py          # Typed config loading from .env
+├── main.py                      # Entry point, pipeline orchestration
+├── config/settings.py           # Typed config from .env
 ├── core/
-│   ├── models.py             # Data contracts (ParsedSignal, etc.)
-│   ├── signal_parser/
-│   │   ├── cleaner.py        # Message normalization
-│   │   ├── symbol_detector.py
-│   │   ├── side_detector.py
-│   │   ├── entry_detector.py
-│   │   ├── sl_detector.py
-│   │   ├── tp_detector.py
-│   │   └── parser.py         # Orchestrator
-│   ├── signal_validator.py   # Safety validation
-│   ├── risk_manager.py       # Position sizing
-│   └── storage.py            # SQLite persistence
+│   ├── models.py                # Data contracts (ParsedSignal, ExecutionResult, etc.)
+│   ├── signal_parser/           # 7-module parser pipeline
+│   ├── signal_validator.py      # Safety gates (spread, age, distance, duplicates)
+│   ├── risk_manager.py          # Position sizing
+│   ├── order_builder.py         # Order type decision + MT5 request builder
+│   ├── trade_executor.py        # MT5 connection + bounded retry execution
+│   ├── storage.py               # SQLite persistence (WAL mode)
+│   ├── telegram_listener.py     # Telethon listener + auto-reconnect
+│   ├── telegram_alerter.py      # Rate-limited admin alerts
+│   ├── circuit_breaker.py       # CLOSED/OPEN/HALF_OPEN trade safety
+│   ├── order_lifecycle_manager.py # Pending order TTL expiration
+│   ├── mt5_watchdog.py          # Connection health monitor
+│   └── message_update_handler.py # MessageEdited handling
 ├── utils/
-│   ├── logger.py             # Structured JSON logging
-│   └── symbol_mapper.py      # Symbol alias resolution
+│   ├── logger.py                # Structured JSON logging
+│   └── symbol_mapper.py         # Symbol alias resolution
 ├── tools/
-│   └── parse_cli.py          # Parser debug CLI
-├── docs/                     # Project documentation
-├── data/                     # SQLite databases (auto-created)
-├── logs/                     # Log files (auto-created)
-├── main.py                   # Entry point
-├── requirements.txt
-├── .env.example
-└── CHANGELOG.md
+│   ├── parse_cli.py             # Parser debug CLI
+│   └── benchmark.py             # Performance benchmark
+├── docs/                        # Architecture, plan, tasks
+└── .env.example                 # All configuration keys with docs
 ```
 
-## Documentation
+## Pipeline Flow
 
-- [PROJECT.md](docs/PROJECT.md) — Project overview and goals
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — System architecture and data contracts
-- [ROADMAP.md](docs/ROADMAP.md) — Development milestones
-- [PLAN.md](docs/PLAN.md) — Current development phase
-- [TASKS.md](docs/TASKS.md) — Task tracking
-- [RULES.md](docs/RULES.md) — Agent and development rules
-- [OBSERVABILITY.md](docs/OBSERVABILITY.md) — Logging and tracing
-- [SIGNAL_DATASET.md](docs/SIGNAL_DATASET.md) — Signal message samples
+```
+Telegram NewMessage
+  → signal_parser.parse()
+  → storage.is_duplicate()
+  → circuit_breaker.is_trading_allowed
+  → signal_validator.validate(price, spread, positions, age, distance)
+  → risk_manager.calculate_volume()
+  → order_builder.decide_order_type() + build_request()
+  → trade_executor.execute() [or DRY_RUN simulate]
+  → storage.store_signal() + store_order() + store_event()
+```
 
-## Version
+## Signal Lifecycle Events (DB Tracing)
 
-Current: **v0.1.0** — P1 Signal Understanding
+Every signal is traced through the `events` table:
+```
+signal_received → signal_parsed → signal_submitted → signal_executed
+                                → signal_rejected (with reason)
+                                → signal_failed (with retcode)
+```
+
+## Version History
+
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
+
+Current: **v0.3.1**

@@ -99,15 +99,21 @@ class Bot:
             lot_step=s.risk.lot_step,
         )
 
-        # Order Builder
-        self.order_builder = OrderBuilder()
+        # Order Builder — values from config, no hardcoded magic numbers
+        self.order_builder = OrderBuilder(
+            market_tolerance_points=s.execution.market_tolerance_points,
+            deviation=s.execution.deviation_points,
+            magic=s.execution.bot_magic_number,
+        )
 
-        # Trade Executor
+        # Trade Executor — retries from config
         self.executor = TradeExecutor(
             mt5_path=s.mt5.path,
             login=s.mt5.login,
             password=s.mt5.password,
             server=s.mt5.server,
+            max_retries=s.execution.max_retries,
+            retry_delay_seconds=s.execution.retry_delay_seconds,
         )
 
         # Circuit Breaker
@@ -143,15 +149,18 @@ class Bot:
         self.listener.set_pipeline_callback(self._process_signal)
         self.listener.set_edit_callback(self._process_edit)
 
-        # Lifecycle Manager
+        # Lifecycle Manager — check interval from config
         self.lifecycle_mgr = OrderLifecycleManager(
             executor=self.executor,
             ttl_minutes=s.safety.pending_order_ttl_minutes,
+            check_interval_seconds=s.execution.lifecycle_check_interval_seconds,
         )
 
-        # MT5 Watchdog with alert callbacks
+        # MT5 Watchdog — intervals from config
         self.watchdog = MT5Watchdog(
             executor=self.executor,
+            check_interval_seconds=s.execution.watchdog_interval_seconds,
+            max_reinit_retries=s.execution.watchdog_max_reinit,
             on_connection_lost=self._on_mt5_connection_lost,
             on_reinit_exhausted=self._on_mt5_reinit_exhausted,
         )

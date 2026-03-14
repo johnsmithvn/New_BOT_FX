@@ -15,13 +15,6 @@ import MetaTrader5 as mt5
 from core.models import ParsedSignal, TradeDecision, OrderKind, Side
 
 
-# Magic number to identify orders placed by this bot.
-BOT_MAGIC_NUMBER = 234000
-
-# Default deviation in points for market orders.
-DEFAULT_DEVIATION = 20
-
-
 class OrderBuilder:
     """Build MT5 order requests from parsed signals.
 
@@ -40,9 +33,15 @@ class OrderBuilder:
     def __init__(
         self,
         market_tolerance_points: float = 5.0,
-        deviation: int = DEFAULT_DEVIATION,
-        magic: int = BOT_MAGIC_NUMBER,
+        deviation: int = 20,
+        magic: int = 234000,
     ) -> None:
+        """Args:
+            market_tolerance_points: If |entry - reference_price| ≤ tolerance * point,
+                treat as MARKET order instead of LIMIT/STOP. Configurable via MARKET_TOLERANCE_POINTS.
+            deviation: Max price deviation in points for market orders. Configurable via DEVIATION_POINTS.
+            magic: Unique ID to identify orders from this bot. Configurable via BOT_MAGIC_NUMBER.
+        """
         self._tolerance = market_tolerance_points
         self._deviation = deviation
         self._magic = magic

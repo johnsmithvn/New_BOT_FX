@@ -87,6 +87,10 @@ class TradeExecutor:
         max_retries: int = 3,
         retry_delay_seconds: float = 1.0,
     ) -> None:
+        """Args:
+            max_retries: Max order_send attempts before giving up. Configurable via ORDER_MAX_RETRIES.
+            retry_delay_seconds: Base delay between retries (multiplied by attempt). Via ORDER_RETRY_DELAY_SECONDS.
+        """
         self._mt5_path = mt5_path
         self._login = login
         self._password = password
