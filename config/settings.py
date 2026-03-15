@@ -85,6 +85,7 @@ class SafetyConfig:
     pending_order_ttl_minutes: int
     signal_age_ttl_seconds: int
     max_entry_distance_pips: float  # XAUUSD: 50 pips = $5.00
+    max_entry_drift_pips: float    # tight drift guard for MARKET orders
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,7 @@ class RuntimeConfig:
     circuit_breaker_threshold: int
     circuit_breaker_cooldown: int
     storage_retention_days: int
+    heartbeat_interval_minutes: int  # heartbeat frequency; 0 = disabled
 
 
 @dataclass(frozen=True)
@@ -176,6 +178,11 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         pending_order_ttl_minutes=_env_int("PENDING_ORDER_TTL_MINUTES", 15),
         signal_age_ttl_seconds=_env_int("SIGNAL_AGE_TTL_SECONDS", 60),
         max_entry_distance_pips=_env_float("MAX_ENTRY_DISTANCE_PIPS", 50.0),
+        max_entry_drift_pips=_env_float("MAX_ENTRY_DRIFT_PIPS", 10.0),
+        max_daily_trades=_env_int("MAX_DAILY_TRADES", 0),
+        max_daily_loss_usd=_env_float("MAX_DAILY_LOSS", 0.0),
+        max_consecutive_losses=_env_int("MAX_CONSECUTIVE_LOSSES", 0),
+        daily_risk_poll_minutes=_env_int("DAILY_RISK_POLL_MINUTES", 5),
     )
 
     log = LogConfig(
@@ -206,6 +213,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         circuit_breaker_threshold=_env_int("CIRCUIT_BREAKER_THRESHOLD", 3),
         circuit_breaker_cooldown=_env_int("CIRCUIT_BREAKER_COOLDOWN", 300),
         storage_retention_days=_env_int("STORAGE_RETENTION_DAYS", 30),
+        heartbeat_interval_minutes=_env_int("HEARTBEAT_INTERVAL_MINUTES", 30),
     )
 
     return Settings(

@@ -11,6 +11,8 @@ P3 features:
 - Circuit breaker with Telegram alerting
 - Background storage cleanup
 - Global exception handling
+- Session metrics (parsed/rejected/executed/failed + avg/max latency)
+- Heartbeat log (rich status every N minutes)
 """
 
 from __future__ import annotations
@@ -18,9 +20,11 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+import time
+from dataclasses import dataclass, field
 
 from config.settings import load_settings
-from core.models import ParsedSignal, ParseFailure, Side, SignalStatus
+from core.models import ParsedSignal, ParseFailure, Side, SignalStatus, OrderKind
 from core.signal_parser.parser import SignalParser
 from core.signal_validator import SignalValidator
 from core.risk_manager import RiskManager
@@ -35,6 +39,41 @@ from core.circuit_breaker import CircuitBreaker, BreakerState
 from core.telegram_alerter import TelegramAlerter
 from utils.logger import setup_logger, log_event
 from utils.symbol_mapper import SymbolMapper
+
+
+@dataclass
+class _SessionMetrics:
+    """In-memory counters for the current bot session.
+
+    Tracks signal outcomes and execution latency.
+    Latency is measured only for successfully executed signals
+    (signal_received → order done).
+    """
+    parsed:           int = field(default=0)
+    rejected:         int = field(default=0)
+    executed:         int = field(default=0)
+    failed:           int = field(default=0)
+    # Latency tracking (executed signals only)
+    _exec_count:      int = field(default=0, repr=False)
+    _total_lat_ms:    int = field(default=0, repr=False)
+    _max_lat_ms:      int = field(default=0, repr=False)
+
+    def record_latency(self, latency_ms: int) -> None:
+        """Record latency for a successfully executed signal."""
+        self._exec_count += 1
+        self._total_lat_ms += latency_ms
+        if latency_ms > self._max_lat_ms:
+            self._max_lat_ms = latency_ms
+
+    @property
+    def avg_execution_latency_ms(self) -> int:
+        if self._exec_count == 0:
+            return 0
+        return self._total_lat_ms // self._exec_count
+
+    @property
+    def max_execution_latency_ms(self) -> int:
+        return self._max_lat_ms
 
 
 class Bot:
@@ -58,6 +97,9 @@ class Bot:
         self.circuit_breaker: CircuitBreaker | None = None
         self.alerter: TelegramAlerter | None = None
         self._cleanup_task: asyncio.Task | None = None
+        self._heartbeat_task: asyncio.Task | None = None
+        self._metrics = _SessionMetrics()
+        self._start_time: float = 0.0
 
     def _init_components(self) -> None:
         """Initialize all components."""
@@ -87,6 +129,7 @@ class Bot:
             signal_age_ttl_seconds=s.safety.signal_age_ttl_seconds,
             max_spread_pips=s.safety.max_spread_pips,
             max_open_trades=s.safety.max_open_trades,
+            max_entry_drift_pips=s.safety.max_entry_drift_pips,
         )
 
         # Risk Manager
@@ -264,6 +307,7 @@ class Bot:
     ) -> None:
         """Internal pipeline logic."""
         dry_run = self.settings.runtime.dry_run
+        t_start = time.monotonic()
 
         # ── Step 1: Parse ────────────────────────────────────────
         result = self.parser.parse(
@@ -295,6 +339,9 @@ class Bot:
 
         signal_obj: ParsedSignal = result
         fp = signal_obj.fingerprint[:12]
+
+        # Count as parsed
+        self._metrics.parsed += 1
 
         log_event(
             "parse_success",
@@ -328,6 +375,7 @@ class Bot:
             reason = "circuit breaker OPEN — trading paused"
             log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=reason)
             self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": reason})
+            self._metrics.rejected += 1
             print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{reason}\"")
             return
 
@@ -412,6 +460,7 @@ class Bot:
             log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=vr.reason)
             self.storage.store_signal(signal_obj, SignalStatus.REJECTED)
             self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": vr.reason})
+            self._metrics.rejected += 1
             print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{vr.reason}\"")
             return
 
@@ -436,6 +485,21 @@ class Bot:
 
         decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
         request = self.order_builder.build_request(signal_obj, decision, volume, bid, ask)
+
+        # ── Step 8b: Entry drift guard for MARKET orders ─────────
+        #    When entry is explicit but order is MARKET (within tolerance),
+        #    reject if price has drifted too far from signal entry.
+        if decision.order_kind == OrderKind.MARKET and signal_obj.entry is not None:
+            drift_result = self.validator.validate_entry_drift(
+                signal_obj, current_price, pip_size
+            )
+            if not drift_result.valid:
+                log_event("drift_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=drift_result.reason)
+                self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.REJECTED)
+                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": drift_result.reason})
+                self._metrics.rejected += 1
+                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order=MARKET drift=REJECTED reason=\"{drift_result.reason}\"")
+                return
 
         log_event(
             "order_submitted",
@@ -464,7 +528,10 @@ class Bot:
             self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.EXECUTED)
             self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"dry_run": True, "order_kind": decision.order_kind.value})
             self.circuit_breaker.record_success()
-            print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=DRY_RUN_OK vol={volume}")
+            latency_ms = int((time.monotonic() - t_start) * 1000)
+            self._metrics.executed += 1
+            self._metrics.record_latency(latency_ms)
+            print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=DRY_RUN_OK vol={volume} latency={latency_ms}ms")
         else:
             exec_result = self.executor.execute(request, fingerprint=fp)
 
@@ -478,7 +545,10 @@ class Bot:
                     retcode=exec_result.retcode, success=True,
                 )
                 self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"ticket": exec_result.ticket, "retcode": exec_result.retcode})
-                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=SUCCESS ticket={exec_result.ticket}")
+                latency_ms = int((time.monotonic() - t_start) * 1000)
+                self._metrics.executed += 1
+                self._metrics.record_latency(latency_ms)
+                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=SUCCESS ticket={exec_result.ticket} latency={latency_ms}ms")
 
                 # Log remaining TPs
                 if len(signal_obj.tp) > 1:
@@ -493,7 +563,9 @@ class Bot:
                     retcode=exec_result.retcode, success=False,
                 )
                 self.storage.store_event(fingerprint=fp, event_type="signal_failed", symbol=signal_obj.symbol, details={"retcode": exec_result.retcode, "message": exec_result.message})
-                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=FAILED retcode={exec_result.retcode}")
+                latency_ms = int((time.monotonic() - t_start) * 1000)
+                self._metrics.failed += 1
+                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=FAILED retcode={exec_result.retcode} latency={latency_ms}ms")
 
     def _process_edit(
         self,
@@ -521,11 +593,85 @@ class Bot:
             except Exception as exc:
                 log_event("storage_cleanup_error", error=str(exc))
 
+    async def _heartbeat_loop(self) -> None:
+        """Background heartbeat — logs rich session status every N minutes.
+
+        Output format:
+            [HEARTBEAT] uptime=Nm  parsed=N  executed=N  rejected=N  failed=N
+                        avg_latency=Nms  max_latency=Nms
+                        open_positions=N  pending_orders=N
+                        mt5=OK  telegram=OK
+        """
+        interval = self.settings.runtime.heartbeat_interval_minutes * 60
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                self._emit_heartbeat()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("heartbeat_error", error=str(exc))
+
+    def _emit_heartbeat(self) -> None:
+        """Collect system state and emit heartbeat log line."""
+        dry_run = self.settings.runtime.dry_run
+        m = self._metrics
+
+        # Uptime
+        uptime_s = int(time.monotonic() - self._start_time)
+        uptime_min = uptime_s // 60
+
+        # Live system state
+        if dry_run:
+            open_positions = "N/A"
+            pending_orders = "N/A"
+            mt5_status = "N/A (dry-run)"
+        else:
+            try:
+                open_positions = self.executor.positions_total() if self.executor else "?"
+                pending_orders = self.executor.orders_total() if self.executor else "?"
+                mt5_status = "OK" if (self.executor and self.executor.is_connected) else "FAIL"
+            except Exception:
+                open_positions = "ERR"
+                pending_orders = "ERR"
+                mt5_status = "ERR"
+
+        try:
+            tg_status = "OK" if (self.listener and self.listener.is_connected) else "FAIL"
+        except Exception:
+            tg_status = "ERR"
+
+        log_event(
+            "heartbeat",
+            uptime_min=uptime_min,
+            parsed=m.parsed,
+            executed=m.executed,
+            rejected=m.rejected,
+            failed=m.failed,
+            avg_latency_ms=m.avg_execution_latency_ms,
+            max_latency_ms=m.max_execution_latency_ms,
+            open_positions=open_positions,
+            pending_orders=pending_orders,
+            mt5=mt5_status,
+            telegram=tg_status,
+        )
+
+        print(
+            f"  [HEARTBEAT] uptime={uptime_min}m"
+            f"  parsed={m.parsed}  executed={m.executed}"
+            f"  rejected={m.rejected}  failed={m.failed}"
+            f"  avg_latency={m.avg_execution_latency_ms}ms"
+            f"  max_latency={m.max_execution_latency_ms}ms"
+            f"  open_positions={open_positions}  pending_orders={pending_orders}"
+            f"  mt5={mt5_status}  telegram={tg_status}"
+        )
+
     # ── Startup and Shutdown ─────────────────────────────────────
 
     async def run(self) -> None:
         """Start the bot and run until interrupted."""
         self._init_components()
+        self._start_time = time.monotonic()
 
         dry_run = self.settings.runtime.dry_run
 
@@ -539,7 +685,7 @@ class Bot:
 
         # Banner
         print("=" * 55)
-        print(f"  telegram-mt5-bot  v0.3.2  {'[DRY RUN]' if dry_run else '[LIVE]'}")
+        print(f"  telegram-mt5-bot  v0.3.4  {'[DRY RUN]' if dry_run else '[LIVE]'}")
         print("=" * 55)
         print(f"  Risk mode    : {self.settings.risk.mode}")
         print(f"  Max spread   : {self.settings.safety.max_spread_pips} pips")
@@ -576,7 +722,14 @@ class Bot:
 
         self._cleanup_task = asyncio.create_task(self._storage_cleanup_loop())
 
-        # Send startup alert
+        # Start heartbeat if enabled
+        hb_interval = self.settings.runtime.heartbeat_interval_minutes
+        if hb_interval > 0:
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            print(f"  Heartbeat    : every {hb_interval}min")
+        else:
+            print("  Heartbeat    : disabled")
+        print("=" * 55)
         await self.alerter.send_alert(
             "bot_started",
             f"🟢 **BOT STARTED** {'[DRY RUN]' if dry_run else '[LIVE]'}\n"
@@ -598,6 +751,27 @@ class Bot:
         log_event("system_shutdown")
         print("\n[INFO] Shutting down...")
 
+        # Print session summary
+        m = self._metrics
+        uptime_s = int(time.monotonic() - self._start_time)
+        print(
+            f"  [SESSION] uptime={uptime_s // 60}m"
+            f"  parsed={m.parsed}  rejected={m.rejected}"
+            f"  executed={m.executed}  failed={m.failed}"
+            f"  avg_latency={m.avg_execution_latency_ms}ms"
+            f"  max_latency={m.max_execution_latency_ms}ms"
+        )
+        log_event(
+            "session_summary",
+            uptime_min=uptime_s // 60,
+            parsed=m.parsed,
+            rejected=m.rejected,
+            executed=m.executed,
+            failed=m.failed,
+            avg_latency_ms=m.avg_execution_latency_ms,
+            max_latency_ms=m.max_execution_latency_ms,
+        )
+
         # Send shutdown alert
         try:
             await self.alerter.send_alert("bot_stopped", "🔴 **BOT STOPPED**")
@@ -608,6 +782,13 @@ class Bot:
             self._cleanup_task.cancel()
             try:
                 await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
             except asyncio.CancelledError:
                 pass
 

@@ -3,6 +3,7 @@
 > Mục đích: Giải thích CHI TIẾT chiến lược quyết định lệnh — khi nào vào lệnh, loại lệnh gì, khi nào hủy, khi nào dừng.  
 > File này giúp bạn tự thay đổi chiến lược trading mà không cần hiểu toàn bộ codebase.
 
+* tolerance = sai số
 ---
 
 ## Tổng Quan Pipeline Quyết Định

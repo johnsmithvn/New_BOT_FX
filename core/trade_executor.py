@@ -148,6 +148,16 @@ class TradeExecutor:
     def is_initialized(self) -> bool:
         return self._initialized
 
+    @property
+    def is_connected(self) -> bool:
+        """Return True if MT5 is initialized and account info is accessible."""
+        if not self._initialized:
+            return False
+        try:
+            return mt5.account_info() is not None
+        except Exception:
+            return False
+
     def get_tick(self, symbol: str) -> TickData | None:
         """Fetch live tick data for a symbol.
 
@@ -192,6 +202,11 @@ class TradeExecutor:
     def positions_total(self) -> int:
         """Return the number of currently open positions."""
         total = mt5.positions_total()
+        return total if total is not None else 0
+
+    def orders_total(self) -> int:
+        """Return the number of currently active pending orders."""
+        total = mt5.orders_total()
         return total if total is not None else 0
 
     def account_info(self) -> dict | None:

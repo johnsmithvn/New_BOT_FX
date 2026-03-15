@@ -64,6 +64,9 @@ when parsing fails.
 - Validate SL/TP relative to entry or market reference.
 - Enforce spread threshold and max open trade limit.
 - Reject malformed or unsafe signals with explicit reason.
+- Two-tier entry distance protection:
+  - `MAX_ENTRY_DISTANCE_PIPS` (50) — rejects signals with entry too far from market (all order types).
+  - `MAX_ENTRY_DRIFT_PIPS` (10) — tight guard for MARKET orders only, rejects when entry drifted too far.
 
 ### `core/order_builder.py`
 - Read live bid/ask from MT5 tick.

@@ -62,7 +62,7 @@ Examples:
   - SQLite dedupe + audit storage
   - Reconnect/retry hardening
   - Operational error handling and incident-ready logs
-- Status: `in progress`
+- Status: `complete`
 
 ### P4 - Production Operations
 - Roadmap reference: `R5`
@@ -72,7 +72,9 @@ Examples:
   - VPS deployment runbook
   - Monitoring/alerting strategy
   - Release/update procedure
-- Status: `pending`
+  - Daily risk guard (MAX_DAILY_TRADES, MAX_DAILY_LOSS, MAX_CONSECUTIVE_LOSSES)
+  - Startup position sync
+- Status: `in progress`
 
 ### P5 - Controlled Expansion
 - Roadmap reference: `R6`

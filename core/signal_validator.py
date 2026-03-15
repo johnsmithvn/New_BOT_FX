@@ -37,6 +37,7 @@ class SignalValidator:
     3. SL coherence (BUY: SL < entry, SELL: SL > entry).
     4. TP coherence (BUY: TP > entry, SELL: TP < entry).
     5. Entry distance from live price (in pips).
+    5b. Entry drift guard — tight check for MARKET orders.
     6. Signal age (reject stale signals).
     7. Spread gate (in pips).
     8. Max open trades.
@@ -48,6 +49,7 @@ class SignalValidator:
         signal_age_ttl_seconds: int = 60,
         max_spread_pips: float = 5.0,
         max_open_trades: int = 5,
+        max_entry_drift_pips: float = 10.0,
     ) -> None:
         """Args:
             max_entry_distance_pips: Max allowed distance between signal entry
@@ -56,11 +58,16 @@ class SignalValidator:
             max_spread_pips: Max allowed spread in pips.
                 XAUUSD: 5 pips = $0.50 spread.
             max_open_trades: Max simultaneous open positions allowed.
+            max_entry_drift_pips: Tight drift guard for MARKET orders.
+                When entry is provided but order would be MARKET (due to
+                tolerance), reject if |entry - price| > drift.
+                XAUUSD: 10 pips = $1.0 price difference.
         """
         self._max_entry_distance_pips = max_entry_distance_pips
         self._signal_age_ttl = signal_age_ttl_seconds
         self._max_spread_pips = max_spread_pips
         self._max_open_trades = max_open_trades
+        self._max_entry_drift_pips = max_entry_drift_pips
 
     def validate(
         self,
@@ -225,6 +232,49 @@ class SignalValidator:
                 False,
                 f"entry distance ({distance_pips:.1f} pips) exceeds "
                 f"max ({self._max_entry_distance_pips} pips)",
+            )
+
+        return ValidationResult(True)
+
+    def validate_entry_drift(
+        self,
+        signal: ParsedSignal,
+        current_price: float,
+        pip_size: float,
+    ) -> ValidationResult:
+        """Reject MARKET orders when entry has drifted too far from signal.
+
+        This is a tight guard for MARKET orders only. When the signal
+        specifies an explicit entry price but the order would be MARKET
+        (because price is within tolerance), check that the price hasn't
+        drifted beyond the drift threshold.
+
+        Called externally after order type is decided — only for MARKET
+        orders that had an explicit entry price.
+
+        Example XAUUSD (pip_size=0.1, max_drift=10 pips):
+            signal entry=2030, current price=2031.5
+            drift = $1.5 / 0.1 = 15 pips > 10 → REJECT
+
+        Args:
+            signal: Parsed signal with entry price.
+            current_price: Current market price (ask for BUY, bid for SELL).
+            pip_size: Size of 1 pip in price units.
+
+        Returns:
+            ValidationResult with valid=True or rejection reason.
+        """
+        if signal.entry is None:
+            return ValidationResult(True)
+
+        raw_drift = abs(signal.entry - current_price)
+        drift_pips = raw_drift / pip_size if pip_size > 0 else raw_drift
+
+        if drift_pips > self._max_entry_drift_pips:
+            return ValidationResult(
+                False,
+                f"entry drift ({drift_pips:.1f} pips) exceeds "
+                f"max ({self._max_entry_drift_pips} pips) for MARKET order",
             )
 
         return ValidationResult(True)

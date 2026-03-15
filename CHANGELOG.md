@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## 0.3.4 - 2026-03-15
+
+### Added
+- `_SessionMetrics` dataclass in `main.py` — in-memory counters per session: `parsed`, `rejected`, `executed`, `failed`
+- Execution latency tracking: `avg_execution_latency_ms` and `max_execution_latency_ms` (recorded only on successfully executed signals)
+- `_heartbeat_loop()` background task — fires every `HEARTBEAT_INTERVAL_MINUTES` (default 30, set 0 to disable)
+- `_emit_heartbeat()` — rich status line: uptime, session counters, avg/max latency, `open_positions`, `pending_orders`, `mt5=OK/FAIL`, `telegram=OK/FAIL`
+- Session summary on graceful shutdown — `[SESSION]` line with full metrics
+- `HEARTBEAT_INTERVAL_MINUTES` to `RuntimeConfig` and `.env.example`
+- `TradeExecutor.is_connected` property — lightweight MT5 health check via `account_info()`
+- `TradeExecutor.orders_total()` — returns count of active pending orders from MT5
+- `TelegramListener.is_connected` property — checks `client.is_connected()`
+
+### Changed
+- P3 → `complete`, P4 → `in progress` in `docs/PLAN.md`
+- `docs/TASKS.md` regenerated for P4 with full task list (VPS runbook, daily risk guard with `MAX_CONSECUTIVE_LOSSES`, startup position sync, monitoring doc)
+- Version banner bumped to `v0.3.4`
+
+
+## 0.3.3 - 2026-03-15
+
+### Added
+- Entry drift guard: `MAX_ENTRY_DRIFT_PIPS=10.0` — tight safety gate for MARKET orders, rejects when entry price has drifted too far from signal intent
+- `signal_validator.py` — new public `validate_entry_drift()` method
+- `main.py` — Step 8b: drift check after order type decision, before execution
+- Execution timing: `latency_ms` in all pipeline summary outputs
+- `TASKS.md` — P4/P5 backlog items (daily risk guard, position manager, management commands, etc.)
+
+### Changed
+- Re-enabled Rule 5 (entry distance check) — was commented out
+- `config/settings.py` — added `max_entry_drift_pips` to SafetyConfig
+- `.env.example` — added `MAX_ENTRY_DRIFT_PIPS`
+- `ARCHITECTURE.md` — documented two-tier distance protection
+
+### Fixed
+- `.env` — fixed stale naming (`MAX_SPREAD_POINTS`→`MAX_SPREAD_PIPS`, `MAX_ENTRY_DISTANCE_POINTS`→`MAX_ENTRY_DISTANCE_PIPS`)
+- `.env` — added missing Trade Execution + Runtime sections (was incomplete vs `.env.example`)
+
 ## 0.3.2 - 2026-03-14
 
 ### Fixed

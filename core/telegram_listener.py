@@ -71,6 +71,14 @@ class TelegramListener:
         """Expose client for alerter reuse."""
         return self._client
 
+    @property
+    def is_connected(self) -> bool:
+        """Return True if Telethon client is active and connected."""
+        return (
+            self._client is not None
+            and self._client.is_connected()
+        )
+
     async def start(self) -> None:
         """Initialize Telethon client and start listening."""
         self._running = True
