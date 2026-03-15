@@ -10,6 +10,7 @@
 - `core/trade_executor.py` — added `get_position_symbols()` method for `ExposureGuard` to query positions through the executor abstraction
 - `core/order_builder.py` — `build_request()` accepts `spread_points` parameter
 - `main.py` — passes `spread_points` to `order_builder.build_request()`
+- `docs/logic/LOGIC_PIPELINE_DEEP_DIVE.md` — synced with v0.5.1 pipeline: added Step 0 (command intercept), Step 2b (daily risk guard), Step 2c (exposure guard), Step 8b (entry drift guard), dynamic deviation in Step 8, updated ENV table (22 vars), added 11-layer safety note
 
 ## 0.5.0 - 2026-03-15
 

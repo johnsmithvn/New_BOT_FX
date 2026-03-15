@@ -69,16 +69,19 @@ XAUUSD: bid=2034.50, ask=2035.00, spread=50 points = 5 pips
 point=0.01, pip_size=0.1
 ```
 
-**Pipeline chạy từng bước:**
+**Pipeline chạy từng bước (v0.5.1):**
 
 | Bước | Code | Giá trị | Kết quả |
 |------|------|---------|---------|
-| Circuit Breaker | `circuit_breaker.is_trading_allowed` | state=CLOSED | ✅ PASS |
-| Duplicate Check | `storage.is_duplicate("a1b2c3d4e5f6g7h8", ttl=60)` | lần đầu | `is_dup=False` |
-| Get Market Data | `mt5.symbol_info("XAUUSD")` | point=0.01, digits=2 | pip_size=0.01×10=0.1 |
-| Get Tick | `executor.get_tick("XAUUSD")` | bid=2034.50, ask=2035.00 | spread_points=50 |
-| Current Price | `ask if BUY` | ask=2035.00 | `current_price=2035.00` |
-| Spread → Pips | `50 / 10.0` | | `spread_pips=5.0` |
+| **Step 0: Command** | `command_parser.parse(raw_text)` | `None` (not a command) | → tiếp tục signal flow |
+| **Step 2: Circuit Breaker** | `circuit_breaker.is_trading_allowed` | state=CLOSED | ✅ PASS |
+| **Step 2b: Daily Risk** | `daily_guard.is_trading_allowed` | no limits hit | ✅ PASS |
+| **Step 2c: Exposure** | `exposure_guard.is_allowed("XAUUSD")` | 0 open XAUUSD | ✅ PASS |
+| **Step 3: Duplicate** | `storage.is_duplicate("a1b2c3d4e5f6g7h8", ttl=60)` | lần đầu | `is_dup=False` |
+| **Step 4: Market Data** | `mt5.symbol_info("XAUUSD")` | point=0.01, digits=2 | pip_size=0.01×10=0.1 |
+| | `executor.get_tick("XAUUSD")` | bid=2034.50, ask=2035.00 | spread_points=50 |
+| | `ask if BUY` | ask=2035.00 | `current_price=2035.00` |
+| | `50 / 10.0` | | `spread_pips=5.0` |
 | **Validate Rule 1** | `signal.symbol="XAUUSD"` | có | ✅ |
 | **Validate Rule 2** | `is_duplicate=False` | | ✅ |
 | **Validate Rule 3** | SL coherence: `2020 < 2030` (BUY: SL < entry) | | ✅ |
@@ -91,6 +94,7 @@ point=0.01, pip_size=0.1
 | **Order Decision** | `tolerance = 5 × 0.01 = 0.05` | | |
 | | `|2030 - 2035| = 5.0 > 0.05` | entry < ask | **→ BUY_LIMIT** |
 | Build Request | price=2030, sl=2020, tp=2040, type=BUY_LIMIT | | Pending order |
+| | `deviation = compute_deviation(50) = max(20, 50×0) = 20` | | dynamic deviation |
 | Execute | `mt5.order_send(request)` | retcode=10008 | **✅ SUCCESS** |
 
 **Kết quả cuối cùng: Đặt lệnh BUY_LIMIT chờ giá về 2030 mới mua**
@@ -308,10 +312,41 @@ BUY: SL(2940) >= entry(2935) = True
 
 ## 3. Từng bước pipeline — giải thích từng dòng code
 
-> File: `main.py`, function `_do_process_signal()`, dòng 259-496
-> **Bắt đầu TỪ SAU khi parse thành công (dòng 296)**
+> File: `main.py`, function `_do_process_signal()`, dòng 357-659
+> Pipeline v0.5.1: Step 0 → Step 1 → Step 2 → Step 2b → Step 2c → Step 3 → Step 4 → Step 5 → Step 6 → Step 7 → Step 8 → Step 8b → Step 9
 
-### Dòng 266: Đọc chế độ chạy
+---
+
+### Step 0: ⚡ COMMAND INTERCEPT (dòng 367-377)
+```python
+cmd = self.command_parser.parse(raw_text)
+if cmd is not None:
+    if dry_run:
+        return  # skip in dry-run
+    summary = self.command_executor.execute(cmd)
+    return  # stop pipeline — not a signal
+```
+
+**Ý nghĩa**: Kiểm tra message có phải management command không **TRƯỚC** khi parse signal.
+
+| Command | Ví dụ | Hành vi |
+|---------|-------|---------|
+| `CLOSE ALL` | "close all" | Đóng tất cả position bot |
+| `CLOSE <SYMBOL>` | "close XAUUSD" | Đóng position theo symbol |
+| `CLOSE HALF` | "close half" | Đóng 50% volume mỗi position |
+| `MOVE SL <PRICE>` | "move sl 2030" | Di chuyển SL tất cả position |
+| `BREAKEVEN` | "breakeven" | SL → entry trên position đang lãi |
+
+> Nếu `cmd = None` → không phải command → chuyển sang Step 1 (parse signal bình thường)
+
+---
+
+### Step 1: Parse signal (dòng 379-438)
+> Phần này giữ nguyên logic từ trước. Xem section UseCase để hiểu chi tiết.
+
+---
+
+### Dòng 364: Đọc chế độ chạy
 ```python
 dry_run = self.settings.runtime.dry_run
 ```
@@ -340,7 +375,7 @@ self.storage.store_event(fingerprint=fp, event_type="signal_parsed", ...)
 
 ---
 
-### Dòng 327-332: ⛔ CIRCUIT BREAKER CHECK
+### Step 2: ⛔ CIRCUIT BREAKER CHECK (dòng 440-447)
 ```python
 if not self.circuit_breaker.is_trading_allowed:
     reason = "circuit breaker OPEN — trading paused"
@@ -354,19 +389,59 @@ if not self.circuit_breaker.is_trading_allowed:
 **Biến liên quan:**
 | Biến | File | Ý nghĩa |
 |------|------|---------|
-| `_threshold` | `circuit_breaker.py:39` | Từ ENV `CIRCUIT_BREAKER_THRESHOLD=3`. Bao nhiêu fail liên tiếp → OPEN |
-| `_cooldown` | `circuit_breaker.py:40` | Từ ENV `CIRCUIT_BREAKER_COOLDOWN=300`. Bao lâu chờ trước khi thử lại (giây) |
-| `_state` | `circuit_breaker.py:41` | State hiện tại: CLOSED/OPEN/HALF_OPEN |
-| `_consecutive_failures` | `circuit_breaker.py:42` | Đếm số fail liên tiếp |
-| `_opened_at` | `circuit_breaker.py:43` | Timestamp khi chuyển sang OPEN |
-
-**Đổi `CIRCUIT_BREAKER_THRESHOLD=3` thành `10`:**
-- → Cho phép 10 lần fail liên tiếp trước khi dừng
-- → Rủi ro: nhiều lệnh lỗi hơn trước khi phát hiện vấn đề
+| `_threshold` | `circuit_breaker.py` | Từ ENV `CIRCUIT_BREAKER_THRESHOLD=3`. Bao nhiêu fail liên tiếp → OPEN |
+| `_cooldown` | `circuit_breaker.py` | Từ ENV `CIRCUIT_BREAKER_COOLDOWN=300`. Bao lâu chờ trước khi thử lại (giây) |
+| `_state` | `circuit_breaker.py` | State hiện tại: CLOSED/OPEN/HALF_OPEN |
+| `_consecutive_failures` | `circuit_breaker.py` | Đếm số fail liên tiếp |
 
 ---
 
-### Dòng 335-338: DUPLICATE CHECK
+### Step 2b: ⛔ DAILY RISK GUARD CHECK (dòng 449-457)
+```python
+if self.daily_guard:
+    allowed, guard_reason = self.daily_guard.is_trading_allowed
+    if not allowed:
+        return  # DỪNG pipeline
+```
+
+**Daily Risk Guard là gì? (P4)**
+- Poll-based: đọc `MT5.history_deals_get()` mỗi `DAILY_RISK_POLL_MINUTES=5`
+- 3 limits độc lập (mặc định 0 = disabled):
+
+| ENV | Ý nghĩa | Ví dụ |
+|-----|---------|-------|
+| `MAX_DAILY_TRADES=10` | Max closed deals per UTC day | 10 lệnh/ngày |
+| `MAX_DAILY_LOSS=100.0` | Max cumulative loss USD per day | Dừng khi lỗ $100 |
+| `MAX_CONSECUTIVE_LOSSES=5` | Pause after N consecutive losses | 5 lần thua liên tiếp |
+
+> File: `core/daily_risk_guard.py`. Chạy background, tự refresh counter. Gửi Telegram alert khi breach.
+
+---
+
+### Step 2c: ⛔ EXPOSURE GUARD CHECK (dòng 459-467)
+```python
+if self.exposure_guard:
+    exp_allowed, exp_reason = self.exposure_guard.is_allowed(signal_obj.symbol)
+    if not exp_allowed:
+        return  # DỪNG pipeline
+```
+
+**Exposure Guard là gì? (P5)**
+- Query live MT5 positions qua `TradeExecutor.get_position_symbols()` trên mỗi signal (không dùng stale counters)
+- 2 limits:
+
+| ENV | Ý nghĩa | Ví dụ |
+|-----|---------|-------|
+| `MAX_SAME_SYMBOL_TRADES=2` | Max open positions trên cùng symbol | Tối đa 2 lệnh XAUUSD |
+| `MAX_CORRELATED_TRADES=3` | Max open positions trên nhóm tương quan | 3 lệnh metals (XAU+XAG) |
+
+- `CORRELATION_GROUPS=XAUUSD:XAGUSD,EURUSD:GBPUSD:EURGBP`
+
+> File: `core/exposure_guard.py`
+
+---
+
+### Step 3: DUPLICATE CHECK (dòng 469-473)
 ```python
 is_dup = self.storage.is_duplicate(
     signal_obj.fingerprint,                          # SHA256 hash
@@ -508,7 +583,7 @@ if current_spread is not None:
 
 ---
 
-### Dòng 401-416: ✅ VALIDATE (8 rules)
+### Step 5: ✅ VALIDATE (8 rules) (dòng 536-552)
 
 ```python
 vr = self.validator.validate(
@@ -525,21 +600,21 @@ File: `core/signal_validator.py`
 
 #### 8 Rules theo thứ tự ưu tiên (RULE ĐẦU FAIL → REJECT NGAY, KHÔNG CHECK TIẾP):
 
-**Rule 1 — Required fields (dòng 92-96):**
+**Rule 1 — Required fields:**
 ```python
 if not signal.symbol:    → REJECT "missing symbol"
 if not signal.side:      → REJECT "missing side"
 ```
 > Thực tế sau parse thành công thì luôn có symbol+side, nên rule này hiếm khi hit.
 
-**Rule 2 — Duplicate (dòng 99-103):**
+**Rule 2 — Duplicate:**
 ```python
 if is_duplicate:
     → REJECT "duplicate signal (fingerprint: a1b2c3d4)"
 ```
 > Dùng `is_dup` từ Step 3. Signal giống 100% trong TTL window → reject.
 
-**Rule 3 — SL Coherence (dòng 105-108, function dòng 161-180):**
+**Rule 3 — SL Coherence:**
 ```python
 if signal.sl is None or signal.entry is None:
     → SKIP (không check nếu thiếu SL hoặc entry)
@@ -548,7 +623,7 @@ BUY: SL >= entry → REJECT "BUY signal SL (...) must be below entry (...)"
 SELL: SL <= entry → REJECT "SELL signal SL (...) must be above entry (...)"
 ```
 
-**Rule 4 — TP Coherence (dòng 110-113, function dòng 182-201):**
+**Rule 4 — TP Coherence:**
 ```python
 if not signal.tp or signal.entry is None:
     → SKIP
@@ -558,7 +633,7 @@ for mỗi TP:
     SELL: TP >= entry → REJECT "SELL signal TP1 (...) must be below entry (...)"
 ```
 
-**Rule 5 — Entry Distance (dòng 115-121, function dòng 203-230):**
+**Rule 5 — Entry Distance (50 pips — all order types):**
 ```python
 if current_price is not None and signal.entry is not None:
     raw_distance = abs(signal.entry - current_price)
@@ -575,7 +650,7 @@ if current_price is not None and signal.entry is not None:
 | EURUSD | 1.0800 | 1.0830 | 0.0001 | 30.0 | 50 | ✅ PASS |
 | EURUSD | 1.0700 | 1.0830 | 0.0001 | 130.0 | 50 | ❌ REJECT |
 
-**Rule 6 — Signal Age (dòng 123-126, function dòng 232-244):**
+**Rule 6 — Signal Age:**
 ```python
 now = datetime.now(timezone.utc)
 age_seconds = (now - signal.received_at).total_seconds()
@@ -585,23 +660,30 @@ if age_seconds > signal_age_ttl:     # ENV: 60s
 ```
 > Khi nào xảy ra: bot bị lag, queue tích tụ, hoặc reprocess signal cũ.
 
-**Rule 7 — Spread Gate (dòng 128-132, function dòng 142-150):**
+**Rule 7 — Spread Gate:**
 ```python
 if current_spread_pips is not None:
     if spread_pips > max_spread_pips:   # ENV: 5.0
         → REJECT "spread (10.0 pips) exceeds max (5.0 pips)"
 ```
 
-**Rule 8 — Max Open Trades (dòng 134-138, function dòng 152-159):**
+**Rule 8 — Max Open Trades:**
 ```python
 if open_positions is not None:
     if open_count >= max_open_trades:   # ENV: 5
         → REJECT "max open trades reached (5/5)"
 ```
 
+> ⚠️ **Lưu ý v0.5.1**: Ngoài 8 rules trong validator, pipeline còn có:
+> - **Step 2b** (daily risk guard: max trades/loss/consecutive) chạy TRƯỚC validator
+> - **Step 2c** (exposure guard: same symbol + correlation) chạy TRƯỚC validator
+> - **Step 8b** (entry drift guard: tight 10 pip guard for MARKET) chạy SAU order decision
+>
+> Tổng cộng = **11 lớp bảo vệ**.
+
 ---
 
-### Dòng 418-419: Store signal
+### Step 6: Store signal (dòng 554-555)
 ```python
 self.storage.store_signal(signal_obj, SignalStatus.PARSED)
 ```
@@ -609,7 +691,7 @@ self.storage.store_signal(signal_obj, SignalStatus.PARSED)
 
 ---
 
-### Dòng 421-432: 💰 CALCULATE VOLUME
+### Step 7: 💰 CALCULATE VOLUME (dòng 557-568)
 
 ```python
 if dry_run:
@@ -654,11 +736,14 @@ volume = round(volume, 2)                            # Fix floating point
 
 ---
 
-### Dòng 434-449: 🎯 BUILD ORDER (QUYẾT ĐỊNH VÀO LỆNH)
+### Step 8: 🎯 BUILD ORDER (QUYẾT ĐỊNH VÀO LỆNH) (dòng 570-577)
 
 ```python
 decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
-request = self.order_builder.build_request(signal_obj, decision, volume, bid, ask)
+request = self.order_builder.build_request(
+    signal_obj, decision, volume, bid, ask,
+    spread_points=current_spread if current_spread else 0.0,
+)
 ```
 
 **`decide_order_type()` trong `order_builder.py`:**
@@ -694,15 +779,22 @@ entry=2940.00        → |2940 - 2934.50| = 5.5 > 0.05, entry > bid → SELL_LIM
 entry=2930.00        → |2930 - 2934.50| = 4.5 > 0.05, entry < bid → SELL_STOP (chờ giá xuống)
 ```
 
-**`build_request()` — tạo dict cho MT5:**
+**`build_request()` — tạo dict cho MT5 (v0.5.1 — dynamic deviation):**
 
 ```python
+# Dynamic deviation: tự động widen slippage khi spread cao
+effective_deviation = self.compute_deviation(spread_points)
+# Nếu DYNAMIC_DEVIATION_MULTIPLIER=1.5, spread=50pts:
+#   → max(20, 50×1.5) = max(20, 75) = 75
+# Nếu DYNAMIC_DEVIATION_MULTIPLIER=0 (disabled):
+#   → luôn trả về base_deviation = 20
+
 request = {
     "symbol": "XAUUSD",
     "volume": 0.01,
     "sl": 2020.0,                # từ decision.sl
     "tp": 2040.0,                # từ decision.tp (chỉ TP1!)
-    "deviation": 20,             # ENV: DEVIATION_POINTS
+    "deviation": effective_deviation,  # Dynamic! max(base, spread × multiplier)
     "magic": 234000,             # ENV: BOT_MAGIC_NUMBER
     "comment": "signal:a1b2c3d4",
 }
@@ -725,7 +817,40 @@ request["type_filling"] = mt5.ORDER_FILLING_RETURN
 
 ---
 
-### Dòng 451-496: ⚡ EXECUTE
+### Step 8b: ⛔ ENTRY DRIFT GUARD — chỉ cho MARKET orders (dòng 579-592)
+
+```python
+if decision.order_kind == OrderKind.MARKET and signal_obj.entry is not None:
+    drift_result = self.validator.validate_entry_drift(
+        signal_obj, current_price, pip_size
+    )
+    if not drift_result.valid:
+        return  # REJECT
+```
+
+**Khi nào trigger?**
+- Signal có entry price (VD: `BUY 2935`)
+- Nhưng entry nằm trong tolerance → order_builder quyết định MARKET
+- Trước khi execute, kiểm tra: entry đã drift quá xa chưa?
+
+**Logic:**
+```python
+drift_pips = abs(signal.entry - current_price) / pip_size
+if drift_pips > MAX_ENTRY_DRIFT_PIPS:   # ENV: 10.0
+    → REJECT "entry drift (15.0 pips) exceeds max (10 pips)"
+```
+
+| Ví dụ | entry | current_price | pip_size | drift_pips | max=10 | Kết quả |
+|-------|-------|---------------|----------|------------|--------|---------|
+| XAUUSD | 2935 | 2935.5 | 0.1 | 5.0 | 10 | ✅ PASS |
+| XAUUSD | 2935 | 2937 | 0.1 | 20.0 | 10 | ❌ REJECT |
+| EURUSD | 1.0850 | 1.0845 | 0.0001 | 5.0 | 10 | ✅ PASS |
+
+> **Tại sao cần Step 8b riêng?** Vì Rule 5 (entry distance) dùng limit rộng 50 pips, nhưng MARKET cần tight guard 10 pips. Nếu signal gửi entry=2935, giá đã xê dịch → vào MARKET tại 2937 thì drift=20 pips là nguy hiểm.
+
+---
+
+### Step 9: ⚡ EXECUTE (dòng 605-659)
 
 #### DRY_RUN (dòng 452-467):
 ```python
@@ -816,19 +941,30 @@ success = result.retcode in (10008, 10009)
 
 ### Biến ENV ảnh hưởng trực tiếp đến chiến lược
 
-| ENV | Giá trị | File sử dụng | Dòng code | Ảnh hưởng |
-|-----|---------|-------------|-----------|-----------|
-| `MAX_ENTRY_DISTANCE_PIPS` | 50.0 | `signal_validator.py:60` | `_validate_entry_distance()` dòng 223 | Tăng → chấp nhận entry xa giá hơn |
-| `MAX_SPREAD_PIPS` | 5.0 | `signal_validator.py:62` | `_validate_spread()` dòng 144 | Tăng → chấp nhận spread rộng hơn |
-| `MAX_OPEN_TRADES` | 5 | `signal_validator.py:63` | `_validate_max_trades()` dòng 154 | Tăng → đồng thời nhiều lệnh hơn |
-| `SIGNAL_AGE_TTL_SECONDS` | 60 | `signal_validator.py:61`, `storage.py` | dòng 237, `is_duplicate` | Tăng → chấp nhận signal cũ hơn + dedupe window rộng hơn |
-| `MARKET_TOLERANCE_POINTS` | 5.0 | `order_builder.py:45` | `decide_order_type()` dòng 67 | Tăng → nhiều MARKET order hơn, ít LIMIT/STOP hơn |
-| `DEVIATION_POINTS` | 20 | `order_builder.py:46` | `build_request()` dòng 183 | Tăng → chấp nhận slippage lớn hơn |
-| `PENDING_ORDER_TTL_MINUTES` | 15 | `order_lifecycle_manager.py:32` | `_check_and_expire()` dòng 84 | Tăng → lệnh pending sống lâu hơn |
-| `RISK_MODE` | FIXED_LOT | `risk_manager.py:32` | `calculate_volume()` dòng 57 | Đổi sang RISK_PERCENT → lot size thay đổi theo balance |
-| `FIXED_LOT_SIZE` | 0.01 | `risk_manager.py:33` | dòng 60 | Tăng → rủi ro $ lớn hơn mỗi lệnh |
-| `CIRCUIT_BREAKER_THRESHOLD` | 3 | `circuit_breaker.py:39` | `record_failure()` dòng 83 | Tăng → cho phép fail nhiều hơn |
-| `DRY_RUN` | false | `main.py:266` | Toàn pipeline | true → không giao dịch thật |
+| ENV | Giá trị | File sử dụng | Ảnh hưởng |
+|-----|---------|-------------|-----------|
+| `MAX_ENTRY_DISTANCE_PIPS` | 50.0 | `signal_validator.py` | Tăng → chấp nhận entry xa giá hơn |
+| `MAX_ENTRY_DRIFT_PIPS` | 10.0 | `signal_validator.py` | Tight guard cho MARKET orders (Step 8b) |
+| `MAX_SPREAD_PIPS` | 5.0 | `signal_validator.py` | Tăng → chấp nhận spread rộng hơn |
+| `MAX_OPEN_TRADES` | 5 | `signal_validator.py` | Tăng → đồng thời nhiều lệnh hơn |
+| `SIGNAL_AGE_TTL_SECONDS` | 60 | `signal_validator.py`, `storage.py` | Tăng → chấp nhận signal cũ hơn + dedupe window rộng hơn |
+| `MARKET_TOLERANCE_POINTS` | 5.0 | `order_builder.py` | Tăng → nhiều MARKET order hơn, ít LIMIT/STOP hơn |
+| `DEVIATION_POINTS` | 20 | `order_builder.py` | Base slippage tolerance (trước dynamic) |
+| `DYNAMIC_DEVIATION_MULTIPLIER` | 0.0 | `order_builder.py` | >0 → deviation = max(base, spread×multiplier). 0=disabled |
+| `PENDING_ORDER_TTL_MINUTES` | 15 | `order_lifecycle_manager.py` | Tăng → lệnh pending sống lâu hơn |
+| `RISK_MODE` | FIXED_LOT | `risk_manager.py` | Đổi sang RISK_PERCENT → lot size thay đổi theo balance |
+| `FIXED_LOT_SIZE` | 0.01 | `risk_manager.py` | Tăng → rủi ro $ lớn hơn mỗi lệnh |
+| `CIRCUIT_BREAKER_THRESHOLD` | 3 | `circuit_breaker.py` | Tăng → cho phép fail nhiều hơn |
+| `MAX_DAILY_TRADES` | 0 | `daily_risk_guard.py` | Max closed deals per UTC day. 0=disabled |
+| `MAX_DAILY_LOSS` | 0.0 | `daily_risk_guard.py` | Max realized loss USD per day. 0=disabled |
+| `MAX_CONSECUTIVE_LOSSES` | 5 | `daily_risk_guard.py` | Pause after N consecutive losses. 0=disabled |
+| `MAX_SAME_SYMBOL_TRADES` | 0 | `exposure_guard.py` | Max open positions on same symbol. 0=disabled |
+| `MAX_CORRELATED_TRADES` | 0 | `exposure_guard.py` | Max open across correlation group. 0=disabled |
+| `CORRELATION_GROUPS` | (empty) | `exposure_guard.py` | Groups: `XAUUSD:XAGUSD,EURUSD:GBPUSD` |
+| `BREAKEVEN_TRIGGER_PIPS` | 0.0 | `position_manager.py` | Profit pips to trigger breakeven. 0=disabled |
+| `TRAILING_STOP_PIPS` | 0.0 | `position_manager.py` | Trail SL at pip distance. 0=disabled |
+| `PARTIAL_CLOSE_PERCENT` | 0 | `position_manager.py` | % volume to close at TP1. 0=disabled |
+| `DRY_RUN` | false | `main.py` | true → không giao dịch thật |
 
 ### Biến nội bộ quan trọng trong pipeline
 
