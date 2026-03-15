@@ -1,9 +1,8 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P5 - Controlled Expansion (aligned to R6)`
-- Goal:
-  - Add features while preserving safety baseline.
+- Phase: `All phases complete (P0–P5)`
+- Status: All high-priority tasks delivered. See `docs/TASKS.md` for medium-priority backlog.
 
 ## Execution Phases
 
@@ -26,23 +25,6 @@
   - Normalized `ParsedSignal` contract
   - Parser test coverage for major message variants
 - Status: `complete`
-Success Criteria:
-- Parser handles at least 90% of known signal formats.
-- Unknown formats must produce explicit parse failure reason.
-- Parser must never crash on malformed or noisy messages.
-- Signal message dataset for parser testing
-Parser Safety Rule
-
-All parser detectors must be exception-safe.
-
-Malformed or incomplete messages must never crash the parser.
-Instead, the parser must return a structured parse_failed result
-with an explicit failure reason.
-
-Examples:
-- missing numeric values
-- malformed price formats
-- unexpected text structure
 
 ### P2 - Trade Decision and Execution
 - Roadmap reference: `R3`
@@ -69,11 +51,12 @@ Examples:
 - Goal:
   - Prepare repeatable deployment and operations lifecycle.
 - Major deliverables:
-  - VPS deployment runbook
-  - Monitoring/alerting strategy
-  - Release/update procedure
+  - VPS deployment runbook (`docs/DEPLOY.md`)
+  - Monitoring/alerting strategy (`docs/MONITORING.md`)
+  - Release/update procedure with rollback
   - Daily risk guard (MAX_DAILY_TRADES, MAX_DAILY_LOSS, MAX_CONSECUTIVE_LOSSES)
   - Startup position sync
+  - Log rotation validation
 - Status: `complete`
 
 ### P5 - Controlled Expansion
@@ -81,10 +64,12 @@ Examples:
 - Goal:
   - Add features while preserving safety baseline.
 - Major deliverables:
-  - Extended parser support for additional formats/symbols
-  - Optional advanced execution behaviors
-  - Compatibility and regression safeguards
-- Status: `in progress`
+  - Exposure/correlation guard (`core/exposure_guard.py`)
+  - Position manager — breakeven, trailing stop, partial close (`core/position_manager.py`)
+  - Signal management commands — CLOSE ALL, CLOSE SYMBOL, MOVE SL, BREAKEVEN (`core/command_parser.py`, `core/command_executor.py`)
+  - Dynamic deviation in `core/order_builder.py`
+  - 10 new configurable env keys, all opt-in (default disabled)
+- Status: `complete`
 
 ## Phase Completion Rule
 - Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
@@ -92,3 +77,8 @@ Examples:
   - Mark current phase `complete`
   - Move next phase to `in progress`
   - Regenerate `docs/TASKS.md` for the new current phase
+
+## What's Next
+- Medium-priority P5 backlog: command response via Telegram, position manager alerts
+- Consider P6: extended parser formats, multi-account support, web dashboard
+

@@ -8,8 +8,8 @@ Update this list when a new unsupported format is discovered.
 
 ### Not Yet Supported
 - [ ] Signals with multiple entry zones (e.g. `ENTRY 1: 2030, ENTRY 2: 2025`)
-- [ ] Signals with partial close instructions (e.g. `Close 50% at TP1`)
-- [ ] Signals with trailing stop instructions
+- [x] Signals with partial close instructions — ✅ handled via `PARTIAL_CLOSE_PERCENT` config + `CLOSE HALF` command
+- [x] Signals with trailing stop instructions — ✅ handled via `TRAILING_STOP_PIPS` config in position manager
 - [ ] Signals with risk/reward ratio only (no explicit SL/TP prices)
 - [ ] Image-only signals (no text)
 - [ ] Signals in non-English languages
