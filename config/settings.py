@@ -86,6 +86,21 @@ class SafetyConfig:
     signal_age_ttl_seconds: int
     max_entry_distance_pips: float  # XAUUSD: 50 pips = $5.00
     max_entry_drift_pips: float    # tight drift guard for MARKET orders
+    # Daily Risk Guard (P4)
+    max_daily_trades: int          # 0 = disabled
+    max_daily_loss_usd: float      # 0.0 = disabled
+    max_consecutive_losses: int    # 0 = disabled
+    daily_risk_poll_minutes: int
+    # Exposure Guard (P5)
+    max_same_symbol_trades: int    # 0 = disabled
+    max_correlated_trades: int     # 0 = disabled
+    correlation_groups: str        # colon-separated groups, comma-separated
+    # Position Manager (P5)
+    breakeven_trigger_pips: float  # 0 = disabled
+    breakeven_lock_pips: float     # pips above entry to lock SL
+    trailing_stop_pips: float      # 0 = disabled
+    partial_close_percent: int     # 0 = disabled; % of volume at TP1
+    position_manager_poll_seconds: int
 
 
 @dataclass(frozen=True)
@@ -110,6 +125,7 @@ class ExecutionConfig:
     watchdog_interval_seconds: int
     watchdog_max_reinit: int
     lifecycle_check_interval_seconds: int
+    dynamic_deviation_multiplier: float  # 0 = disabled, e.g. 1.5
 
 
 @dataclass(frozen=True)
@@ -183,6 +199,14 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         max_daily_loss_usd=_env_float("MAX_DAILY_LOSS", 0.0),
         max_consecutive_losses=_env_int("MAX_CONSECUTIVE_LOSSES", 0),
         daily_risk_poll_minutes=_env_int("DAILY_RISK_POLL_MINUTES", 5),
+        max_same_symbol_trades=_env_int("MAX_SAME_SYMBOL_TRADES", 0),
+        max_correlated_trades=_env_int("MAX_CORRELATED_TRADES", 0),
+        correlation_groups=_env("CORRELATION_GROUPS", ""),
+        breakeven_trigger_pips=_env_float("BREAKEVEN_TRIGGER_PIPS", 0.0),
+        breakeven_lock_pips=_env_float("BREAKEVEN_LOCK_PIPS", 2.0),
+        trailing_stop_pips=_env_float("TRAILING_STOP_PIPS", 0.0),
+        partial_close_percent=_env_int("PARTIAL_CLOSE_PERCENT", 0),
+        position_manager_poll_seconds=_env_int("POSITION_MANAGER_POLL_SECONDS", 5),
     )
 
     log = LogConfig(
@@ -204,6 +228,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         watchdog_interval_seconds=_env_int("WATCHDOG_INTERVAL_SECONDS", 30),
         watchdog_max_reinit=_env_int("WATCHDOG_MAX_REINIT", 5),
         lifecycle_check_interval_seconds=_env_int("LIFECYCLE_CHECK_INTERVAL_SECONDS", 30),
+        dynamic_deviation_multiplier=_env_float("DYNAMIC_DEVIATION_MULTIPLIER", 0.0),
     )
 
     _dry_run_raw = _env("DRY_RUN", "false").lower()

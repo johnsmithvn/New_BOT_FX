@@ -162,6 +162,28 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Sends Telegram alert on first breach per day.
 - No manual counter management — derived from real MT5 deal history.
 
+### `core/exposure_guard.py`
+- Prevents over-concentration on correlated symbols.
+- Queries live MT5 positions on every signal (no stale counters).
+- `MAX_SAME_SYMBOL_TRADES`: max open positions on same symbol.
+- `MAX_CORRELATED_TRADES`: max open across configurable correlation groups.
+
+### `core/position_manager.py`
+- Background task managing open positions (poll-based).
+- Breakeven: move SL to entry + lock pips when profit reaches trigger.
+- Trailing stop: trail SL at fixed pip distance from current price.
+- Partial close: close percentage of volume near TP1.
+- Only manages positions matching bot's magic number.
+
+### `core/command_parser.py`
+- Parse Telegram management commands (CLOSE ALL, CLOSE SYMBOL, MOVE SL, BREAKEVEN).
+- Returns None for non-command messages (falls through to signal parser).
+
+### `core/command_executor.py`
+- Execute parsed commands against MT5 positions.
+- All operations filter by bot's magic number.
+- Returns human-readable summary strings.
+
 ## Dependencies
 - External:
   - Telegram API (Telethon session)

@@ -73,6 +73,38 @@ Poll-based limits using MT5 closed deal history (`history_deals_get`). All defau
 
 When a limit is breached, a Telegram alert is sent and trading pauses until the next UTC day (or until a winning trade resets the consecutive counter).
 
+### 🔴 Exposure Control
+
+| Limit | Config Key | Default | Effect |
+|-------|-----------|---------|--------|
+| Same symbol | `MAX_SAME_SYMBOL_TRADES` | 0 | Reject if same symbol has N+ open |
+| Correlated group | `MAX_CORRELATED_TRADES` | 0 | Reject if correlated group has N+ open |
+| Groups | `CORRELATION_GROUPS` | (empty) | `XAUUSD:XAGUSD,EURUSD:GBPUSD:EURGBP` |
+
+### 🔴 Position Manager
+
+Background task (disabled by default) that manages open positions:
+
+| Feature | Config Key | Default | Effect |
+|---------|-----------|---------|--------|
+| Breakeven | `BREAKEVEN_TRIGGER_PIPS` | 0 | Move SL to entry + lock when profit ≥ trigger |
+| Lock pips | `BREAKEVEN_LOCK_PIPS` | 2.0 | Pips above entry to lock SL at |
+| Trailing stop | `TRAILING_STOP_PIPS` | 0 | Trail SL at fixed pip distance |
+| Partial close | `PARTIAL_CLOSE_PERCENT` | 0 | Close % of volume at TP1 |
+| Poll interval | `POSITION_MANAGER_POLL_SECONDS` | 5 | Check frequency |
+
+### 🔴 Management Commands
+
+Send these as Telegram messages to manage open positions:
+
+| Command | Effect |
+|---------|--------|
+| `CLOSE ALL` | Close all open positions |
+| `CLOSE XAUUSD` | Close all positions for symbol |
+| `CLOSE HALF` | Close 50% of each position |
+| `MOVE SL 2025` | Move SL to price on all positions |
+| `BREAKEVEN` | Move SL to entry on profitable positions |
+
 ### 🔴 Circuit Breaker
 
 After `CIRCUIT_BREAKER_THRESHOLD` consecutive execution failures:
@@ -153,6 +185,10 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 │   ├── telegram_alerter.py      # Rate-limited admin alerts
 │   ├── circuit_breaker.py       # CLOSED/OPEN/HALF_OPEN trade safety
 │   ├── daily_risk_guard.py      # Poll-based daily risk limits (MT5 deal history)
+│   ├── exposure_guard.py        # Per-symbol + correlation group limits
+│   ├── position_manager.py      # Breakeven, trailing stop, partial close
+│   ├── command_parser.py        # Management command parser
+│   ├── command_executor.py      # Execute management commands vs MT5
 │   ├── order_lifecycle_manager.py # Pending order TTL expiration
 │   ├── mt5_watchdog.py          # Connection health monitor
 │   └── message_update_handler.py # MessageEdited handling
@@ -177,6 +213,7 @@ Telegram NewMessage
   → signal_parser.parse()
   → circuit_breaker.is_trading_allowed
   → daily_risk_guard.is_trading_allowed
+  → exposure_guard.is_allowed(symbol)
   → storage.is_duplicate()
   → signal_validator.validate(price, spread, positions, age, distance)
   → risk_manager.calculate_volume()
@@ -199,4 +236,5 @@ signal_received → signal_parsed → signal_submitted → signal_executed
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.4.0**
+Current: **v0.5.0**
+

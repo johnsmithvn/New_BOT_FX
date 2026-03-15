@@ -1,0 +1,325 @@
+"""
+core/position_manager.py
+
+Background position manager for open trades.
+
+Runs a poll loop checking open positions against configurable rules:
+  - Breakeven: move SL to entry + lock when profit >= trigger
+  - Trailing stop: trail SL at fixed pip distance from current price
+  - Partial close: close a percentage of volume at TP1
+
+All features default to 0 = disabled. Only active in live mode.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import TYPE_CHECKING
+
+from utils.logger import log_event
+
+if TYPE_CHECKING:
+    from core.trade_executor import TradeExecutor
+    from config.settings import Settings
+
+
+class PositionManager:
+    """Monitor and manage open positions for breakeven and trailing stop.
+
+    Runs as a background asyncio task, polling MT5 positions
+    every POSITION_MANAGER_POLL_SECONDS.
+    """
+
+    def __init__(
+        self,
+        executor: TradeExecutor,
+        settings: Settings,
+    ) -> None:
+        self._executor = executor
+
+        # Config — all in pips, 0 means disabled
+        self._breakeven_trigger_pips: float = settings.safety.breakeven_trigger_pips
+        self._breakeven_lock_pips: float = settings.safety.breakeven_lock_pips
+        self._trailing_stop_pips: float = settings.safety.trailing_stop_pips
+        self._partial_close_percent: int = settings.safety.partial_close_percent
+        self._poll_seconds: int = settings.safety.position_manager_poll_seconds
+        self._magic: int = settings.execution.bot_magic_number
+
+        # Track which positions we've already partially closed
+        self._partially_closed: set[int] = set()
+        # Track which positions we've already moved to breakeven
+        self._breakeven_applied: set[int] = set()
+
+        self._poll_task: asyncio.Task | None = None
+
+    @property
+    def is_enabled(self) -> bool:
+        """True if at least one position management feature is configured."""
+        return (
+            self._breakeven_trigger_pips > 0
+            or self._trailing_stop_pips > 0
+            or self._partial_close_percent > 0
+        )
+
+    async def start(self) -> None:
+        """Start the background poll loop."""
+        if not self.is_enabled:
+            log_event("position_manager_disabled")
+            return
+
+        self._poll_task = asyncio.create_task(self._poll_loop())
+        log_event(
+            "position_manager_started",
+            breakeven_trigger_pips=self._breakeven_trigger_pips,
+            breakeven_lock_pips=self._breakeven_lock_pips,
+            trailing_stop_pips=self._trailing_stop_pips,
+            partial_close_percent=self._partial_close_percent,
+            poll_seconds=self._poll_seconds,
+        )
+
+    async def stop(self) -> None:
+        """Stop the background poll loop."""
+        if self._poll_task:
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
+            self._poll_task = None
+        log_event("position_manager_stopped")
+
+    async def _poll_loop(self) -> None:
+        """Poll MT5 positions and apply management rules."""
+        while True:
+            try:
+                await asyncio.sleep(self._poll_seconds)
+                self._check_positions()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("position_manager_error", error=str(exc))
+
+    def _check_positions(self) -> None:
+        """Check all open positions and apply rules."""
+        try:
+            import MetaTrader5 as mt5
+        except ImportError:
+            return
+
+        positions = mt5.positions_get()
+        if positions is None:
+            return
+
+        # Only manage positions opened by this bot
+        bot_positions = [p for p in positions if p.magic == self._magic]
+
+        for pos in bot_positions:
+            symbol_info = mt5.symbol_info(pos.symbol)
+            if not symbol_info or symbol_info.point <= 0:
+                continue
+
+            point = symbol_info.point
+            digits = symbol_info.digits
+            pip_size = point * 10  # 1 pip = 10 points for 5-digit/3-digit brokers
+
+            # Current profit in pips
+            if pos.type == 0:  # BUY
+                tick = mt5.symbol_info_tick(pos.symbol)
+                if not tick:
+                    continue
+                current_price = tick.bid
+                profit_pips = (current_price - pos.price_open) / pip_size
+            elif pos.type == 1:  # SELL
+                tick = mt5.symbol_info_tick(pos.symbol)
+                if not tick:
+                    continue
+                current_price = tick.ask
+                profit_pips = (pos.price_open - current_price) / pip_size
+            else:
+                continue
+
+            # Breakeven
+            if self._breakeven_trigger_pips > 0:
+                self._apply_breakeven(
+                    mt5, pos, profit_pips, pip_size, point, digits
+                )
+
+            # Trailing stop
+            if self._trailing_stop_pips > 0:
+                self._apply_trailing_stop(
+                    mt5, pos, current_price, profit_pips, pip_size, point, digits
+                )
+
+            # Partial close
+            if self._partial_close_percent > 0:
+                self._apply_partial_close(
+                    mt5, pos, profit_pips, symbol_info
+                )
+
+    def _apply_breakeven(
+        self, mt5, pos, profit_pips: float,
+        pip_size: float, point: float, digits: int,
+    ) -> None:
+        """Move SL to entry + lock pips when profit reaches trigger."""
+        if pos.ticket in self._breakeven_applied:
+            return
+
+        if profit_pips < self._breakeven_trigger_pips:
+            return
+
+        # Calculate breakeven SL
+        lock_distance = self._breakeven_lock_pips * pip_size
+
+        if pos.type == 0:  # BUY
+            new_sl = pos.price_open + lock_distance
+            # Only move if new SL is better than current
+            if pos.sl > 0 and new_sl <= pos.sl:
+                return
+        else:  # SELL
+            new_sl = pos.price_open - lock_distance
+            if pos.sl > 0 and new_sl >= pos.sl:
+                return
+
+        new_sl = round(new_sl, digits)
+
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": pos.ticket,
+            "symbol": pos.symbol,
+            "sl": new_sl,
+            "tp": pos.tp,
+        }
+
+        result = mt5.order_send(request)
+        if result and result.retcode in (10008, 10009):
+            self._breakeven_applied.add(pos.ticket)
+            log_event(
+                "breakeven_applied",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                new_sl=new_sl,
+                profit_pips=round(profit_pips, 1),
+            )
+        else:
+            retcode = result.retcode if result else -1
+            log_event(
+                "breakeven_failed",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                retcode=retcode,
+            )
+
+    def _apply_trailing_stop(
+        self, mt5, pos, current_price: float,
+        profit_pips: float, pip_size: float, point: float, digits: int,
+    ) -> None:
+        """Trail SL at fixed pip distance from current price."""
+        # Only trail when in profit
+        if profit_pips <= 0:
+            return
+
+        trail_distance = self._trailing_stop_pips * pip_size
+
+        if pos.type == 0:  # BUY
+            new_sl = current_price - trail_distance
+            # Only move SL up, never down
+            if pos.sl > 0 and new_sl <= pos.sl:
+                return
+            # Don't trail below entry
+            if new_sl < pos.price_open:
+                return
+        else:  # SELL
+            new_sl = current_price + trail_distance
+            # Only move SL down, never up
+            if pos.sl > 0 and new_sl >= pos.sl:
+                return
+            # Don't trail above entry
+            if new_sl > pos.price_open:
+                return
+
+        new_sl = round(new_sl, digits)
+
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": pos.ticket,
+            "symbol": pos.symbol,
+            "sl": new_sl,
+            "tp": pos.tp,
+        }
+
+        result = mt5.order_send(request)
+        if result and result.retcode in (10008, 10009):
+            log_event(
+                "trailing_stop_moved",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                new_sl=new_sl,
+                profit_pips=round(profit_pips, 1),
+            )
+
+    def _apply_partial_close(
+        self, mt5, pos, profit_pips: float, symbol_info,
+    ) -> None:
+        """Close a percentage of volume when first TP is reached."""
+        if pos.ticket in self._partially_closed:
+            return
+
+        # Only partial close when position has a TP set and is in profit
+        if pos.tp <= 0 or profit_pips <= 0:
+            return
+
+        # Check if price has reached TP zone (within 1 pip)
+        tp_distance_pips = abs(pos.tp - (mt5.symbol_info_tick(pos.symbol).bid
+                              if pos.type == 0 else
+                              mt5.symbol_info_tick(pos.symbol).ask))
+        pip_size = symbol_info.point * 10
+        if tp_distance_pips / pip_size > 1.0:
+            # Not near TP yet
+            return
+
+        # Calculate partial volume
+        close_volume = pos.volume * (self._partial_close_percent / 100.0)
+        close_volume = max(symbol_info.volume_min, close_volume)
+        close_volume = round(
+            close_volume / symbol_info.volume_step
+        ) * symbol_info.volume_step
+        close_volume = round(close_volume, 2)
+
+        if close_volume <= 0:
+            return
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": pos.symbol,
+            "volume": close_volume,
+            "type": mt5.ORDER_TYPE_SELL if pos.type == 0 else mt5.ORDER_TYPE_BUY,
+            "position": pos.ticket,
+            "deviation": 20,
+            "magic": self._magic,
+            "comment": f"partial_close:{pos.ticket}",
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+
+        tick = mt5.symbol_info_tick(pos.symbol)
+        if tick:
+            request["price"] = tick.bid if pos.type == 0 else tick.ask
+
+        result = mt5.order_send(request)
+        if result and result.retcode in (10008, 10009, 10010):
+            self._partially_closed.add(pos.ticket)
+            log_event(
+                "partial_close_executed",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                closed_volume=close_volume,
+                remaining_volume=round(pos.volume - close_volume, 2),
+                percent=self._partial_close_percent,
+            )
+        else:
+            retcode = result.retcode if result else -1
+            log_event(
+                "partial_close_failed",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                retcode=retcode,
+            )

@@ -143,12 +143,53 @@ sudo systemctl restart telegram-mt5-bot
 
 ### Updating the Bot
 
+#### Pre-Update Checklist
+
+1. Check no critical positions are about to hit TP/SL
+2. Note current open positions and pending orders
+3. Back up the database: `cp data/bot.db data/bot.db.pre-update`
+
+#### Update Procedure
+
 ```bash
 cd /opt/telegram-mt5-bot
 sudo systemctl stop telegram-mt5-bot
+
+# Backup state
+cp data/bot.db data/bot.db.pre-update
+cp .env .env.pre-update
+
+# Pull and install
 git pull
 source venv/bin/activate
 pip install -r requirements.txt  # if deps changed
+
+# Verify new version compiles
+python -m py_compile main.py
+
+# Start
+sudo systemctl start telegram-mt5-bot
+sudo journalctl -u telegram-mt5-bot -f  # watch for errors
+```
+
+#### State Preservation
+
+| State | Location | Survives restart? |
+|-------|----------|-------------------|
+| Open MT5 positions | MT5 terminal (broker) | ✅ Independent of bot |
+| Pending MT5 orders | MT5 terminal (broker) | ✅ Independent of bot |
+| Telegram session | `forex_bot.session` | ✅ File on disk |
+| Signal history | `data/bot.db` | ✅ SQLite file |
+| In-memory metrics | `_SessionMetrics` | ❌ Reset on restart |
+| Daily risk counters | Polled from MT5 | ✅ Re-polled on startup |
+
+#### Rollback
+
+```bash
+sudo systemctl stop telegram-mt5-bot
+git checkout <previous-tag-or-commit>
+cp data/bot.db.pre-update data/bot.db  # if DB schema changed
+cp .env.pre-update .env                # if .env format changed
 sudo systemctl start telegram-mt5-bot
 ```
 
@@ -163,7 +204,7 @@ cp /opt/telegram-mt5-bot/data/bot.db /opt/telegram-mt5-bot/data/bot.db.bak
 
 ### Log Rotation
 
-Loguru handles rotation via `LOG_ROTATION` config (default: `10 MB`). No external logrotate configuration needed.
+Loguru handles rotation via `LOG_ROTATION` config (default: `10 MB`). No external logrotate configuration needed. See [MONITORING.md](MONITORING.md#log-rotation-validation) for validation details.
 
 ---
 
@@ -176,3 +217,4 @@ Loguru handles rotation via `LOG_ROTATION` config (default: `10 MB`). No externa
 | Bot starts but no signals | Wrong `TELEGRAM_SOURCE_CHATS` | Verify chat IDs with `tools/parse_cli.py` |
 | `CIRCUIT BREAKER OPENED` | Multiple execution failures | Check MT5 terminal status, broker connection |
 | High memory usage | Long-running session with many signals | Restart bot, check `STORAGE_RETENTION_DAYS` |
+

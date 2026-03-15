@@ -1,9 +1,9 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P3 - Reliability for 24/7 Runtime (aligned to R4)`
+- Phase: `P5 - Controlled Expansion (aligned to R6)`
 - Goal:
-  - Ensure runtime resilience and state continuity.
+  - Add features while preserving safety baseline.
 
 ## Execution Phases
 
@@ -74,7 +74,7 @@ Examples:
   - Release/update procedure
   - Daily risk guard (MAX_DAILY_TRADES, MAX_DAILY_LOSS, MAX_CONSECUTIVE_LOSSES)
   - Startup position sync
-- Status: `in progress`
+- Status: `complete`
 
 ### P5 - Controlled Expansion
 - Roadmap reference: `R6`
@@ -84,7 +84,7 @@ Examples:
   - Extended parser support for additional formats/symbols
   - Optional advanced execution behaviors
   - Compatibility and regression safeguards
-- Status: `pending`
+- Status: `in progress`
 
 ## Phase Completion Rule
 - Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.

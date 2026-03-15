@@ -38,6 +38,10 @@ from core.message_update_handler import MessageUpdateHandler, UpdateAction
 from core.circuit_breaker import CircuitBreaker, BreakerState
 from core.telegram_alerter import TelegramAlerter
 from core.daily_risk_guard import DailyRiskGuard
+from core.exposure_guard import ExposureGuard
+from core.position_manager import PositionManager
+from core.command_parser import CommandParser
+from core.command_executor import CommandExecutor
 from utils.logger import setup_logger, log_event
 from utils.symbol_mapper import SymbolMapper
 
@@ -98,6 +102,10 @@ class Bot:
         self.circuit_breaker: CircuitBreaker | None = None
         self.alerter: TelegramAlerter | None = None
         self.daily_guard: DailyRiskGuard | None = None
+        self.exposure_guard: ExposureGuard | None = None
+        self.position_mgr: PositionManager | None = None
+        self.command_parser: CommandParser | None = None
+        self.command_executor: CommandExecutor | None = None
         self._cleanup_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._metrics = _SessionMetrics()
@@ -149,6 +157,7 @@ class Bot:
             market_tolerance_points=s.execution.market_tolerance_points,
             deviation=s.execution.deviation_points,
             magic=s.execution.bot_magic_number,
+            dynamic_deviation_multiplier=s.execution.dynamic_deviation_multiplier,
         )
 
         # Trade Executor — retries from config
@@ -219,6 +228,36 @@ class Bot:
                 poll_interval_minutes=s.safety.daily_risk_poll_minutes,
                 on_limit_hit=self._on_daily_limit_hit,
             )
+
+        # Exposure Guard — live mode only
+        if not s.runtime.dry_run:
+            corr_groups = []
+            raw_groups = s.safety.correlation_groups.strip()
+            if raw_groups:
+                for group_str in raw_groups.split(","):
+                    symbols = [sym.strip() for sym in group_str.split(":") if sym.strip()]
+                    if len(symbols) >= 2:
+                        corr_groups.append(symbols)
+
+            self.exposure_guard = ExposureGuard(
+                executor=self.executor,
+                max_same_symbol_trades=s.safety.max_same_symbol_trades,
+                max_correlated_trades=s.safety.max_correlated_trades,
+                correlation_groups=corr_groups,
+            )
+
+        # Position Manager — live mode only
+        if not s.runtime.dry_run:
+            self.position_mgr = PositionManager(
+                executor=self.executor,
+                settings=s,
+            )
+
+        # Command Parser + Executor
+        self.command_parser = CommandParser()
+        self.command_executor = CommandExecutor(
+            magic=s.execution.bot_magic_number,
+        )
 
     # ── Alert Callbacks ──────────────────────────────────────────
 
@@ -325,6 +364,18 @@ class Bot:
         dry_run = self.settings.runtime.dry_run
         t_start = time.monotonic()
 
+        # ── Step 0: Check for management command ─────────────────
+        cmd = self.command_parser.parse(raw_text)
+        if cmd is not None:
+            log_event("command_received", command=cmd.command_type.value, source_message_id=message_id)
+            if dry_run:
+                print(f"  [COMMAND] {cmd.command_type.value} — skipped (dry-run)")
+                return
+            summary = self.command_executor.execute(cmd)
+            log_event("command_executed", command=cmd.command_type.value, summary=summary)
+            print(f"  [COMMAND] {cmd.command_type.value} → {summary}")
+            return
+
         # ── Step 1: Parse ────────────────────────────────────────
         result = self.parser.parse(
             raw_text,
@@ -403,6 +454,16 @@ class Bot:
                 self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": guard_reason})
                 self._metrics.rejected += 1
                 print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{guard_reason}\"")
+                return
+
+        # ── Step 2c: Exposure guard check ─────────────────────────
+        if self.exposure_guard:
+            exp_allowed, exp_reason = self.exposure_guard.is_allowed(signal_obj.symbol)
+            if not exp_allowed:
+                log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=exp_reason)
+                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": exp_reason})
+                self._metrics.rejected += 1
+                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{exp_reason}\"")
                 return
 
         # ── Step 3: Duplicate check ──────────────────────────────
@@ -757,7 +818,7 @@ class Bot:
         # Banner
         s = self.settings
         print("=" * 55)
-        print(f"  telegram-mt5-bot  v0.4.0  {'[DRY RUN]' if dry_run else '[LIVE]'}")
+        print(f"  telegram-mt5-bot  v0.5.0  {'[DRY RUN]' if dry_run else '[LIVE]'}")
         print("=" * 55)
         print(f"  Risk mode    : {s.risk.mode}")
         print(f"  Max spread   : {s.safety.max_spread_pips} pips")
@@ -800,6 +861,8 @@ class Bot:
             await self.watchdog.start()
             if self.daily_guard:
                 await self.daily_guard.start()
+            if self.position_mgr:
+                await self.position_mgr.start()
 
         self._cleanup_task = asyncio.create_task(self._storage_cleanup_loop())
 
@@ -875,6 +938,8 @@ class Bot:
 
         if self.daily_guard:
             await self.daily_guard.stop()
+        if self.position_mgr:
+            await self.position_mgr.stop()
         if self.watchdog:
             await self.watchdog.stop()
         if self.lifecycle_mgr:

@@ -119,3 +119,26 @@ grep "daily_risk_guard_polled" logs/bot.log | tail -5
 # Circuit breaker events
 grep "circuit_breaker" logs/bot.log
 ```
+
+---
+
+## Log Rotation Validation
+
+Loguru manages log rotation internally — no external `logrotate` needed.
+
+| Setting | Value | Behavior |
+|---------|-------|----------|
+| `LOG_ROTATION` | `"10 MB"` (default) | Rotates when file exceeds 10 MB |
+| `retention` | `"30 days"` (hardcoded) | Deletes rotated files older than 30 days |
+| Thread safety | Built-in | Rotation is atomic; no data loss during rotation |
+| Long-running | ✅ Validated | loguru uses `os.rename()` internally — safe for processes running weeks/months |
+
+**What happens during rotation:**
+1. Current `bot.log` reaches size limit
+2. loguru renames it to `bot.log.YYYY-MM-DD_HH-MM-SS`
+3. New empty `bot.log` is created
+4. Writing continues without interruption
+5. Files older than 30 days are auto-deleted
+
+**No action required** — rotation is fully automatic. Monitor disk usage if `LOG_ROTATION` is set very high or `retention` exceeds available disk.
+

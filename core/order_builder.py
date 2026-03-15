@@ -35,16 +35,34 @@ class OrderBuilder:
         market_tolerance_points: float = 5.0,
         deviation: int = 20,
         magic: int = 234000,
+        dynamic_deviation_multiplier: float = 0.0,
     ) -> None:
         """Args:
             market_tolerance_points: If |entry - reference_price| ≤ tolerance * point,
                 treat as MARKET order instead of LIMIT/STOP. Configurable via MARKET_TOLERANCE_POINTS.
             deviation: Max price deviation in points for market orders. Configurable via DEVIATION_POINTS.
             magic: Unique ID to identify orders from this bot. Configurable via BOT_MAGIC_NUMBER.
+            dynamic_deviation_multiplier: When > 0, deviation = max(base, spread_points * multiplier).
+                Automatically widens slippage tolerance during high-spread conditions.
         """
         self._tolerance = market_tolerance_points
-        self._deviation = deviation
+        self._base_deviation = deviation
         self._magic = magic
+        self._dynamic_multiplier = dynamic_deviation_multiplier
+
+    def compute_deviation(self, spread_points: float) -> int:
+        """Compute effective deviation, optionally scaling with spread.
+
+        Args:
+            spread_points: Current spread in points.
+
+        Returns:
+            Deviation in points (integer).
+        """
+        if self._dynamic_multiplier > 0 and spread_points > 0:
+            dynamic = int(spread_points * self._dynamic_multiplier)
+            return max(self._base_deviation, dynamic)
+        return self._base_deviation
 
     def decide_order_type(
         self,
@@ -180,7 +198,7 @@ class OrderBuilder:
             "volume": volume,
             "sl": decision.sl if decision.sl else 0.0,
             "tp": decision.tp if decision.tp else 0.0,
-            "deviation": self._deviation,
+            "deviation": self._base_deviation,
             "magic": self._magic,
             "comment": f"signal:{signal.fingerprint[:8]}",
         }

@@ -1,48 +1,50 @@
 # TASKS
 
 ## Current Phase
-- `P4 - Production Operations (R5)`
+- `P5 - Controlled Expansion (R6)`
 
 ## High Priority
 
-### VPS Deployment Runbook
-- [x] Write `docs/DEPLOY.md` — Ubuntu VPS setup: Python venv, Wine + MT5, firewall, env config
-- [x] Create `telegram-mt5-bot.service` systemd unit file with `Restart=always`
+### Exposure / Correlation Control
+- [x] `core/exposure_guard.py` — MAX_SAME_SYMBOL_TRADES + MAX_CORRELATED_TRADES
+- [x] Configurable correlation groups via `CORRELATION_GROUPS` env
+- [x] Pipeline Step 2c: exposure guard check after daily risk guard
 
-### Daily Risk Guard
-- [x] Add `MAX_DAILY_TRADES`, `MAX_DAILY_LOSS`, `MAX_CONSECUTIVE_LOSSES` to config
-- [x] Implement poll-based counter refresh using `mt5.history_deals_get()` in background task
-- [x] Block new signal execution when any daily limit is hit (Step 2b in pipeline)
-- [x] Send Telegram alert when limit triggered (via `on_limit_hit` callback)
-- [x] Consecutive losses derived from deal history (leading loss streak, resets on winning deal)
+### Dynamic Deviation
+- [x] `DYNAMIC_DEVIATION_MULTIPLIER` in OrderBuilder — auto-widen slippage during high spread
+- [x] `compute_deviation()` method: `max(base, spread * multiplier)`
 
-### Startup Position Sync
-- [x] On bot boot, query MT5 for existing open positions and pending orders
-- [x] Log position sync summary on startup (`[STARTUP SYNC]`)
-- [x] Warn if positions >= MAX_OPEN_TRADES (log + Telegram alert)
+### Position Manager
+- [x] `core/position_manager.py` — background poll loop
+- [x] Breakeven: move SL to entry + lock when profit >= trigger
+- [x] Trailing stop: trail SL at fixed pip distance
+- [x] Partial close: close % of volume at TP1
+- [x] Only manages bot's own positions (magic number filter)
 
-### Monitoring / Alerting Doc
-- [x] Write `docs/MONITORING.md` — alert catalog (10 types), heartbeat interpretation, debug workflow, escalation playbook
+### Signal Management Commands
+- [x] `core/command_parser.py` — CLOSE ALL, CLOSE SYMBOL, CLOSE HALF, MOVE SL, BREAKEVEN
+- [x] `core/command_executor.py` — execute commands against MT5
+- [x] Pipeline Step 0: command intercept before signal parser
 
-### README — VPS Quick-Start
-- [x] Add "Production Deployment" section to `README.md` referencing `DEPLOY.md`
-- [x] Bump version to v0.4.0
-- [x] Fix Safety Gates table (PIPS, not POINTS)
-- [x] Add Daily Risk Guard section
+### Integration
+- [x] `config/settings.py` — all P5 fields in SafetyConfig + ExecutionConfig
+- [x] `main.py` — wire all new components, banner v0.5.0
+- [x] `.env.example` — 10 new config keys
+
+### Documentation
+- [x] `ARCHITECTURE.md` — P5 module entries
+- [x] `README.md` — v0.5.0, exposure control, position manager, commands sections
+- [x] `CHANGELOG.md` — v0.5.0 entry
+- [x] `PLAN.md` — P4 complete, P5 in progress
 
 ## Medium Priority
-- [ ] Log rotation validation — confirm loguru rotation works correctly in long-running process (≥ 7 days)
-- [ ] Controlled update procedure — document graceful restart without losing state
-
-## Backlog (P5 — Controlled Expansion)
-- [ ] Position manager (breakeven, partial close, trailing stop)
-- [ ] Signal management commands parser (`MOVE SL`, `CLOSE HALF`, `CLOSE NOW`)
-- [ ] Exposure/correlation control (`MAX_CORRELATED_TRADES`)
-- [ ] Dynamic deviation (DEVIATION = spread × multiplier)
+- [ ] Command response via Telegram — send command result back to admin chat
+- [ ] Position manager Telegram alerts — notify on breakeven/trailing stop moves
 
 ## Completed (from previous phases)
 - [x] All P0 tasks (documentation foundation)
 - [x] All P1 tasks (signal parser pipeline, validation, risk manager, storage, tooling)
 - [x] All P2 tasks (trade executor, order builder, Telegram listener, lifecycle manager, watchdog, pipeline wiring)
 - [x] All P3 tasks (dry-run, circuit breaker, alerting, storage hardening, signal lifecycle DB, entry drift guard, execution metrics, ENV sync, session metrics, heartbeat log)
-- [x] All P4 High Priority tasks (daily risk guard, startup position sync, VPS runbook, monitoring doc, README update)
+- [x] All P4 tasks (daily risk guard, startup position sync, VPS runbook, monitoring doc, log rotation validation, update procedure)
+- [x] All P5 High Priority tasks (exposure guard, dynamic deviation, position manager, management commands)

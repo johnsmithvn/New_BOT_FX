@@ -1,6 +1,30 @@
 # CHANGELOG
 
-## 0.4.0 - 2026-03-15
+## 0.5.0 - 2026-03-15
+
+### Added
+- `core/exposure_guard.py` — per-symbol and per-correlation-group position limits
+  - `MAX_SAME_SYMBOL_TRADES`: max open positions on same symbol (default 0 = disabled)
+  - `MAX_CORRELATED_TRADES`: max open across correlation group (default 0 = disabled)
+  - `CORRELATION_GROUPS`: configurable groups (e.g., `XAUUSD:XAGUSD,EURUSD:GBPUSD`)
+- `core/position_manager.py` — background position management (all disabled by default)
+  - Breakeven: move SL to entry + lock pips when profit reaches trigger
+  - Trailing stop: trail SL at fixed pip distance
+  - Partial close: close percentage of volume at TP1
+- `core/command_parser.py` — parse Telegram management commands
+  - Supports: `CLOSE ALL`, `CLOSE <SYMBOL>`, `CLOSE HALF`, `MOVE SL <PRICE>`, `BREAKEVEN`
+- `core/command_executor.py` — execute management commands against MT5
+- Dynamic deviation in `core/order_builder.py`: `DYNAMIC_DEVIATION_MULTIPLIER` (default 0 = use fixed)
+- 10 new env keys in `.env.example` for exposure guard, position manager, dynamic deviation
+
+### Changed
+- `main.py` — v0.5.0 banner, Step 0 command intercept, Step 2c exposure guard, position manager lifecycle
+- `config/settings.py` — `SafetyConfig` and `ExecutionConfig` extended with P5 fields
+- `docs/ARCHITECTURE.md` — added P5 module entries
+- `docs/MONITORING.md` — added log rotation validation section
+- `docs/DEPLOY.md` — enhanced update procedure with state preservation + rollback
+- `docs/PLAN.md` — P4 complete, P5 in progress
+
 
 ### Added
 - `core/daily_risk_guard.py` — poll-based daily risk limits using MT5 `history_deals_get()`
