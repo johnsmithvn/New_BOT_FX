@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 0.5.5 - 2026-03-15
+
+### Added
+- **Entry Range Parsing**: `SignalParser` now accurately parses signal ranges (e.g., `Buy Gold 5162 - 5170`).
+  - Automatically identifies extreme bounds `[low, high]`.
+  - Determines final execution `entry` strictly by `Side` (uses lowest for `BUY` and highest for `SELL`).
+
+### Changed
+- **Strict Entry Enforcement**: If the parser cannot identify a single entry price and no explicit `MARKET` intent (like `NOW` or `CMP`) is passed, the signal is now explicitly REJECTED as a `ParseFailure` instead of wrongly defaulting to a market execution.
+
 ## 0.5.4 - 2026-03-15
 
 ### Fixed

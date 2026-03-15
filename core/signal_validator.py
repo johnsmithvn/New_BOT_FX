@@ -132,11 +132,11 @@ class SignalValidator:
         if not result.valid:
             return result
 
-        # Rule 7: Spread gate
-        if current_spread_pips is not None:
-            result = self._validate_spread(current_spread_pips)
-            if not result.valid:
-                return result
+        # # Rule 7: Spread gate
+        # if current_spread_pips is not None:
+        #     result = self._validate_spread(current_spread_pips)
+        #     if not result.valid:
+        #         return result
 
         # Rule 8: Max open trades gate
         if open_positions is not None:

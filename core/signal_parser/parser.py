@@ -130,7 +130,14 @@ class SignalParser:
         side = Side(side_str)
 
         # Step 4: Detect entry
-        entry = entry_detector.detect(cleaned)
+        entry, entry_range, is_market = entry_detector.detect(cleaned, side)
+
+        # Reject if entry cannot be determined AND there is no explicit market intent
+        if entry is None and not is_market:
+            return ParseFailure(
+                reason="entry price not detected and no explicit market keywords found",
+                **common,
+            )
 
         # Step 5: Detect SL
         sl = sl_detector.detect(cleaned)
@@ -151,6 +158,7 @@ class SignalParser:
             symbol=symbol,
             side=side,
             entry=entry,
+            entry_range=entry_range,
             sl=sl,
             tp=tp_list,
             fingerprint=fingerprint,
