@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 0.4.0 - 2026-03-15
+
+### Added
+- `core/daily_risk_guard.py` — poll-based daily risk limits using MT5 `history_deals_get()`
+  - `MAX_DAILY_TRADES`: max closed deals per UTC day (default 0 = disabled)
+  - `MAX_DAILY_LOSS`: max realized loss USD per UTC day (default 0.0 = disabled)
+  - `MAX_CONSECUTIVE_LOSSES`: pause after N consecutive losing deals (default 0 = disabled)
+  - Background poll every `DAILY_RISK_POLL_MINUTES` (default 5)
+  - Telegram alert on first breach per day
+- Startup position sync: `_sync_positions_on_startup()` logs audit of pre-existing MT5 state
+  - Warns if open positions >= `MAX_OPEN_TRADES`
+  - Sends Telegram alert if at capacity
+- Daily guard stats in heartbeat: `daily_trades`, `daily_loss`, `consec_losses`
+- `docs/DEPLOY.md` — Ubuntu VPS deployment runbook (Wine + MT5, systemd, first-run auth, maintenance)
+- `deploy/telegram-mt5-bot.service` — systemd unit with `Restart=always`, security hardening
+- `docs/MONITORING.md` — alert catalog (10 types), heartbeat interpretation, debug workflow, escalation playbook
+- 4 new env keys in `.env.example`: `MAX_DAILY_TRADES`, `MAX_DAILY_LOSS`, `MAX_CONSECUTIVE_LOSSES`, `DAILY_RISK_POLL_MINUTES`
+
+### Changed
+- `main.py` — v0.4.0 banner, DailyRiskGuard integration (Step 2b), startup position sync, heartbeat daily stats
+- `config/settings.py` — `SafetyConfig` extended with daily risk fields (added in prior planning session)
+- `docs/ARCHITECTURE.md` — added `core/daily_risk_guard.py` module entry
+- `README.md` — bumped to v0.4.0, added Daily Risk Guard + Production Deployment sections, fixed Safety Gates table
+- P4 tasks marked complete in `docs/TASKS.md`
+
 ## 0.3.4 - 2026-03-15
 
 ### Added

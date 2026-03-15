@@ -25,7 +25,7 @@ The order type (MARKET / LIMIT / STOP) is determined by comparing the signal ent
 
 If `|entry - reference_price| ≤ MARKET_TOLERANCE_POINTS × point`, the order is treated as **MARKET** (immediate execution) instead of LIMIT/STOP.
 
-- Default: `5.0` points
+- Default: `30.0` points (XAUUSD: 3 pips = $0.30)
 - Setting too high → signals that should be pending become market orders
 - Setting too low → signals near market price become pending when they should execute immediately
 
@@ -48,14 +48,30 @@ Volume is always clamped to `[LOT_MIN, LOT_MAX]` and rounded to `LOT_STEP`.
 
 ### 🔴 Safety Gates (Validation Rules)
 
+All distances are in **PIPS** (1 pip = 10 points for 5-digit brokers, XAUUSD: 1 pip = $0.10).
+
 | Gate | Config Key | Default | Effect |
 |------|-----------|---------|--------|
-| Max spread | `MAX_SPREAD_POINTS` | 50 | Reject if current spread > max |
-| Max open trades | `MAX_OPEN_TRADES` | 5 | Reject if open positions ≥ max |
-| Signal age | `SIGNAL_AGE_TTL_SECONDS` | 60 | Reject if signal older than TTL |
-| Entry distance | `MAX_ENTRY_DISTANCE_POINTS` | 500 | Reject if entry too far from market |
+| Max spread | `MAX_SPREAD_PIPS` | 5.0 | Reject if current spread > 5 pips |
+| Max open trades | `MAX_OPEN_TRADES` | 5 | Reject if open positions ≥ 5 |
+| Signal age | `SIGNAL_AGE_TTL_SECONDS` | 60 | Reject if signal older than 60s |
+| Entry distance | `MAX_ENTRY_DISTANCE_PIPS` | 50.0 | Reject if entry > 50 pips from market |
+| Entry drift | `MAX_ENTRY_DRIFT_PIPS` | 10.0 | Reject MARKET if entry drifted > 10 pips |
 | Pending TTL | `PENDING_ORDER_TTL_MINUTES` | 15 | Auto-cancel unfilled pending orders |
 | Duplicate | fingerprint | — | SHA-256 hash, reject within TTL window |
+
+### 🔴 Daily Risk Guard
+
+Poll-based limits using MT5 closed deal history (`history_deals_get`). All default to 0 = disabled.
+
+| Limit | Config Key | Default | Effect |
+|-------|-----------|---------|--------|
+| Daily trades | `MAX_DAILY_TRADES` | 0 | Pause after N closed trades per UTC day |
+| Daily loss | `MAX_DAILY_LOSS` | 0.0 | Pause when cumulative loss exceeds USD limit |
+| Consecutive losses | `MAX_CONSECUTIVE_LOSSES` | 5 | Pause after N consecutive losing trades |
+| Poll interval | `DAILY_RISK_POLL_MINUTES` | 5 | How often to refresh from MT5 history |
+
+When a limit is breached, a Telegram alert is sent and trading pauses until the next UTC day (or until a winning trade resets the consecutive counter).
 
 ### 🔴 Circuit Breaker
 
@@ -84,6 +100,12 @@ cp .env.example .env
 python main.py
 ```
 
+## Production Deployment
+
+For VPS deployment with systemd, see [docs/DEPLOY.md](docs/DEPLOY.md).
+
+For monitoring, alerts, and troubleshooting, see [docs/MONITORING.md](docs/MONITORING.md).
+
 ## Configuration
 
 All values are in `.env`. Copy from `.env.example` for the full list with explanations.
@@ -104,7 +126,7 @@ All values are in `.env`. Copy from `.env.example` for the full list with explan
 |-----|---------|-------------|
 | `BOT_MAGIC_NUMBER` | `234000` | Unique ID to tag bot orders in MT5 |
 | `DEVIATION_POINTS` | `20` | Max price slippage for market orders |
-| `MARKET_TOLERANCE_POINTS` | `5.0` | Entry-vs-price threshold for market/pending decision |
+| `MARKET_TOLERANCE_POINTS` | `30.0` | Entry-vs-price threshold for market/pending decision |
 | `ORDER_MAX_RETRIES` | `3` | Retry count for failed `order_send` calls |
 | `ORDER_RETRY_DELAY_SECONDS` | `1.0` | Base delay between retries (exponential) |
 
@@ -130,6 +152,7 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 │   ├── telegram_listener.py     # Telethon listener + auto-reconnect
 │   ├── telegram_alerter.py      # Rate-limited admin alerts
 │   ├── circuit_breaker.py       # CLOSED/OPEN/HALF_OPEN trade safety
+│   ├── daily_risk_guard.py      # Poll-based daily risk limits (MT5 deal history)
 │   ├── order_lifecycle_manager.py # Pending order TTL expiration
 │   ├── mt5_watchdog.py          # Connection health monitor
 │   └── message_update_handler.py # MessageEdited handling
@@ -139,7 +162,11 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 ├── tools/
 │   ├── parse_cli.py             # Parser debug CLI
 │   └── benchmark.py             # Performance benchmark
-├── docs/                        # Architecture, plan, tasks
+├── deploy/
+│   └── telegram-mt5-bot.service # Systemd unit file
+├── docs/                        # Architecture, plan, tasks, operations
+│   ├── DEPLOY.md                # VPS deployment runbook
+│   └── MONITORING.md            # Alert catalog + debug workflow
 └── .env.example                 # All configuration keys with docs
 ```
 
@@ -148,11 +175,13 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 ```
 Telegram NewMessage
   → signal_parser.parse()
-  → storage.is_duplicate()
   → circuit_breaker.is_trading_allowed
+  → daily_risk_guard.is_trading_allowed
+  → storage.is_duplicate()
   → signal_validator.validate(price, spread, positions, age, distance)
   → risk_manager.calculate_volume()
   → order_builder.decide_order_type() + build_request()
+  → validator.validate_entry_drift() [MARKET orders only]
   → trade_executor.execute() [or DRY_RUN simulate]
   → storage.store_signal() + store_order() + store_event()
 ```
@@ -170,4 +199,4 @@ signal_received → signal_parsed → signal_submitted → signal_executed
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.3.1**
+Current: **v0.4.0**

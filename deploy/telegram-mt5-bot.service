@@ -1,0 +1,34 @@
+[Unit]
+Description=Telegram MT5 Trading Bot
+Documentation=https://github.com/your-repo/telegram-mt5-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=botuser
+Group=botuser
+WorkingDirectory=/opt/telegram-mt5-bot
+ExecStart=/opt/telegram-mt5-bot/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Environment
+Environment=DISPLAY=:0
+EnvironmentFile=/opt/telegram-mt5-bot/.env
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/telegram-mt5-bot
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telegram-mt5-bot
+
+[Install]
+WantedBy=multi-user.target

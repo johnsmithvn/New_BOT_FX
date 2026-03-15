@@ -37,6 +37,7 @@ from core.mt5_watchdog import MT5Watchdog
 from core.message_update_handler import MessageUpdateHandler, UpdateAction
 from core.circuit_breaker import CircuitBreaker, BreakerState
 from core.telegram_alerter import TelegramAlerter
+from core.daily_risk_guard import DailyRiskGuard
 from utils.logger import setup_logger, log_event
 from utils.symbol_mapper import SymbolMapper
 
@@ -96,6 +97,7 @@ class Bot:
         self.update_handler: MessageUpdateHandler | None = None
         self.circuit_breaker: CircuitBreaker | None = None
         self.alerter: TelegramAlerter | None = None
+        self.daily_guard: DailyRiskGuard | None = None
         self._cleanup_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._metrics = _SessionMetrics()
@@ -208,6 +210,16 @@ class Bot:
             on_reinit_exhausted=self._on_mt5_reinit_exhausted,
         )
 
+        # Daily Risk Guard — live mode only (no MT5 deal history in dry-run)
+        if not s.runtime.dry_run:
+            self.daily_guard = DailyRiskGuard(
+                max_daily_trades=s.safety.max_daily_trades,
+                max_daily_loss_usd=s.safety.max_daily_loss_usd,
+                max_consecutive_losses=s.safety.max_consecutive_losses,
+                poll_interval_minutes=s.safety.daily_risk_poll_minutes,
+                on_limit_hit=self._on_daily_limit_hit,
+            )
+
     # ── Alert Callbacks ──────────────────────────────────────────
 
     def _on_breaker_change(self, old_state, new_state) -> None:
@@ -236,6 +248,10 @@ class Bot:
             "mt5_reinit_exhausted",
             "🔴 **MT5 REINIT FAILED**\nAll retries exhausted. Manual intervention required.",
         )
+
+    def _on_daily_limit_hit(self, alert_key: str, message: str) -> None:
+        """DailyRiskGuard limit breach callback → Telegram alert."""
+        self.alerter.send_alert_sync(alert_key, message)
 
     # ── Smart Dry-Run Helpers ────────────────────────────────────
 
@@ -378,6 +394,16 @@ class Bot:
             self._metrics.rejected += 1
             print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{reason}\"")
             return
+
+        # ── Step 2b: Daily risk guard check ───────────────────────
+        if self.daily_guard:
+            allowed, guard_reason = self.daily_guard.is_trading_allowed
+            if not allowed:
+                log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=guard_reason)
+                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": guard_reason})
+                self._metrics.rejected += 1
+                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{guard_reason}\"")
+                return
 
         # ── Step 3: Duplicate check ──────────────────────────────
         is_dup = self.storage.is_duplicate(
@@ -641,6 +667,11 @@ class Bot:
         except Exception:
             tg_status = "ERR"
 
+        # Daily guard stats
+        daily_guard_info = {}
+        if self.daily_guard:
+            daily_guard_info = self.daily_guard.daily_stats
+
         log_event(
             "heartbeat",
             uptime_min=uptime_min,
@@ -654,7 +685,16 @@ class Bot:
             pending_orders=pending_orders,
             mt5=mt5_status,
             telegram=tg_status,
+            **daily_guard_info,
         )
+
+        daily_str = ""
+        if daily_guard_info:
+            daily_str = (
+                f"  daily_trades={daily_guard_info.get('daily_trades', 0)}"
+                f"  daily_loss=${daily_guard_info.get('daily_loss_usd', 0)}"
+                f"  consec_losses={daily_guard_info.get('consecutive_losses', 0)}"
+            )
 
         print(
             f"  [HEARTBEAT] uptime={uptime_min}m"
@@ -664,7 +704,38 @@ class Bot:
             f"  max_latency={m.max_execution_latency_ms}ms"
             f"  open_positions={open_positions}  pending_orders={pending_orders}"
             f"  mt5={mt5_status}  telegram={tg_status}"
+            f"{daily_str}"
         )
+
+    # ── Startup Position Sync ─────────────────────────────────────
+
+    def _sync_positions_on_startup(self) -> None:
+        """Log audit of pre-existing MT5 state on startup.
+
+        The validator already queries live MT5 on every signal, so no
+        state injection is needed. This is purely for operator awareness.
+        """
+        positions = self.executor.positions_total()
+        orders = self.executor.orders_total()
+        max_open = self.settings.safety.max_open_trades
+
+        log_event(
+            "startup_position_sync",
+            open_positions=positions,
+            pending_orders=orders,
+            max_open_trades=max_open,
+        )
+        print(f"  [STARTUP SYNC] positions={positions}  pending_orders={orders}")
+
+        if positions >= max_open:
+            msg = (
+                f"⚠️ **STARTUP WARNING**\n"
+                f"Open positions ({positions}) >= MAX_OPEN_TRADES ({max_open}).\n"
+                f"Bot will refuse new signals until positions close."
+            )
+            log_event("startup_position_warning", positions=positions, max_open=max_open)
+            print(f"  [WARNING] positions ({positions}) >= MAX_OPEN_TRADES ({max_open}) — new signals will be refused")
+            self.alerter.send_alert_sync("startup_position_warning", msg)
 
     # ── Startup and Shutdown ─────────────────────────────────────
 
@@ -684,22 +755,29 @@ class Bot:
             print("[DRY RUN] MT5 execution disabled — simulating orders.")
 
         # Banner
+        s = self.settings
         print("=" * 55)
-        print(f"  telegram-mt5-bot  v0.3.4  {'[DRY RUN]' if dry_run else '[LIVE]'}")
+        print(f"  telegram-mt5-bot  v0.4.0  {'[DRY RUN]' if dry_run else '[LIVE]'}")
         print("=" * 55)
-        print(f"  Risk mode    : {self.settings.risk.mode}")
-        print(f"  Max spread   : {self.settings.safety.max_spread_pips} pips")
-        print(f"  Max distance : {self.settings.safety.max_entry_distance_pips} pips")
-        print(f"  Signal TTL   : {self.settings.safety.signal_age_ttl_seconds}s")
-        print(f"  Pending TTL  : {self.settings.safety.pending_order_ttl_minutes}min")
-        print(f"  Max trades   : {self.settings.safety.max_open_trades}")
-        print(f"  Breaker      : {self.settings.runtime.circuit_breaker_threshold} fails → pause")
-        print(f"  Session reset: {self.settings.telegram.session_reset_hours}h")
+        print(f"  Risk mode    : {s.risk.mode}")
+        print(f"  Max spread   : {s.safety.max_spread_pips} pips")
+        print(f"  Max distance : {s.safety.max_entry_distance_pips} pips")
+        print(f"  Signal TTL   : {s.safety.signal_age_ttl_seconds}s")
+        print(f"  Pending TTL  : {s.safety.pending_order_ttl_minutes}min")
+        print(f"  Max trades   : {s.safety.max_open_trades}")
+        print(f"  Breaker      : {s.runtime.circuit_breaker_threshold} fails → pause")
+        print(f"  Session reset: {s.telegram.session_reset_hours}h")
+        # Daily Risk Guard config
+        if not dry_run and self.daily_guard:
+            print(f"  Daily trades : {s.safety.max_daily_trades or 'unlimited'}")
+            print(f"  Daily loss   : {'$' + str(s.safety.max_daily_loss_usd) if s.safety.max_daily_loss_usd > 0 else 'unlimited'}")
+            print(f"  Consec losses: {s.safety.max_consecutive_losses or 'unlimited'}")
+            print(f"  Risk poll    : {s.safety.daily_risk_poll_minutes}min")
         if dry_run:
             print(f"  Dry run      : ON (no real orders)")
         print("=" * 55)
 
-        # Startup self-check
+        # Startup self-check + position sync
         if not dry_run:
             account = self.executor.account_info()
             if account:
@@ -707,6 +785,7 @@ class Bot:
                 print(f"  Balance      : {account['balance']}")
                 print(f"  Equity       : {account['equity']}")
                 print("=" * 55)
+            self._sync_positions_on_startup()
 
         # Start Telegram listener
         await self.listener.start()
@@ -719,6 +798,8 @@ class Bot:
         if not dry_run:
             await self.lifecycle_mgr.start()
             await self.watchdog.start()
+            if self.daily_guard:
+                await self.daily_guard.start()
 
         self._cleanup_task = asyncio.create_task(self._storage_cleanup_loop())
 
@@ -792,6 +873,8 @@ class Bot:
             except asyncio.CancelledError:
                 pass
 
+        if self.daily_guard:
+            await self.daily_guard.stop()
         if self.watchdog:
             await self.watchdog.stop()
         if self.lifecycle_mgr:

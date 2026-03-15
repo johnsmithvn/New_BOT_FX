@@ -152,6 +152,16 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Run lightweight checks (example: `account_info()`).
 - Trigger MT5 reinitialization if connection is lost.
 
+### `core/daily_risk_guard.py`
+- Poll-based daily risk limits using MT5 `history_deals_get()`.
+- Background task refreshes counters every `DAILY_RISK_POLL_MINUTES`.
+- Enforces three independent limits (all default 0 = disabled):
+  - `MAX_DAILY_TRADES`: max closed deals per UTC day.
+  - `MAX_DAILY_LOSS`: max realized loss (USD) per UTC day.
+  - `MAX_CONSECUTIVE_LOSSES`: pause after N consecutive losing deals.
+- Sends Telegram alert on first breach per day.
+- No manual counter management — derived from real MT5 deal history.
+
 ## Dependencies
 - External:
   - Telegram API (Telethon session)
