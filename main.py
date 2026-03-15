@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass, field
 
 from config.settings import load_settings
-from core.models import ParsedSignal, ParseFailure, Side, SignalStatus, OrderKind
+from core.models import ParsedSignal, ParseFailure, Side, SignalStatus, OrderKind, TradeDecision
 from core.signal_parser.parser import SignalParser
 from core.signal_validator import SignalValidator
 from core.risk_manager import RiskManager
@@ -304,7 +304,7 @@ class Bot:
         *,
         rejected: bool = False,
         reject_reason: str = "",
-        decision: object | None = None,
+        decision: TradeDecision | None = None,
         volume: float | None = None,
         request: dict | None = None,
     ) -> None:
@@ -356,14 +356,12 @@ class Bot:
         if rejected:
             lines.append(f"❌ Rejected: {reject_reason}")
         elif decision is not None:
-            from core.models import TradeDecision
-            d: TradeDecision = decision  # type: ignore[assignment]
             dry_run = self.settings.runtime.dry_run
             lines.append("✅ Decision:")
-            lines.append(f"  order_type: {d.order_kind.value}")
+            lines.append(f"  order_type: {decision.order_kind.value}")
             lines.append(f"  volume: {volume}")
-            lines.append(f"  price: {request.get('price') if request else d.price}")
-            lines.append(f"  sl: {d.sl}  |  tp: {d.tp}")
+            lines.append(f"  price: {request.get('price') if request else decision.price}")
+            lines.append(f"  sl: {decision.sl}  |  tp: {decision.tp}")
             lines.append(f"  deviation: {request.get('deviation') if request else '?'}")
             lines.append(f"  dry_run: {dry_run}")
 

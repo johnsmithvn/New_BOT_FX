@@ -55,8 +55,8 @@ class TelegramConfig:
     api_hash: str
     session_name: str
     phone: str
-    source_chats: list[str]
-    admin_chat: str
+    source_chats: list[str | int]
+    admin_chat: str | int
     session_reset_hours: int
 
 
@@ -163,13 +163,22 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     else:
         load_dotenv()
 
+    raw_source = _env_list("TELEGRAM_SOURCE_CHATS")
+    
+    def _parse_chat(val: str) -> str | int:
+        val = val.split('#')[0].strip()
+        return int(val) if val.lstrip('-').isdigit() else val
+
+    source_chats = [_parse_chat(c) for c in raw_source]
+    admin_chat = _parse_chat(_env("TELEGRAM_ADMIN_CHAT"))
+
     telegram = TelegramConfig(
         api_id=_env_int("TELEGRAM_API_ID", 0),
         api_hash=_env("TELEGRAM_API_HASH"),
         session_name=_env("TELEGRAM_SESSION_NAME", "forex_bot"),
         phone=_env("TELEGRAM_PHONE"),
-        source_chats=_env_list("TELEGRAM_SOURCE_CHATS"),
-        admin_chat=_env("TELEGRAM_ADMIN_CHAT"),
+        source_chats=source_chats,
+        admin_chat=admin_chat,
         session_reset_hours=_env_int("SESSION_RESET_HOURS", 12),
     )
 

@@ -27,7 +27,7 @@ class TelegramAlerter:
     def __init__(
         self,
         client: TelegramClient | None = None,
-        admin_chat: str = "",
+        admin_chat: str | int = "",
         cooldown_seconds: int = 300,
     ) -> None:
         self._client = client

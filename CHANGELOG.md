@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.5.4 - 2026-03-15
+
+### Fixed
+- **CRITICAL**: Fixed Telethon `get_entity` failures by resolving `TELEGRAM_ADMIN_CHAT` and `TELEGRAM_SOURCE_CHATS` string IDs to integers. Previously, integer IDs like `"6638536622   #@ShuMaou"` passed from `.env` caused Telethon to attempt (and fail) to resolve them as usernames because `python-dotenv` string typing retained inline comments. These are now stripped and purely numerical sequences are properly coerced into correct Python `int` objects.
+
 ## 0.5.2 - 2026-03-15
 
 ### Added
