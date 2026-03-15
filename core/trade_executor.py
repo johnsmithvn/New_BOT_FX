@@ -204,6 +204,20 @@ class TradeExecutor:
         total = mt5.positions_total()
         return total if total is not None else 0
 
+    def get_position_symbols(self) -> list[str]:
+        """Return list of symbols from all open MT5 positions.
+
+        Used by ExposureGuard to check per-symbol / correlation limits.
+        Returns empty list on failure.
+        """
+        try:
+            positions = mt5.positions_get()
+            if positions is None:
+                return []
+            return [p.symbol for p in positions]
+        except Exception:
+            return []
+
     def orders_total(self) -> int:
         """Return the number of currently active pending orders."""
         total = mt5.orders_total()

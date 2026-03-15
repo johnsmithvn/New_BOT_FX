@@ -92,12 +92,5 @@ class ExposureGuard:
         return None
 
     def _get_open_positions(self) -> list[str]:
-        """Get list of symbols from open MT5 positions."""
-        try:
-            import MetaTrader5 as mt5
-            positions = mt5.positions_get()
-            if positions is None:
-                return []
-            return [p.symbol for p in positions]
-        except Exception:
-            return []
+        """Get list of symbols from open MT5 positions via TradeExecutor."""
+        return self._executor.get_position_symbols()

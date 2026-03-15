@@ -37,6 +37,13 @@
 - [x] `CHANGELOG.md` — v0.5.0 entry
 - [x] `PLAN.md` — P4 complete, P5 in progress
 
+### P5 Bug Fixes (v0.5.1)
+- [x] `core/exposure_guard.py` — use `TradeExecutor.get_position_symbols()` instead of raw `mt5.positions_get()`
+- [x] `core/trade_executor.py` — add `get_position_symbols()` method
+- [x] `core/order_builder.py` — `build_request()` must call `compute_deviation(spread_points)` instead of `self._base_deviation`
+- [x] `main.py` — pass `spread_points` to `build_request()`
+- [x] `CHANGELOG.md` — v0.5.1 entry
+
 ## Medium Priority
 - [ ] Command response via Telegram — send command result back to admin chat
 - [ ] Position manager Telegram alerts — notify on breakeven/trailing stop moves
@@ -48,3 +55,4 @@
 - [x] All P3 tasks (dry-run, circuit breaker, alerting, storage hardening, signal lifecycle DB, entry drift guard, execution metrics, ENV sync, session metrics, heartbeat log)
 - [x] All P4 tasks (daily risk guard, startup position sync, VPS runbook, monitoring doc, log rotation validation, update procedure)
 - [x] All P5 High Priority tasks (exposure guard, dynamic deviation, position manager, management commands)
+- [x] All P5 Bug Fixes (exposure guard TradeExecutor delegation, dynamic deviation wiring)

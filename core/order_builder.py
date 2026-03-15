@@ -180,6 +180,7 @@ class OrderBuilder:
         volume: float,
         bid: float,
         ask: float,
+        spread_points: float = 0.0,
     ) -> dict:
         """Build a complete MT5 order request dict.
 
@@ -193,12 +194,14 @@ class OrderBuilder:
         Returns:
             MT5-compatible request dict.
         """
+        effective_deviation = self.compute_deviation(spread_points)
+
         request: dict = {
             "symbol": signal.symbol,
             "volume": volume,
             "sl": decision.sl if decision.sl else 0.0,
             "tp": decision.tp if decision.tp else 0.0,
-            "deviation": self._base_deviation,
+            "deviation": effective_deviation,
             "magic": self._magic,
             "comment": f"signal:{signal.fingerprint[:8]}",
         }

@@ -74,6 +74,8 @@ when parsing fails.
   - BUY: market vs buy limit vs buy stop
   - SELL: market vs sell limit vs sell stop
 - Build MT5 request payload (action, type, price, SL, TP, metadata).
+- Dynamic deviation: `compute_deviation(spread_points)` widens slippage tolerance
+  during high-spread conditions when `DYNAMIC_DEVIATION_MULTIPLIER > 0`.
 Price Reference Rule
 
 Order decision must use correct MT5 reference prices:
@@ -100,6 +102,7 @@ SELL:
 - Ensure symbol selected and tradeable.
 - Execute `order_send` with bounded retry.
 - Return normalized execution result.
+- `get_position_symbols()`: list open position symbols (used by ExposureGuard).
 
 ### `core/storage.py`
 - SQLite persistence for:
@@ -164,7 +167,7 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 
 ### `core/exposure_guard.py`
 - Prevents over-concentration on correlated symbols.
-- Queries live MT5 positions on every signal (no stale counters).
+- Queries live MT5 positions via `TradeExecutor.get_position_symbols()` on every signal (no stale counters).
 - `MAX_SAME_SYMBOL_TRADES`: max open positions on same symbol.
 - `MAX_CORRELATED_TRADES`: max open across configurable correlation groups.
 

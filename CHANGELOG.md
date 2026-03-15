@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.5.1 - 2026-03-15
+
+### Fixed
+- **CRITICAL**: `core/exposure_guard.py` — `_get_open_positions()` was directly importing `MetaTrader5` and calling `mt5.positions_get()`, bypassing the injected `TradeExecutor`. Now delegates to `TradeExecutor.get_position_symbols()`.
+- **CRITICAL**: `core/order_builder.py` — `build_request()` used `self._base_deviation` (hardcoded base), making `compute_deviation()` and `DYNAMIC_DEVIATION_MULTIPLIER` dead code. Now calls `compute_deviation(spread_points)` for effective dynamic deviation.
+
+### Changed
+- `core/trade_executor.py` — added `get_position_symbols()` method for `ExposureGuard` to query positions through the executor abstraction
+- `core/order_builder.py` — `build_request()` accepts `spread_points` parameter
+- `main.py` — passes `spread_points` to `order_builder.build_request()`
+
 ## 0.5.0 - 2026-03-15
 
 ### Added

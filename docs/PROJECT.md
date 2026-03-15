@@ -2,7 +2,7 @@
 
 ## Project Overview
 - Name: `telegram-mt5-bot`
-- Version: `v0.5.0`
+- Version: `v0.5.1`
 - Goal: Run a low-latency Python bot that reads Telegram trading signals and executes MT5 orders safely.
 - Scope: Single-process runtime, signal-to-trade automation, operational reliability.
 

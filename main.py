@@ -571,7 +571,10 @@ class Bot:
         # point and pip_size already resolved in Step 4
 
         decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
-        request = self.order_builder.build_request(signal_obj, decision, volume, bid, ask)
+        request = self.order_builder.build_request(
+            signal_obj, decision, volume, bid, ask,
+            spread_points=current_spread if current_spread else 0.0,
+        )
 
         # ── Step 8b: Entry drift guard for MARKET orders ─────────
         #    When entry is explicit but order is MARKET (within tolerance),
@@ -818,7 +821,7 @@ class Bot:
         # Banner
         s = self.settings
         print("=" * 55)
-        print(f"  telegram-mt5-bot  v0.5.0  {'[DRY RUN]' if dry_run else '[LIVE]'}")
+        print(f"  telegram-mt5-bot  v0.5.1  {'[DRY RUN]' if dry_run else '[LIVE]'}")
         print("=" * 55)
         print(f"  Risk mode    : {s.risk.mode}")
         print(f"  Max spread   : {s.safety.max_spread_pips} pips")
