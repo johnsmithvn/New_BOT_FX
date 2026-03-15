@@ -292,6 +292,84 @@ class Bot:
         """DailyRiskGuard limit breach callback → Telegram alert."""
         self.alerter.send_alert_sync(alert_key, message)
 
+    # ── Signal Debug ─────────────────────────────────────────────
+
+    def _send_signal_debug(
+        self,
+        raw_text: str,
+        signal: ParsedSignal | None,
+        bid: float,
+        ask: float,
+        spread: float | None,
+        *,
+        rejected: bool = False,
+        reject_reason: str = "",
+        decision: object | None = None,
+        volume: float | None = None,
+        request: dict | None = None,
+    ) -> None:
+        """Send pipeline debug message to admin Telegram.
+
+        Called at 3 pipeline points:
+        - Validation FAIL  (rejected=True, reject_reason set)
+        - Drift FAIL       (rejected=True, reject_reason set)
+        - Order Decision   (decision + volume + request set)
+        """
+        if not self.settings.runtime.debug_signal_decision:
+            return
+
+        lines: list[str] = []
+
+        # Header
+        if rejected:
+            lines.append("📡 SIGNAL DEBUG — REJECTED")
+        else:
+            lines.append("📡 SIGNAL DEBUG — ORDER")
+        lines.append("")
+
+        # Raw signal (truncate to 500 chars)
+        lines.append("Raw:")
+        raw_display = raw_text[:500]
+        lines.append(raw_display)
+        lines.append("")
+
+        # Parsed
+        if signal:
+            lines.append("Parsed:")
+            lines.append(f"  symbol: {signal.symbol}")
+            lines.append(f"  side: {signal.side.value}")
+            lines.append(f"  entry: {signal.entry}")
+            lines.append(f"  sl: {signal.sl}")
+            lines.append(f"  tp: {signal.tp}")
+            lines.append("")
+        else:
+            lines.append("Parsed: FAIL (could not parse)")
+            lines.append("")
+
+        # Market
+        lines.append("Market:")
+        lines.append(f"  bid: {bid}  |  ask: {ask}")
+        lines.append(f"  spread: {spread} pts")
+        lines.append("")
+
+        # Decision or Rejection
+        if rejected:
+            lines.append(f"❌ Rejected: {reject_reason}")
+        elif decision is not None:
+            from core.models import TradeDecision
+            d: TradeDecision = decision  # type: ignore[assignment]
+            dry_run = self.settings.runtime.dry_run
+            lines.append("✅ Decision:")
+            lines.append(f"  order_type: {d.order_kind.value}")
+            lines.append(f"  volume: {volume}")
+            lines.append(f"  price: {request.get('price') if request else d.price}")
+            lines.append(f"  sl: {d.sl}  |  tp: {d.tp}")
+            lines.append(f"  deviation: {request.get('deviation') if request else '?'}")
+            lines.append(f"  dry_run: {dry_run}")
+
+        msg = "\n".join(lines)
+        self.alerter.send_debug_sync(msg)
+
     # ── Smart Dry-Run Helpers ────────────────────────────────────
 
     def _simulate_tick(self, signal: ParsedSignal) -> tuple[float, float, float]:
@@ -548,6 +626,10 @@ class Bot:
             self.storage.store_signal(signal_obj, SignalStatus.REJECTED)
             self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": vr.reason})
             self._metrics.rejected += 1
+            self._send_signal_debug(
+                raw_text, signal_obj, bid, ask, current_spread,
+                rejected=True, reject_reason=vr.reason,
+            )
             print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{vr.reason}\"")
             return
 
@@ -588,8 +670,18 @@ class Bot:
                 self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.REJECTED)
                 self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": drift_result.reason})
                 self._metrics.rejected += 1
+                self._send_signal_debug(
+                    raw_text, signal_obj, bid, ask, current_spread,
+                    rejected=True, reject_reason=f"entry drift: {drift_result.reason}",
+                )
                 print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order=MARKET drift=REJECTED reason=\"{drift_result.reason}\"")
                 return
+
+        # ── Debug message: order decision ──────────────────────────
+        self._send_signal_debug(
+            raw_text, signal_obj, bid, ask, current_spread,
+            decision=decision, volume=volume, request=request,
+        )
 
         log_event(
             "order_submitted",

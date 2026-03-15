@@ -96,6 +96,29 @@ class TelegramAlerter:
                 reason="no event loop",
             )
 
+    # ── Debug methods (no rate limiting) ─────────────────────────
+
+    async def send_debug(self, message: str) -> None:
+        """Send a debug message to admin chat — NO rate limiting."""
+        if not self._client or not self._admin_chat:
+            log_event("debug_skipped", reason="no client or admin chat configured")
+            return
+
+        try:
+            entity = await self._client.get_entity(self._admin_chat)
+            await self._client.send_message(entity, message)
+            log_event("debug_sent")
+        except Exception as exc:
+            log_event("debug_send_failed", error=str(exc))
+
+    def send_debug_sync(self, message: str) -> None:
+        """Schedule debug message from sync context — NO rate limiting."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.send_debug(message))
+        except RuntimeError:
+            log_event("debug_skipped", reason="no event loop")
+
     # ── Convenience methods ──────────────────────────────────────
 
     async def alert_circuit_breaker_opened(self) -> None:

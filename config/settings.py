@@ -136,6 +136,7 @@ class RuntimeConfig:
     circuit_breaker_cooldown: int
     storage_retention_days: int
     heartbeat_interval_minutes: int  # heartbeat frequency; 0 = disabled
+    debug_signal_decision: bool      # send pipeline debug to admin Telegram
 
 
 @dataclass(frozen=True)
@@ -232,6 +233,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     )
 
     _dry_run_raw = _env("DRY_RUN", "false").lower()
+    _debug_raw = _env("DEBUG_SIGNAL_DECISION", "false").lower()
     runtime = RuntimeConfig(
         dry_run=_dry_run_raw in ("true", "1", "yes"),
         alert_cooldown_seconds=_env_int("ALERT_COOLDOWN_SECONDS", 300),
@@ -239,6 +241,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         circuit_breaker_cooldown=_env_int("CIRCUIT_BREAKER_COOLDOWN", 300),
         storage_retention_days=_env_int("STORAGE_RETENTION_DAYS", 30),
         heartbeat_interval_minutes=_env_int("HEARTBEAT_INTERVAL_MINUTES", 30),
+        debug_signal_decision=_debug_raw in ("true", "1", "yes"),
     )
 
     return Settings(

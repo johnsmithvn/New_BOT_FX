@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 0.5.2 - 2026-03-15
+
+### Added
+- Signal debug messages: stream detailed decision logs directly to admin Telegram chat
+- Configurable via `DEBUG_SIGNAL_DECISION` flag in `.env`
+- Added `send_debug_sync` and `send_debug` to `TelegramAlerter` — deliberately bypasses standard alert cooldowns to ensure every signal gets logged
+- Triggers at 3 key pipeline points in `main.py`:
+  - `Validation FAIL`: logs raw, parsed text, market prices, and specific rule failure reason
+  - `Entry drift FAIL`: logs rejection for market order drift
+  - `Order decision SUCCESS`: logs exact volume, order type (MARKET/LIMIT/STOP), and deviation used
+- Documentation: `docs/DEBUG_SIGNAL.md`
+
 ## 0.5.1 - 2026-03-15
 
 ### Fixed

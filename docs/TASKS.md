@@ -45,6 +45,7 @@
 - [x] `CHANGELOG.md` — v0.5.1 entry
 
 ## Medium Priority
+- [x] Signal Debug Messages — send raw, parsed, market, and decision data via Telegram
 - [ ] Command response via Telegram — send command result back to admin chat
 - [ ] Position manager Telegram alerts — notify on breakeven/trailing stop moves
 
