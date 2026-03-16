@@ -32,7 +32,7 @@ class SignalValidator:
     All distance/spread values use PIPS as unit.
 
     Rules enforced (priority order — first reject wins):
-    1. Required fields (symbol, side).
+    1. Required fields (symbol, side, SL, TP).
     2. Duplicate filter (fingerprint within TTL).
     3. SL coherence (BUY: SL < entry, SELL: SL > entry).
     4. TP coherence (BUY: TP > entry, SELL: TP < entry).
@@ -101,6 +101,12 @@ class SignalValidator:
 
         if not signal.side:
             return ValidationResult(False, "missing side")
+
+        if signal.sl is None:
+            return ValidationResult(False, "missing Stop Loss (SL)")
+
+        if not signal.tp:
+            return ValidationResult(False, "missing Take Profit (TP)")
 
         # Rule 2: Duplicate filter
         if is_duplicate:
