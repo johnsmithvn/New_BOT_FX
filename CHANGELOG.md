@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 0.5.5 - 2026-03-15
+
+### Added
+- **Entry Range Parsing**: `SignalParser` now accurately parses signal ranges (e.g., `Buy Gold 5162 - 5170`).
+  - Automatically identifies extreme bounds `[low, high]`.
+  - Determines final execution `entry` strictly by `Side` (uses lowest for `BUY` and highest for `SELL`).
+
+### Changed
+- **Strict Entry Enforcement**: If the parser cannot identify a single entry price and no explicit `MARKET` intent (like `NOW` or `CMP`) is passed, the signal is now explicitly REJECTED as a `ParseFailure` instead of wrongly defaulting to a market execution.
+
+## 0.5.4 - 2026-03-15
+
+### Fixed
+- **CRITICAL**: Fixed Telethon `get_entity` failures by resolving `TELEGRAM_ADMIN_CHAT` and `TELEGRAM_SOURCE_CHATS` string IDs to integers. Previously, integer IDs like `"6638536622   #@ShuMaou"` passed from `.env` caused Telethon to attempt (and fail) to resolve them as usernames because `python-dotenv` string typing retained inline comments. These are now stripped and purely numerical sequences are properly coerced into correct Python `int` objects.
+
+## 0.5.2 - 2026-03-15
+
+### Added
+- Signal debug messages: stream detailed decision logs directly to admin Telegram chat
+- Configurable via `DEBUG_SIGNAL_DECISION` flag in `.env`
+- Added `send_debug_sync` and `send_debug` to `TelegramAlerter` — deliberately bypasses standard alert cooldowns to ensure every signal gets logged
+- Triggers at 3 key pipeline points in `main.py`:
+  - `Validation FAIL`: logs raw, parsed text, market prices, and specific rule failure reason
+  - `Entry drift FAIL`: logs rejection for market order drift
+  - `Order decision SUCCESS`: logs exact volume, order type (MARKET/LIMIT/STOP), and deviation used
+- Documentation: `docs/DEBUG_SIGNAL.md`
+
 ## 0.5.1 - 2026-03-15
 
 ### Fixed

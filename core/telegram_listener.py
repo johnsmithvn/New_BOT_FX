@@ -43,7 +43,7 @@ class TelegramListener:
         api_hash: str,
         session_name: str = "forex_bot",
         phone: str = "",
-        source_chats: list[str] | None = None,
+        source_chats: list[str | int] | None = None,
         session_reset_hours: int = 12,
     ) -> None:
         self._api_id = api_id

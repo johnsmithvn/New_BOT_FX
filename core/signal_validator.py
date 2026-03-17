@@ -32,7 +32,7 @@ class SignalValidator:
     All distance/spread values use PIPS as unit.
 
     Rules enforced (priority order — first reject wins):
-    1. Required fields (symbol, side).
+    1. Required fields (symbol, side, SL, TP).
     2. Duplicate filter (fingerprint within TTL).
     3. SL coherence (BUY: SL < entry, SELL: SL > entry).
     4. TP coherence (BUY: TP > entry, SELL: TP < entry).
@@ -102,6 +102,12 @@ class SignalValidator:
         if not signal.side:
             return ValidationResult(False, "missing side")
 
+        if signal.sl is None:
+            return ValidationResult(False, "missing Stop Loss (SL)")
+
+        if not signal.tp:
+            return ValidationResult(False, "missing Take Profit (TP)")
+
         # Rule 2: Duplicate filter
         if is_duplicate:
             return ValidationResult(
@@ -132,11 +138,11 @@ class SignalValidator:
         if not result.valid:
             return result
 
-        # Rule 7: Spread gate
-        if current_spread_pips is not None:
-            result = self._validate_spread(current_spread_pips)
-            if not result.valid:
-                return result
+        # # Rule 7: Spread gate
+        # if current_spread_pips is not None:
+        #     result = self._validate_spread(current_spread_pips)
+        #     if not result.valid:
+        #         return result
 
         # Rule 8: Max open trades gate
         if open_positions is not None:

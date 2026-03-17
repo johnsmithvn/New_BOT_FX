@@ -55,8 +55,8 @@ class TelegramConfig:
     api_hash: str
     session_name: str
     phone: str
-    source_chats: list[str]
-    admin_chat: str
+    source_chats: list[str | int]
+    admin_chat: str | int
     session_reset_hours: int
 
 
@@ -136,6 +136,7 @@ class RuntimeConfig:
     circuit_breaker_cooldown: int
     storage_retention_days: int
     heartbeat_interval_minutes: int  # heartbeat frequency; 0 = disabled
+    debug_signal_decision: bool      # send pipeline debug to admin Telegram
 
 
 @dataclass(frozen=True)
@@ -162,13 +163,22 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     else:
         load_dotenv()
 
+    raw_source = _env_list("TELEGRAM_SOURCE_CHATS")
+    
+    def _parse_chat(val: str) -> str | int:
+        val = val.split('#')[0].strip()
+        return int(val) if val.lstrip('-').isdigit() else val
+
+    source_chats = [_parse_chat(c) for c in raw_source]
+    admin_chat = _parse_chat(_env("TELEGRAM_ADMIN_CHAT"))
+
     telegram = TelegramConfig(
         api_id=_env_int("TELEGRAM_API_ID", 0),
         api_hash=_env("TELEGRAM_API_HASH"),
         session_name=_env("TELEGRAM_SESSION_NAME", "forex_bot"),
         phone=_env("TELEGRAM_PHONE"),
-        source_chats=_env_list("TELEGRAM_SOURCE_CHATS"),
-        admin_chat=_env("TELEGRAM_ADMIN_CHAT"),
+        source_chats=source_chats,
+        admin_chat=admin_chat,
         session_reset_hours=_env_int("SESSION_RESET_HOURS", 12),
     )
 
@@ -232,6 +242,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
     )
 
     _dry_run_raw = _env("DRY_RUN", "false").lower()
+    _debug_raw = _env("DEBUG_SIGNAL_DECISION", "false").lower()
     runtime = RuntimeConfig(
         dry_run=_dry_run_raw in ("true", "1", "yes"),
         alert_cooldown_seconds=_env_int("ALERT_COOLDOWN_SECONDS", 300),
@@ -239,6 +250,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         circuit_breaker_cooldown=_env_int("CIRCUIT_BREAKER_COOLDOWN", 300),
         storage_retention_days=_env_int("STORAGE_RETENTION_DAYS", 30),
         heartbeat_interval_minutes=_env_int("HEARTBEAT_INTERVAL_MINUTES", 30),
+        debug_signal_decision=_debug_raw in ("true", "1", "yes"),
     )
 
     return Settings(

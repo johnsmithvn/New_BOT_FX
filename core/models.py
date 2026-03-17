@@ -41,6 +41,7 @@ class ParsedSignal:
     side: Side
     entry: float | None  # None means market execution
     sl: float | None
+    entry_range: list[float] | None = None  # [low, high] if range detected
     tp: list[float] = field(default_factory=list)
     raw_text: str = ""
     source_chat_id: str = ""

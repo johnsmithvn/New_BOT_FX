@@ -44,7 +44,13 @@
 - [x] `main.py` — pass `spread_points` to `build_request()`
 - [x] `CHANGELOG.md` — v0.5.1 entry
 
+### P5 Bug Fixes (v0.5.3 - v0.5.5)
+- [x] **v0.5.3:** Fix static `object` type analysis error in `_send_signal_debug` for `order_kind`.
+- [x] **v0.5.4:** `config/settings.py` — Parse `TELEGRAM_ADMIN_CHAT` and `TELEGRAM_SOURCE_CHATS` purely numerical fields into python integers so that Telethon's `get_entity` resolves them correctly instead of failing as usernames.
+- [x] **v0.5.5:** Extract explicit entry ranges (e.g. `5162 - 5170`) to resolve safe entries based on side (`low` for BUY, `high` for SELL) and strictly reject unparseable missing entries.
+
 ## Medium Priority
+- [x] Signal Debug Messages — send raw, parsed, market, and decision data via Telegram
 - [ ] Command response via Telegram — send command result back to admin chat
 - [ ] Position manager Telegram alerts — notify on breakeven/trailing stop moves
 
