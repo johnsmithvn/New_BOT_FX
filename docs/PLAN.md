@@ -1,8 +1,8 @@
 # PLAN
 
 ## Current Phase
-- Phase: `All phases complete (P0–P5)`
-- Status: All high-priority tasks delivered. See `docs/TASKS.md` for medium-priority backlog.
+- Phase: `P6 - Multi-Channel & Trade Tracking (complete)`
+- Status: All core + medium-priority items done. See `docs/TASKS.md` for details.
 
 ## Execution Phases
 
@@ -71,6 +71,21 @@
   - 10 new configurable env keys, all opt-in (default disabled)
 - Status: `complete`
 
+### P6 - Multi-Channel & Trade Outcome Tracking
+- Goal:
+  - Support multiple Telegram signal channels with per-channel rules.
+  - Track trade outcomes (PnL) and reply under the original signal.
+- Major deliverables:
+  - Versioned schema migration system in `core/storage.py`
+  - `core/channel_manager.py` — per-channel rule configuration
+  - `core/trade_tracker.py` — background deal polling, PnL tracking, reply messages
+  - `core/telegram_alerter.py` — `reply_to_message()` for trade outcome threading
+  - `core/position_manager.py` — per-channel breakeven/trailing/partial rules
+  - Fingerprint updated to include `source_chat_id` (breaking change)
+  - New DB tables: `trades`, `tracker_state`, `schema_versions`
+  - 1 new env key: `TRADE_TRACKER_POLL_SECONDS`
+- Status: `complete`
+
 ## Phase Completion Rule
 - Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
 - On completion:
@@ -79,6 +94,6 @@
   - Regenerate `docs/TASKS.md` for the new current phase
 
 ## What's Next
-- Medium-priority P5 backlog: command response via Telegram, position manager alerts
-- Consider P6: extended parser formats, multi-account support, web dashboard
-
+- v0.7.0 done: per-channel metrics, message edit wiring, store_event channel_id, reply throttle
+- Remaining backlog: parser overrides per detector, command response via Telegram, position manager Telegram alerts
+- Consider P7: extended parser formats, multi-account support, web dashboard

@@ -21,6 +21,8 @@ from utils.logger import log_event
 if TYPE_CHECKING:
     from core.trade_executor import TradeExecutor
     from config.settings import Settings
+    from core.channel_manager import ChannelManager
+    from core.storage import Storage
 
 
 class PositionManager:
@@ -28,22 +30,33 @@ class PositionManager:
 
     Runs as a background asyncio task, polling MT5 positions
     every POSITION_MANAGER_POLL_SECONDS.
+
+    Per-channel rules: if a position's ticket is mapped to a channel_id,
+    uses channel-specific rules from ChannelManager. Falls back to global
+    settings for unknown positions (pre-v0.6.0 or unmapped).
     """
 
     def __init__(
         self,
         executor: TradeExecutor,
         settings: Settings,
+        channel_manager: ChannelManager | None = None,
+        storage: Storage | None = None,
     ) -> None:
         self._executor = executor
+        self._storage = storage
 
-        # Config — all in pips, 0 means disabled
+        # Global defaults — used as fallback when no channel config exists
         self._breakeven_trigger_pips: float = settings.safety.breakeven_trigger_pips
         self._breakeven_lock_pips: float = settings.safety.breakeven_lock_pips
         self._trailing_stop_pips: float = settings.safety.trailing_stop_pips
         self._partial_close_percent: int = settings.safety.partial_close_percent
         self._poll_seconds: int = settings.safety.position_manager_poll_seconds
         self._magic: int = settings.execution.bot_magic_number
+
+        # Per-channel support
+        self._channel_manager = channel_manager
+        self._ticket_to_channel: dict[int, str] = {}
 
         # Track which positions we've already partially closed
         self._partially_closed: set[int] = set()
@@ -67,6 +80,9 @@ class PositionManager:
             log_event("position_manager_disabled")
             return
 
+        # Rebuild ticket→channel cache from DB on startup
+        self._rebuild_cache()
+
         self._poll_task = asyncio.create_task(self._poll_loop())
         log_event(
             "position_manager_started",
@@ -75,6 +91,7 @@ class PositionManager:
             trailing_stop_pips=self._trailing_stop_pips,
             partial_close_percent=self._partial_close_percent,
             poll_seconds=self._poll_seconds,
+            cached_tickets=len(self._ticket_to_channel),
         )
 
     async def stop(self) -> None:
@@ -98,6 +115,64 @@ class PositionManager:
                 break
             except Exception as exc:
                 log_event("position_manager_error", error=str(exc))
+
+    # ── Cache Management ─────────────────────────────────────────
+
+    def register_ticket(self, ticket: int, channel_id: str) -> None:
+        """Register a ticket→channel mapping after order execution.
+
+        Called from the pipeline after successful order execution.
+        """
+        if ticket and channel_id:
+            self._ticket_to_channel[ticket] = channel_id
+
+    def _rebuild_cache(self) -> None:
+        """Rebuild ticket→channel cache from DB on startup.
+
+        Ensures positions opened before restart retain their channel context.
+        """
+        if not self._storage:
+            return
+        try:
+            mapping = self._storage.get_open_tickets()
+            self._ticket_to_channel.update(mapping)
+            log_event(
+                "position_manager_cache_rebuilt",
+                tickets=len(mapping),
+            )
+        except Exception as exc:
+            log_event(
+                "position_manager_cache_error",
+                error=str(exc),
+            )
+
+    def _get_rules_for_ticket(self, ticket: int) -> dict:
+        """Get position management rules for a specific ticket.
+
+        Looks up channel_id from cache, then gets channel-specific rules.
+        Falls back to global defaults if no channel mapping or no ChannelManager.
+        """
+        defaults = {
+            "breakeven_trigger_pips": self._breakeven_trigger_pips,
+            "breakeven_lock_pips": self._breakeven_lock_pips,
+            "trailing_stop_pips": self._trailing_stop_pips,
+            "partial_close_percent": self._partial_close_percent,
+        }
+
+        if not self._channel_manager:
+            return defaults
+
+        channel_id = self._ticket_to_channel.get(ticket)
+        if not channel_id:
+            return defaults
+
+        channel_rules = self._channel_manager.get_rules(channel_id)
+        # Merge: channel rules override defaults
+        merged = dict(defaults)
+        for key in defaults:
+            if key in channel_rules:
+                merged[key] = channel_rules[key]
+        return merged
 
     def _check_positions(self) -> None:
         """Check all open positions and apply rules."""
@@ -138,37 +213,48 @@ class PositionManager:
             else:
                 continue
 
+            # Get per-channel rules for this position
+            rules = self._get_rules_for_ticket(pos.ticket)
+
             # Breakeven
-            if self._breakeven_trigger_pips > 0:
+            be_trigger = rules["breakeven_trigger_pips"]
+            be_lock = rules["breakeven_lock_pips"]
+            if be_trigger > 0:
                 self._apply_breakeven(
-                    mt5, pos, profit_pips, pip_size, point, digits
+                    mt5, pos, profit_pips, pip_size, point, digits,
+                    trigger_pips=be_trigger, lock_pips=be_lock,
                 )
 
             # Trailing stop
-            if self._trailing_stop_pips > 0:
+            trail_pips = rules["trailing_stop_pips"]
+            if trail_pips > 0:
                 self._apply_trailing_stop(
-                    mt5, pos, current_price, profit_pips, pip_size, point, digits
+                    mt5, pos, current_price, profit_pips, pip_size, point, digits,
+                    trail_pips=trail_pips,
                 )
 
             # Partial close
-            if self._partial_close_percent > 0:
+            pc_percent = rules["partial_close_percent"]
+            if pc_percent > 0:
                 self._apply_partial_close(
-                    mt5, pos, profit_pips, symbol_info
+                    mt5, pos, profit_pips, symbol_info,
+                    close_percent=pc_percent,
                 )
 
     def _apply_breakeven(
         self, mt5, pos, profit_pips: float,
         pip_size: float, point: float, digits: int,
+        trigger_pips: float = 0, lock_pips: float = 0,
     ) -> None:
         """Move SL to entry + lock pips when profit reaches trigger."""
         if pos.ticket in self._breakeven_applied:
             return
 
-        if profit_pips < self._breakeven_trigger_pips:
+        if profit_pips < trigger_pips:
             return
 
         # Calculate breakeven SL
-        lock_distance = self._breakeven_lock_pips * pip_size
+        lock_distance = lock_pips * pip_size
 
         if pos.type == 0:  # BUY
             new_sl = pos.price_open + lock_distance
@@ -212,13 +298,14 @@ class PositionManager:
     def _apply_trailing_stop(
         self, mt5, pos, current_price: float,
         profit_pips: float, pip_size: float, point: float, digits: int,
+        trail_pips: float = 0,
     ) -> None:
         """Trail SL at fixed pip distance from current price."""
         # Only trail when in profit
         if profit_pips <= 0:
             return
 
-        trail_distance = self._trailing_stop_pips * pip_size
+        trail_distance = trail_pips * pip_size
 
         if pos.type == 0:  # BUY
             new_sl = current_price - trail_distance
@@ -259,6 +346,7 @@ class PositionManager:
 
     def _apply_partial_close(
         self, mt5, pos, profit_pips: float, symbol_info,
+        close_percent: int = 0,
     ) -> None:
         """Close a percentage of volume when first TP is reached."""
         if pos.ticket in self._partially_closed:
@@ -278,7 +366,7 @@ class PositionManager:
             return
 
         # Calculate partial volume
-        close_volume = pos.volume * (self._partial_close_percent / 100.0)
+        close_volume = pos.volume * (close_percent / 100.0)
         close_volume = max(symbol_info.volume_min, close_volume)
         close_volume = round(
             close_volume / symbol_info.volume_step
@@ -313,7 +401,7 @@ class PositionManager:
                 symbol=pos.symbol,
                 closed_volume=close_volume,
                 remaining_volume=round(pos.volume - close_volume, 2),
-                percent=self._partial_close_percent,
+                percent=close_percent,
             )
         else:
             retcode = result.retcode if result else -1

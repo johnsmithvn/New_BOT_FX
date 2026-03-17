@@ -1,8 +1,8 @@
 # telegram-mt5-bot
 
-Automated Forex / CFD signal → MT5 execution bot.
+Automated Forex / CFD signal → MT5 execution bot with multi-channel support.
 
-Listens to Telegram channels for trading signals, parses them, validates safety rules, and executes orders on MetaTrader 5.
+Listens to Telegram channels for trading signals, parses them, validates safety rules, executes orders on MetaTrader 5, and tracks trade outcomes with PnL reply messages.
 
 ---
 
@@ -128,7 +128,11 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your credentials and settings
 
-# 3. Run
+# 3. Multi-channel setup (optional)
+cp config/channels.example.json config/channels.json
+# Edit channels.json with per-channel rules
+
+# 4. Run
 python main.py
 ```
 
@@ -172,7 +176,10 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 
 ```
 ├── main.py                      # Entry point, pipeline orchestration
-├── config/settings.py           # Typed config from .env
+├── config/
+│   ├── settings.py              # Typed config from .env
+│   ├── channels.json            # Per-channel rules (created from .example)
+│   └── channels.example.json    # Channel config template
 ├── core/
 │   ├── models.py                # Data contracts (ParsedSignal, ExecutionResult, etc.)
 │   ├── signal_parser/           # 7-module parser pipeline
@@ -180,13 +187,15 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 │   ├── risk_manager.py          # Position sizing
 │   ├── order_builder.py         # Order type decision + MT5 request builder
 │   ├── trade_executor.py        # MT5 connection + bounded retry execution
-│   ├── storage.py               # SQLite persistence (WAL mode)
+│   ├── storage.py               # SQLite persistence (WAL mode, versioned migrations)
 │   ├── telegram_listener.py     # Telethon listener + auto-reconnect
-│   ├── telegram_alerter.py      # Rate-limited admin alerts
+│   ├── telegram_alerter.py      # Rate-limited admin alerts + reply threading
 │   ├── circuit_breaker.py       # CLOSED/OPEN/HALF_OPEN trade safety
 │   ├── daily_risk_guard.py      # Poll-based daily risk limits (MT5 deal history)
 │   ├── exposure_guard.py        # Per-symbol + correlation group limits
-│   ├── position_manager.py      # Breakeven, trailing stop, partial close
+│   ├── position_manager.py      # Breakeven, trailing stop, partial close (per-channel)
+│   ├── channel_manager.py       # Per-channel rule configuration
+│   ├── trade_tracker.py         # Background deal polling, PnL tracking, reply messages
 │   ├── command_parser.py        # Management command parser
 │   ├── command_executor.py      # Execute management commands vs MT5
 │   ├── order_lifecycle_manager.py # Pending order TTL expiration
@@ -220,7 +229,21 @@ Telegram NewMessage
   → order_builder.decide_order_type() + build_request()
   → validator.validate_entry_drift() [MARKET orders only]
   → trade_executor.execute() [or DRY_RUN simulate]
-  → storage.store_signal() + store_order() + store_event()
+  → storage.store_signal() + store_order() + store_event(channel_id)
+```
+
+### Background Tasks
+```
+TradeTracker: poll MT5 history_deals_get()
+  → match deal → DB order (ticket / position_ticket)
+  → store_trade() → reply_to_message() (PnL under original signal)
+  → partial close throttle (60s cooldown)
+
+PositionManager: poll open positions
+  → per-channel rules from channels.json
+  → breakeven / trailing stop / partial close
+
+Heartbeat: per-channel metrics breakdown
 ```
 
 ## Signal Lifecycle Events (DB Tracing)
@@ -232,9 +255,27 @@ signal_received → signal_parsed → signal_submitted → signal_executed
                                 → signal_failed (with retcode)
 ```
 
+## Multi-Channel Setup
+
+To process signals from multiple Telegram channels with per-channel rules:
+
+1. Copy the template:
+   ```bash
+   cp config/channels.example.json config/channels.json
+   ```
+
+2. Edit `config/channels.json` — set per-channel rules (breakeven, trailing stop, partial close).
+   Channels not listed fall back to the `"default"` section or global `.env` values.
+
+3. **Trade Outcome Tracking** — set `TRADE_TRACKER_POLL_SECONDS` in `.env` (default 0 = disabled):
+   ```env
+   TRADE_TRACKER_POLL_SECONDS=30
+   ```
+   When enabled, the bot polls MT5 deal history, tracks PnL, and replies under the original Telegram signal.
+
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.5.0**
+Current: **v0.7.0**
 

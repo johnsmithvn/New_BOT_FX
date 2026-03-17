@@ -48,6 +48,8 @@ class ParsedSignal:
     source_message_id: str = ""
     received_at: datetime = field(default_factory=datetime.utcnow)
     fingerprint: str = ""
+    parse_confidence: float = 1.0     # 0.0-1.0, how confident the parser is
+    parse_source: str = "standard"    # which parser/rule produced this signal
 
 
 @dataclass

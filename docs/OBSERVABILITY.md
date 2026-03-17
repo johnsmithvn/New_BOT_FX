@@ -42,6 +42,21 @@ Signals stored in DB have status:
 - `partial_close_executed` — volume partially closed
 - `exposure_blocked` — signal rejected by exposure guard
 
+## Trade Outcome Events (v0.6.0)
+
+- `trade_tracked` — closing deal matched to DB order, PnL recorded
+- `trade_tracker_orphan_deal` — deal not matched to any bot order
+- `pending_fill_detected` — pending order filled, position_ticket updated
+- `trade_tracker_partial_throttled` — partial close reply skipped (60s cooldown, v0.7.0)
+
+## Message Edit Events (v0.7.0)
+
+- `edit_received` — edited message detected
+- `edit_no_original` — no matching signal found for this message
+- `edit_decision` — handler produced decision (action + reason)
+- `edit_cancel_attempted` — lifecycle manager cancel by fingerprint
+- `edit_reprocess` — edited signal re-submitted through pipeline
+
 ## Log Format
 
 Logs are structured JSON (loguru file sink).

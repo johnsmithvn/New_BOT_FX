@@ -40,6 +40,8 @@ from core.telegram_alerter import TelegramAlerter
 from core.daily_risk_guard import DailyRiskGuard
 from core.exposure_guard import ExposureGuard
 from core.position_manager import PositionManager
+from core.channel_manager import ChannelManager
+from core.trade_tracker import TradeTracker
 from core.command_parser import CommandParser
 from core.command_executor import CommandExecutor
 from utils.logger import setup_logger, log_event
@@ -80,6 +82,10 @@ class _SessionMetrics:
     def max_execution_latency_ms(self) -> int:
         return self._max_lat_ms
 
+    def as_summary(self) -> str:
+        """One-line summary for heartbeat per-channel breakdown."""
+        return f"p={self.parsed} e={self.executed} r={self.rejected} f={self.failed}"
+
 
 class Bot:
     """Main bot orchestration.
@@ -104,12 +110,21 @@ class Bot:
         self.daily_guard: DailyRiskGuard | None = None
         self.exposure_guard: ExposureGuard | None = None
         self.position_mgr: PositionManager | None = None
+        self.channel_mgr: ChannelManager | None = None
+        self.trade_tracker: TradeTracker | None = None
         self.command_parser: CommandParser | None = None
         self.command_executor: CommandExecutor | None = None
         self._cleanup_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._metrics = _SessionMetrics()
+        self._channel_metrics: dict[str, _SessionMetrics] = {}
         self._start_time: float = 0.0
+
+    def _get_ch_metrics(self, chat_id: str) -> _SessionMetrics:
+        """Lazy-init per-channel metrics."""
+        if chat_id not in self._channel_metrics:
+            self._channel_metrics[chat_id] = _SessionMetrics()
+        return self._channel_metrics[chat_id]
 
     def _init_components(self) -> None:
         """Initialize all components."""
@@ -246,11 +261,25 @@ class Bot:
                 correlation_groups=corr_groups,
             )
 
-        # Position Manager — live mode only
+        # Channel Manager — always init (fallback to defaults if no config)
+        self.channel_mgr = ChannelManager()
+
+        # Position Manager — live mode only, with channel + storage DI
         if not s.runtime.dry_run:
             self.position_mgr = PositionManager(
                 executor=self.executor,
                 settings=s,
+                channel_manager=self.channel_mgr,
+                storage=self.storage,
+            )
+
+        # Trade Tracker — live mode only
+        if not s.runtime.dry_run:
+            self.trade_tracker = TradeTracker(
+                storage=self.storage,
+                alerter=self.alerter,
+                magic_number=s.execution.bot_magic_number,
+                poll_seconds=s.execution.trade_tracker_poll_seconds,
             )
 
         # Command Parser + Executor
@@ -471,11 +500,13 @@ class Bot:
                 fingerprint="",
                 event_type="signal_received",
                 details={"message_id": message_id, "outcome": "parse_failed"},
+                channel_id=chat_id,
             )
             self.storage.store_event(
                 fingerprint="",
                 event_type="signal_parse_failed",
                 details={"reason": result.reason, "message_id": message_id},
+                channel_id=chat_id,
             )
             print(f"  [PIPELINE] parsed=FAIL reason=\"{result.reason}\"")
             return
@@ -485,6 +516,7 @@ class Bot:
 
         # Count as parsed
         self._metrics.parsed += 1
+        self._get_ch_metrics(chat_id).parsed += 1
 
         log_event(
             "parse_success",
@@ -517,8 +549,9 @@ class Bot:
         if not self.circuit_breaker.is_trading_allowed:
             reason = "circuit breaker OPEN — trading paused"
             log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=reason)
-            self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": reason})
+            self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": reason}, channel_id=signal_obj.source_chat_id)
             self._metrics.rejected += 1
+            self._get_ch_metrics(signal_obj.source_chat_id).rejected += 1
             print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{reason}\"")
             return
 
@@ -527,8 +560,9 @@ class Bot:
             allowed, guard_reason = self.daily_guard.is_trading_allowed
             if not allowed:
                 log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=guard_reason)
-                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": guard_reason})
+                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": guard_reason}, channel_id=signal_obj.source_chat_id)
                 self._metrics.rejected += 1
+                self._get_ch_metrics(signal_obj.source_chat_id).rejected += 1
                 print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{guard_reason}\"")
                 return
 
@@ -537,8 +571,9 @@ class Bot:
             exp_allowed, exp_reason = self.exposure_guard.is_allowed(signal_obj.symbol)
             if not exp_allowed:
                 log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=exp_reason)
-                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": exp_reason})
+                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": exp_reason}, channel_id=signal_obj.source_chat_id)
                 self._metrics.rejected += 1
+                self._get_ch_metrics(signal_obj.source_chat_id).rejected += 1
                 print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=REJECTED reason=\"{exp_reason}\"")
                 return
 
@@ -622,8 +657,9 @@ class Bot:
         if not vr.valid:
             log_event("validation_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=vr.reason)
             self.storage.store_signal(signal_obj, SignalStatus.REJECTED)
-            self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": vr.reason})
+            self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": vr.reason}, channel_id=signal_obj.source_chat_id)
             self._metrics.rejected += 1
+            self._get_ch_metrics(signal_obj.source_chat_id).rejected += 1
             self._send_signal_debug(
                 raw_text, signal_obj, bid, ask, current_spread,
                 rejected=True, reject_reason=vr.reason,
@@ -666,8 +702,9 @@ class Bot:
             if not drift_result.valid:
                 log_event("drift_rejected", fingerprint=fp, symbol=signal_obj.symbol, reason=drift_result.reason)
                 self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.REJECTED)
-                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": drift_result.reason})
+                self.storage.store_event(fingerprint=fp, event_type="signal_rejected", symbol=signal_obj.symbol, details={"reason": drift_result.reason}, channel_id=signal_obj.source_chat_id)
                 self._metrics.rejected += 1
+                self._get_ch_metrics(signal_obj.source_chat_id).rejected += 1
                 self._send_signal_debug(
                     raw_text, signal_obj, bid, ask, current_spread,
                     rejected=True, reject_reason=f"entry drift: {drift_result.reason}",
@@ -690,7 +727,7 @@ class Bot:
             price=request.get("price"),
         )
         self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.SUBMITTED)
-        self.storage.store_event(fingerprint=fp, event_type="signal_submitted", symbol=signal_obj.symbol, details={"order_kind": decision.order_kind.value, "volume": volume, "price": request.get("price")})
+        self.storage.store_event(fingerprint=fp, event_type="signal_submitted", symbol=signal_obj.symbol, details={"order_kind": decision.order_kind.value, "volume": volume, "price": request.get("price")}, channel_id=signal_obj.source_chat_id)
 
         # ── Step 9: Execute ──────────────────────────────────────
         if dry_run:
@@ -706,11 +743,12 @@ class Bot:
                 tp=decision.tp,
             )
             self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.EXECUTED)
-            self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"dry_run": True, "order_kind": decision.order_kind.value})
+            self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"dry_run": True, "order_kind": decision.order_kind.value}, channel_id=signal_obj.source_chat_id)
             self.circuit_breaker.record_success()
             latency_ms = int((time.monotonic() - t_start) * 1000)
             self._metrics.executed += 1
             self._metrics.record_latency(latency_ms)
+            self._get_ch_metrics(signal_obj.source_chat_id).executed += 1
             print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=DRY_RUN_OK vol={volume} latency={latency_ms}ms")
         else:
             exec_result = self.executor.execute(request, fingerprint=fp)
@@ -723,11 +761,20 @@ class Bot:
                     order_kind=decision.order_kind.value,
                     price=request.get("price"), sl=decision.sl, tp=decision.tp,
                     retcode=exec_result.retcode, success=True,
+                    channel_id=getattr(signal_obj, 'source_chat_id', ''),
+                    source_chat_id=signal_obj.source_chat_id,
+                    source_message_id=signal_obj.source_message_id,
                 )
-                self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"ticket": exec_result.ticket, "retcode": exec_result.retcode})
+                # Register ticket→channel for PositionManager
+                if self.position_mgr and exec_result.ticket:
+                    self.position_mgr.register_ticket(
+                        exec_result.ticket, signal_obj.source_chat_id,
+                    )
+                self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"ticket": exec_result.ticket, "retcode": exec_result.retcode}, channel_id=signal_obj.source_chat_id)
                 latency_ms = int((time.monotonic() - t_start) * 1000)
                 self._metrics.executed += 1
                 self._metrics.record_latency(latency_ms)
+                self._get_ch_metrics(signal_obj.source_chat_id).executed += 1
                 print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=SUCCESS ticket={exec_result.ticket} latency={latency_ms}ms")
 
                 # Log remaining TPs
@@ -741,10 +788,14 @@ class Bot:
                     order_kind=decision.order_kind.value,
                     price=request.get("price"), sl=decision.sl, tp=decision.tp,
                     retcode=exec_result.retcode, success=False,
+                    channel_id=getattr(signal_obj, 'source_chat_id', ''),
+                    source_chat_id=signal_obj.source_chat_id,
+                    source_message_id=signal_obj.source_message_id,
                 )
-                self.storage.store_event(fingerprint=fp, event_type="signal_failed", symbol=signal_obj.symbol, details={"retcode": exec_result.retcode, "message": exec_result.message})
+                self.storage.store_event(fingerprint=fp, event_type="signal_failed", symbol=signal_obj.symbol, details={"retcode": exec_result.retcode, "message": exec_result.message}, channel_id=signal_obj.source_chat_id)
                 latency_ms = int((time.monotonic() - t_start) * 1000)
                 self._metrics.failed += 1
+                self._get_ch_metrics(signal_obj.source_chat_id).failed += 1
                 print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=FAILED retcode={exec_result.retcode} latency={latency_ms}ms")
 
     def _process_edit(
@@ -753,8 +804,72 @@ class Bot:
         chat_id: str,
         message_id: str,
     ) -> None:
-        """Process an edited message."""
+        """Process an edited signal message.
+
+        Flow:
+        1. Look up original fingerprint by (chat_id, message_id).
+        2. Delegate to MessageUpdateHandler for decision.
+        3. Act on decision:
+           - IGNORE: log only.
+           - CANCEL_ORDER: cancel pending order via lifecycle_mgr.
+           - NEW_SIGNAL: re-submit edited text through pipeline.
+        """
         log_event("edit_received", source_chat_id=chat_id, source_message_id=message_id)
+
+        # Step 1: Find original signal fingerprint
+        original_fp = self.storage.get_fingerprint_by_message(chat_id, message_id)
+        if not original_fp:
+            log_event(
+                "edit_no_original",
+                source_chat_id=chat_id,
+                source_message_id=message_id,
+                reason="no signal found for this message",
+            )
+            return
+
+        # Step 2: Delegate to handler
+        decision = self.update_handler.handle_edit(
+            edited_text=raw_text,
+            source_chat_id=chat_id,
+            source_message_id=message_id,
+            original_fingerprint=original_fp,
+        )
+
+        log_event(
+            "edit_decision",
+            action=decision.action.value,
+            reason=decision.reason,
+            original_fingerprint=original_fp,
+        )
+
+        # Step 3: Act on decision
+        if decision.action == UpdateAction.IGNORE:
+            return
+
+        if decision.action == UpdateAction.CANCEL_ORDER:
+            # Attempt to cancel pending order via lifecycle manager
+            if self.lifecycle_mgr and not self.settings.runtime.dry_run:
+                cancelled = self.lifecycle_mgr.cancel_by_fingerprint(original_fp)
+                log_event(
+                    "edit_cancel_attempted",
+                    fingerprint=original_fp,
+                    cancelled=cancelled,
+                )
+            self.storage.store_event(
+                fingerprint=original_fp,
+                event_type="edit_order_cancelled",
+                details={"reason": decision.reason},
+                channel_id=chat_id,
+            )
+
+            # If handler also produced a new signal, re-process it
+            if decision.new_signal:
+                log_event(
+                    "edit_reprocess",
+                    fingerprint=original_fp,
+                    new_fingerprint=decision.new_signal.fingerprint,
+                )
+                self._do_process_signal(raw_text, chat_id, message_id)
 
     # ── Background Tasks ─────────────────────────────────────────
 
@@ -861,6 +976,21 @@ class Bot:
             f"{daily_str}"
         )
 
+        # Per-channel breakdown (if multi-channel)
+        if len(self._channel_metrics) > 1:
+            for ch_id, ch_m in sorted(self._channel_metrics.items()):
+                ch_name = self.channel_mgr.get_channel_name(ch_id) if self.channel_mgr else ch_id
+                print(f"             [{ch_name}] {ch_m.as_summary()}")
+                log_event(
+                    "heartbeat_channel",
+                    channel_id=ch_id,
+                    channel_name=ch_name,
+                    parsed=ch_m.parsed,
+                    executed=ch_m.executed,
+                    rejected=ch_m.rejected,
+                    failed=ch_m.failed,
+                )
+
     # ── Startup Position Sync ─────────────────────────────────────
 
     def _sync_positions_on_startup(self) -> None:
@@ -956,6 +1086,8 @@ class Bot:
                 await self.daily_guard.start()
             if self.position_mgr:
                 await self.position_mgr.start()
+            if self.trade_tracker:
+                await self.trade_tracker.start()
 
         self._cleanup_task = asyncio.create_task(self._storage_cleanup_loop())
 
@@ -1033,6 +1165,8 @@ class Bot:
             await self.daily_guard.stop()
         if self.position_mgr:
             await self.position_mgr.stop()
+        if self.trade_tracker:
+            await self.trade_tracker.stop()
         if self.watchdog:
             await self.watchdog.stop()
         if self.lifecycle_mgr:

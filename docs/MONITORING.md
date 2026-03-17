@@ -20,6 +20,9 @@ All alerts are sent to `TELEGRAM_ADMIN_CHAT` via the Telegram Alerter. Each aler
 | `startup_position_warning` | ⚠️ Warning | Boot with positions >= MAX_OPEN_TRADES | Bot will refuse new signals |
 | `bot_started` | 🟢 Info | Bot startup complete | Pipeline active |
 | `bot_stopped` | 🔴 Info | Graceful shutdown | — |
+| `trade_tracked` | 🟢 Info | Trade outcome detected from MT5 deals | PnL reply sent (v0.6.0) |
+| `trade_tracker_partial_throttled` | ⚠️ Info | Partial close reply skipped | Within 60s cooldown (v0.7.0) |
+| `edit_decision` | ⚠️ Info | Edited signal processed | CANCEL_ORDER / IGNORE (v0.7.0) |
 
 ---
 
@@ -33,7 +36,11 @@ Emitted every `HEARTBEAT_INTERVAL_MINUTES` (default 30, set 0 to disable).
             open_positions=3  pending_orders=1
             mt5=OK  telegram=OK
             daily_trades=8  daily_loss=$25.50  consec_losses=1
+             [Gold_Signals] p=10 e=6 r=3 f=1
+             [VIP_Channel]  p=5  e=2 r=2 f=1
 ```
+
+> Per-channel breakdown appears automatically when 2+ channels are active (v0.7.0).
 
 ### Reading the Heartbeat
 
@@ -118,6 +125,12 @@ grep "daily_risk_guard_polled" logs/bot.log | tail -5
 
 # Circuit breaker events
 grep "circuit_breaker" logs/bot.log
+
+# Trade tracker outcomes
+grep "trade_tracked" logs/bot.log | tail -5
+
+# Message edit decisions
+grep "edit_decision" logs/bot.log | tail -5
 ```
 
 ---

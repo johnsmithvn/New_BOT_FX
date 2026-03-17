@@ -74,6 +74,10 @@ pip install -r requirements.txt
 # Configuration
 cp .env.example .env
 nano .env  # fill in all credentials
+
+# Multi-channel rules (optional)
+cp config/channels.example.json config/channels.json
+nano config/channels.json  # per-channel breakeven/trailing/partial rules
 ```
 
 ### Critical `.env` Values
@@ -82,6 +86,7 @@ nano .env  # fill in all credentials
 MT5_PATH=/home/botuser/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe
 DRY_RUN=true          # START with dry-run to validate pipeline
 TELEGRAM_ADMIN_CHAT=  # your personal chat ID for alerts
+TRADE_TRACKER_POLL_SECONDS=30  # trade outcome tracking (0 = disabled)
 ```
 
 ## 5. First-Run: Telegram Session Auth

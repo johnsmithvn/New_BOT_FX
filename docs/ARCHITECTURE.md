@@ -98,17 +98,36 @@ SELL:
 
 
 ### `core/trade_executor.py`
-- Initialize and verify MT5 connection.
-- Ensure symbol selected and tradeable.
-- Execute `order_send` with bounded retry.
-- Return normalized execution result.
+- Initialize MT5 terminal connection.
+- Maintain connection health and expose retry-safe execution.
+- Provide position query helpers for exposure guard integration.
+
+### `core/channel_manager.py` (v0.6.0)
+- Load per-channel rules from `config/channels.json`.
+- Merge default rules with channel-specific overrides.
+- Falls back gracefully if no config file exists.
+- Provides `get_rules(chat_id)` for per-channel rule lookup.
+
+### `core/trade_tracker.py` (v0.6.0)
+- Background deal polling via MT5 `history_deals_get()`.
+- Track trade outcomes (PnL, commission, swap, close reason).
+- 2-step ticket→position resolution (MARKET + pending orders).
+- Detect pending order fills via `DEAL_ENTRY_IN`.
+- Persist `last_deal_poll_time` for restart recovery.
+- Dispatch PnL reply messages under original signals via `TelegramAlerter`.
+
 - `get_position_symbols()`: list open position symbols (used by ExposureGuard).
 
 ### `core/storage.py`
-- SQLite persistence for:
-  - signal fingerprints (dedupe window)
-  - order audit trail
-  - runtime event records
+- SQLite persistence (WAL mode) with versioned migration system.
+- Tables:
+  - `signals` — parsed signal fingerprints, status, channel context
+  - `orders` — MT5 order audit trail with `channel_id`, `source_chat_id`, `source_message_id`
+  - `events` — runtime event records with `channel_id` (v0.7.0)
+  - `trades` — trade outcomes: PnL, commission, swap, close reason (v0.6.0)
+  - `tracker_state` — key-value persistence for `TradeTracker` poll time (v0.6.0)
+  - `schema_versions` — migration version tracking (v0.6.0)
+- Fingerprint lookup by message: `get_fingerprint_by_message()` (v0.7.0)
 
 ### `utils/symbol_mapper.py`
 - Map channel symbol aliases to broker symbols.
@@ -208,7 +227,9 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - `source_chat_id: str`
 - `source_message_id: str`
 - `received_at: datetime`
-- `fingerprint: str`
+- `fingerprint: str` — includes `source_chat_id` (v0.6.0 breaking change)
+- `parse_confidence: float` — 0.0-1.0 confidence score
+- `parse_source: str` — which parser produced this signal
 
 ### `TradeDecision`
 - `order_kind: MARKET|BUY_LIMIT|BUY_STOP|SELL_LIMIT|SELL_STOP`

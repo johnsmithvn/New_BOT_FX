@@ -1,5 +1,46 @@
 # CHANGELOG
 
+## 0.7.0 - 2026-03-17
+
+### Added
+- `store_event()` calls in pipeline now include `channel_id` — all 11 call sites wired (2 parse-fail, 9 post-parse)
+- `Storage.get_fingerprint_by_message()` — lookup fingerprint by `(source_chat_id, source_message_id)`
+- `OrderLifecycleManager.cancel_by_fingerprint()` — cancel pending order by matching fingerprint in comment field
+- Per-channel session metrics: `_channel_metrics` dict with lazy-init per-channel `_SessionMetrics`, heartbeat breakdown for multi-channel
+- `_SessionMetrics.as_summary()` — one-line per-channel heartbeat output
+- `_process_edit()` fully wired: fingerprint lookup → `MessageUpdateHandler.handle_edit()` → cancel/reprocess decision
+- TradeTracker partial close reply throttle: 60s cooldown per `position_id` prevents Telegram spam
+
+### Changed
+- `main.py` — `_process_edit()` from stub to full implementation with cancel+reprocess flow
+- Heartbeat log includes per-channel breakdown when `len(_channel_metrics) > 1`
+
+## 0.6.0 - 2026-03-17
+
+### ⚠️ Breaking Change
+- **Fingerprint format changed**: `generate_fingerprint()` now includes `source_chat_id` as first element. Dedup is no longer backward compatible with v0.5.x data. **Backup DB before upgrading.**
+
+### Added
+- **Versioned schema migration system** in `core/storage.py` — `schema_versions` table, idempotent migrations safe for repeated restarts
+- **`core/channel_manager.py`** — per-channel configuration via `config/channels.json`, rule merging with default fallback
+- **`core/trade_tracker.py`** — background deal polling, PnL persistence, Telegram reply under original signal
+  - 2-step ticket→position resolution (MARKET + pending order support)
+  - Pending fill detection: `DEAL_ENTRY_IN` → `update_position_ticket()`
+  - `tracker_state` table for restart recovery (`last_deal_poll_time`)
+- **`core/telegram_alerter.py`** — `reply_to_message()` + `reply_to_message_sync()` for trade outcome threading
+- DB tables: `trades` (deal_ticket UNIQUE), `tracker_state` (key-value), `schema_versions` (version tracking)
+- DB columns: `orders.channel_id`, `orders.source_chat_id`, `orders.source_message_id`, `orders.position_ticket`, `events.channel_id`
+- 8 new `Storage` methods: `store_trade()`, `get_open_tickets()`, `get_signal_reply_info()`, `update_position_ticket()`, `get/set_tracker_state()`, `get_order_by_ticket/position_ticket()`
+- `ParsedSignal.parse_confidence` + `ParsedSignal.parse_source` fields
+- `TRADE_TRACKER_POLL_SECONDS` env key (default 30, 0 = disabled)
+- `config/channels.example.json` — per-channel rule template
+
+### Changed
+- `core/position_manager.py` — accepts `ChannelManager` + `Storage`, per-channel breakeven/trailing/partial rules, ticket→channel cache with startup rebuild
+- `core/storage.py` — `store_order()` and `store_event()` accept channel context params
+- `main.py` — wires `ChannelManager`, `TradeTracker`, passes channel context through pipeline, `register_ticket()` on execution
+- `config/settings.py` — `trade_tracker_poll_seconds` in `ExecutionConfig`
+
 ## 0.5.5 - 2026-03-15
 
 ### Added
