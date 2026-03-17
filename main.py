@@ -271,6 +271,7 @@ class Bot:
                 settings=s,
                 channel_manager=self.channel_mgr,
                 storage=self.storage,
+                alerter=self.alerter,
             )
 
         # Trade Tracker — live mode only
@@ -478,6 +479,21 @@ class Bot:
                 return
             summary = self.command_executor.execute(cmd)
             log_event("command_executed", command=cmd.command_type.value, summary=summary)
+            # Reply to user in source chat
+            try:
+                msg_id_int = int(message_id) if message_id else None
+                if msg_id_int:
+                    self.alerter.reply_to_message_sync(
+                        chat_id, msg_id_int,
+                        f"📋 **{cmd.command_type.value}**\n{summary}",
+                    )
+            except (ValueError, TypeError):
+                pass
+            # Admin log
+            self.alerter.send_alert_sync(
+                "command_response",
+                f"📋 **{cmd.command_type.value}**\n{summary}",
+            )
             print(f"  [COMMAND] {cmd.command_type.value} → {summary}")
             return
 

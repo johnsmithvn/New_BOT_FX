@@ -47,9 +47,9 @@
 - [x] `store_event()` channel_id wiring — all 11 call sites
 - [x] TradeTracker partial close reply throttle (60s cooldown)
 - [x] `cancel_by_fingerprint()` on `OrderLifecycleManager`
-- [ ] Parser overrides per detector in `channels.json`
-- [ ] Command response via Telegram
-- [ ] Position manager Telegram alerts — notify on breakeven/trailing stop moves
+- [x] Parser overrides per detector in `channels.json` — ⏸ **deferred** (overengineering, no concrete need)
+- [x] Command response via Telegram — reply to source chat + admin log
+- [x] Position manager Telegram alerts — breakeven/trailing/partial close with throttle + channel context
 
 ## Completed (from previous phases)
 - [x] All P0 tasks (documentation foundation)

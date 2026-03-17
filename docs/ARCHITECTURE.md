@@ -196,6 +196,9 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Trailing stop: trail SL at fixed pip distance from current price.
 - Partial close: close percentage of volume near TP1.
 - Only manages positions matching bot's magic number.
+- Per-channel rules via `ChannelManager` (v0.6.0)
+- Telegram alerts on breakeven/trailing/partial with per-ticket 60s throttle (v0.7.1)
+- Trailing alert delta threshold: ≥5 pips before alerting (v0.7.1)
 
 ### `core/command_parser.py`
 - Parse Telegram management commands (CLOSE ALL, CLOSE SYMBOL, MOVE SL, BREAKEVEN).
@@ -205,6 +208,7 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Execute parsed commands against MT5 positions.
 - All operations filter by bot's magic number.
 - Returns human-readable summary strings.
+- Command response sent to source chat + admin Telegram (v0.7.1)
 
 ## Dependencies
 - External:

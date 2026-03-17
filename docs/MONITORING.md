@@ -23,6 +23,10 @@ All alerts are sent to `TELEGRAM_ADMIN_CHAT` via the Telegram Alerter. Each aler
 | `trade_tracked` | 🟢 Info | Trade outcome detected from MT5 deals | PnL reply sent (v0.6.0) |
 | `trade_tracker_partial_throttled` | ⚠️ Info | Partial close reply skipped | Within 60s cooldown (v0.7.0) |
 | `edit_decision` | ⚠️ Info | Edited signal processed | CANCEL_ORDER / IGNORE (v0.7.0) |
+| `command_response` | 📋 Info | Management command executed | Response sent to source chat + admin (v0.7.1) |
+| `breakeven_alert` | 🔒 Info | SL moved to breakeven | Throttled per-ticket 60s (v0.7.1) |
+| `trailing_alert` | 📐 Info | Trailing SL moved ≥5 pips | Throttled per-ticket 60s + delta (v0.7.1) |
+| `partial_close_alert` | ✂️ Info | Volume partially closed | Throttled per-ticket 60s (v0.7.1) |
 
 ---
 

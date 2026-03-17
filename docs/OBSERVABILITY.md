@@ -57,6 +57,16 @@ Signals stored in DB have status:
 - `edit_cancel_attempted` — lifecycle manager cancel by fingerprint
 - `edit_reprocess` — edited signal re-submitted through pipeline
 
+## Command Events (v0.7.1)
+
+- `command_response` — command result sent to source chat + admin
+
+## Position Management Alerts (v0.7.1)
+
+- `breakeven_alert` — Telegram alert on SL moved to breakeven (60s throttle per ticket)
+- `trailing_alert` — Telegram alert on trailing SL moved ≥5 pips (60s throttle + delta)
+- `partial_close_alert` — Telegram alert on partial volume close (60s throttle per ticket)
+
 ## Log Format
 
 Logs are structured JSON (loguru file sink).

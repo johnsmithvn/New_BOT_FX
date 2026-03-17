@@ -71,7 +71,7 @@ class TelegramAlerter:
 
         try:
             entity = await self._client.get_entity(self._admin_chat)
-            await self._client.send_message(entity, message)
+            await self._client.send_message(entity, message, parse_mode="md")
             log_event(
                 "alert_sent",
                 alert_type=alert_type,
@@ -106,7 +106,7 @@ class TelegramAlerter:
 
         try:
             entity = await self._client.get_entity(self._admin_chat)
-            await self._client.send_message(entity, message)
+            await self._client.send_message(entity, message, parse_mode="md")
             log_event("debug_sent")
         except Exception as exc:
             log_event("debug_send_failed", error=str(exc))
@@ -135,7 +135,7 @@ class TelegramAlerter:
         try:
             entity = await self._client.get_entity(chat_id)
             await self._client.send_message(
-                entity, text, reply_to=message_id,
+                entity, text, reply_to=message_id, parse_mode="md",
             )
             log_event(
                 "reply_sent",

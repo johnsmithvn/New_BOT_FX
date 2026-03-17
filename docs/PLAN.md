@@ -95,5 +95,6 @@
 
 ## What's Next
 - v0.7.0 done: per-channel metrics, message edit wiring, store_event channel_id, reply throttle
-- Remaining backlog: parser overrides per detector, command response via Telegram, position manager Telegram alerts
+- v0.7.1 done: command response via Telegram, position manager alerts with throttle
+- Deferred: parser overrides per detector (no concrete need yet)
 - Consider P7: extended parser formats, multi-account support, web dashboard

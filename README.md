@@ -277,5 +277,5 @@ To process signals from multiple Telegram channels with per-channel rules:
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.7.0**
+Current: **v0.7.1**
 

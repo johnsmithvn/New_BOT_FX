@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 0.7.1 - 2026-03-17
+
+### Added
+- Command response via Telegram: reply to source chat + admin log
+- Position manager Telegram alerts: breakeven, trailing stop, partial close with channel context
+- Per-ticket alert throttle (60s cooldown per event_type)
+- Trailing stop delta threshold: only alert if SL moved ≥ 5 pips
+
+### Changed
+- `telegram_alerter.py` — `parse_mode="md"` on all `send_message` calls for proper markdown rendering
+
 ## 0.7.0 - 2026-03-17
 
 ### Added

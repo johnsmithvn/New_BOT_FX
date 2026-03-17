@@ -14,6 +14,7 @@ All features default to 0 = disabled. Only active in live mode.
 from __future__ import annotations
 
 import asyncio
+import time as _time
 from typing import TYPE_CHECKING
 
 from utils.logger import log_event
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from config.settings import Settings
     from core.channel_manager import ChannelManager
     from core.storage import Storage
+    from core.telegram_alerter import TelegramAlerter
 
 
 class PositionManager:
@@ -42,9 +44,11 @@ class PositionManager:
         settings: Settings,
         channel_manager: ChannelManager | None = None,
         storage: Storage | None = None,
+        alerter: TelegramAlerter | None = None,
     ) -> None:
         self._executor = executor
         self._storage = storage
+        self._alerter = alerter
 
         # Global defaults — used as fallback when no channel config exists
         self._breakeven_trigger_pips: float = settings.safety.breakeven_trigger_pips
@@ -64,6 +68,12 @@ class PositionManager:
         self._breakeven_applied: set[int] = set()
 
         self._poll_task: asyncio.Task | None = None
+
+        # Alert throttle: (ticket, event_type) -> last_alert_epoch
+        self._last_alert_time: dict[tuple[int, str], float] = {}
+        self._ALERT_COOLDOWN = 60  # seconds per (ticket, event_type)
+        self._TRAILING_ALERT_MIN_PIPS = 5.0  # only alert if SL moved >= 5 pips
+        self._last_trailing_sl: dict[int, float] = {}  # ticket -> last alerted SL
 
     @property
     def is_enabled(self) -> bool:
@@ -286,6 +296,11 @@ class PositionManager:
                 new_sl=new_sl,
                 profit_pips=round(profit_pips, 1),
             )
+            self._send_position_alert(
+                pos.ticket, "breakeven_alert", pos.symbol,
+                f"🔒 **Breakeven** on `{pos.symbol}` #{pos.ticket}\n"
+                f"SL moved to {new_sl} (+{lock_pips}p lock)",
+            )
         else:
             retcode = result.retcode if result else -1
             log_event(
@@ -343,6 +358,16 @@ class PositionManager:
                 new_sl=new_sl,
                 profit_pips=round(profit_pips, 1),
             )
+            # Only alert if SL moved significantly
+            pip_size = point * 10
+            last_sl = self._last_trailing_sl.get(pos.ticket)
+            if last_sl is None or abs(new_sl - last_sl) / pip_size >= self._TRAILING_ALERT_MIN_PIPS:
+                self._last_trailing_sl[pos.ticket] = new_sl
+                self._send_position_alert(
+                    pos.ticket, "trailing_alert", pos.symbol,
+                    f"📐 **Trailing SL** on `{pos.symbol}` #{pos.ticket}\n"
+                    f"SL → {new_sl} (profit: {round(profit_pips, 1)}p)",
+                )
 
     def _apply_partial_close(
         self, mt5, pos, profit_pips: float, symbol_info,
@@ -403,6 +428,11 @@ class PositionManager:
                 remaining_volume=round(pos.volume - close_volume, 2),
                 percent=close_percent,
             )
+            self._send_position_alert(
+                pos.ticket, "partial_close_alert", pos.symbol,
+                f"✂️ **Partial Close** on `{pos.symbol}` #{pos.ticket}\n"
+                f"Closed {close_volume} lots ({close_percent}%)",
+            )
         else:
             retcode = result.retcode if result else -1
             log_event(
@@ -411,3 +441,30 @@ class PositionManager:
                 symbol=pos.symbol,
                 retcode=retcode,
             )
+
+    # ── Alert helpers ─────────────────────────────────────────────
+
+    def _should_alert(self, ticket: int, event_type: str) -> bool:
+        """Check per-ticket cooldown for alert throttling."""
+        key = (ticket, event_type)
+        now = _time.time()
+        last = self._last_alert_time.get(key, 0.0)
+        if (now - last) < self._ALERT_COOLDOWN:
+            return False
+        self._last_alert_time[key] = now
+        return True
+
+    def _send_position_alert(
+        self, ticket: int, alert_type: str, symbol: str, message: str,
+    ) -> None:
+        """Send throttled alert with channel context."""
+        if not self._alerter or not self._should_alert(ticket, alert_type):
+            return
+
+        # Add channel context if available
+        channel_id = self._ticket_to_channel.get(ticket)
+        if channel_id and self._channel_manager:
+            ch_name = self._channel_manager.get_channel_name(channel_id)
+            message = f"[{ch_name}] {message}"
+
+        self._alerter.send_alert_sync(alert_type, message)
