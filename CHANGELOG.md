@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 0.8.0 - 2026-03-18
+
+### Added
+- Reply-based signal management: channel admin replies to signal → bot acts on specific trade(s)
+- `reply_action_parser.py` — parse reply text (close/exit/đóng, SL/TP {price}, BE, close N%)
+- `reply_command_executor.py` — per-ticket MT5 operations with position existence check
+- Multi-order support: all orders from a signal are actioned, results grouped
+- Channel guard: cross-channel reply prevention
+- Symbol consistency check before execution
+- TradeTracker PnL reply suppression for reply-closed tickets (5 min TTL)
+- "No active trade found" UX feedback for replies to non-signal messages
+- Percent range validation (1-100) for partial close
+
+### Changed
+- `telegram_listener.py` — new `ReplyCallback`, detects `reply_to_msg_id`, early return (no signal parser fallthrough)
+- `storage.py` — `get_orders_by_message()` returns list of all orders for a signal
+- `trade_tracker.py` — `_reply_closed` dict with TTL, `mark_reply_closed()`, `_is_reply_closed()` with auto-cleanup
+
 ## 0.7.1 - 2026-03-17
 
 ### Added

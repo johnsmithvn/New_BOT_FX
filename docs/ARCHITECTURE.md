@@ -210,6 +210,31 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Returns human-readable summary strings.
 - Command response sent to source chat + admin Telegram (v0.7.1)
 
+### `core/reply_action_parser.py` (v0.8.0)
+- Parse reply messages into trade actions (CLOSE, CLOSE_PARTIAL, MOVE_SL, MOVE_TP, BREAKEVEN).
+- Separate from signal parser — replies are short imperative commands.
+- Validation: price required for SL/TP, percent 1-100 for partial close.
+- Built-in patterns: close/exit/đóng, SL/TP {price}, BE/breakeven, close N%.
+
+### `core/reply_command_executor.py` (v0.8.0)
+- Execute reply actions on **specific** MT5 position tickets (unlike CommandExecutor which is global).
+- Position existence check before execute.
+- Symbol consistency guard: verify position matches expected symbol.
+- Supports: close, close partial (percent), move SL, move TP, breakeven.
+
+### Reply-Based Signal Management Flow (v0.8.0)
+```
+Reply message (reply_to = signal_msg_id)
+  → listener detects reply_to_msg_id → forward to _process_reply()
+  → storage.get_orders_by_message() → list of ALL orders for that signal
+  → channel guard + success filter
+  → reply_action_parser.parse() → ReplyAction | None
+  → for each order: execute on ticket (with position check)
+  → group results: "✅ closed" / "⏭ already closed"
+  → reply aggregated summary to user
+  → mark_reply_closed() → TradeTracker suppresses duplicate PnL reply
+```
+
 ## Dependencies
 - External:
   - Telegram API (Telethon session)

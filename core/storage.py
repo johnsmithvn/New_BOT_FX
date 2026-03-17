@@ -371,6 +371,36 @@ class Storage:
         ).fetchone()
         return row["fingerprint"] if row else None
 
+    def get_orders_by_message(
+        self, source_chat_id: str, source_message_id: str,
+    ) -> list[dict]:
+        """Get ALL orders associated with a signal message.
+
+        Joins signals → orders via fingerprint to get ticket, symbol,
+        channel_id, and success status. Returns list of dicts.
+        Used by reply handler to act on all orders from a signal.
+        """
+        rows = self._conn.execute(
+            """SELECT o.ticket, s.symbol, o.fingerprint,
+                      o.channel_id, o.success
+               FROM orders o
+               JOIN signals s ON o.fingerprint = s.fingerprint
+               WHERE s.source_chat_id = ? AND s.source_message_id = ?
+                 AND o.ticket IS NOT NULL
+               ORDER BY o.id""",
+            (source_chat_id, source_message_id),
+        ).fetchall()
+        return [
+            {
+                "ticket": row["ticket"],
+                "symbol": row["symbol"],
+                "fingerprint": row["fingerprint"],
+                "channel_id": row["channel_id"] or "",
+                "success": bool(row["success"]),
+            }
+            for row in rows
+        ]
+
     # ── Events ───────────────────────────────────────────────────
 
     def store_event(

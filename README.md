@@ -273,9 +273,50 @@ To process signals from multiple Telegram channels with per-channel rules:
    ```
    When enabled, the bot polls MT5 deal history, tracks PnL, and replies under the original Telegram signal.
 
+4. **Reply-Based Signal Management** (v0.8.0) — automatically enabled. When a channel admin replies to a signal with:
+   - `close` / `exit` / `đóng` → closes all positions from that signal
+   - `SL 2035` / `move sl 2035` → moves SL on all positions from that signal
+   - `TP 2045` / `move tp 2045` → moves TP on all positions from that signal
+   - `BE` / `breakeven` → moves SL to entry price
+   - `close 30%` → closes 30% of each position from that signal
+
+## Customization Guide
+
+### Adding New Reply Keywords
+
+Edit `core/reply_action_parser.py`:
+
+```python
+# Add your pattern at module level:
+_MY_CLOSE_WORDS = r"^(my_custom_word|another_word)$"
+
+# In ReplyActionParser.parse(), add a new match block before "return None":
+if re.match(_MY_CLOSE_WORDS, match_lower, re.IGNORECASE):
+    return ReplyAction(action=ReplyActionType.CLOSE, raw_text=cleaned)
+```
+
+### Adding New Signal Parser Rules
+
+Edit `core/signal_parser/detectors/`:
+- Each detector is a separate file (e.g., `side_detector.py`, `symbol_detector.py`)
+- Add new regex patterns or logic to the relevant detector
+- The parser runs all detectors and merges results
+
+### Changing Trade Entry Strategy
+
+Edit `core/order_builder.py`:
+- `_determine_order_type()` — controls MARKET vs LIMIT vs STOP order selection
+- `_calculate_lot_size()` — risk-based lot sizing
+- `build()` — assembles the final MT5 order request
+
+### Per-Channel Configuration
+
+Edit `config/channels.json`:
+- Breakeven, trailing stop, and partial close rules per channel
+- See `config/channels.example.json` for all available options
+
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.7.1**
-
+Current: **v0.8.0**

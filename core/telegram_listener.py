@@ -25,6 +25,10 @@ PipelineCallback = Callable[[str, str, str], Awaitable[None] | None]
 # Receives: raw_text, chat_id, message_id
 EditCallback = Callable[[str, str, str], Awaitable[None] | None]
 
+# Type alias for reply callback.
+# Receives: raw_text, chat_id, message_id, reply_to_msg_id
+ReplyCallback = Callable[[str, str, str, str], Awaitable[None] | None]
+
 
 class TelegramListener:
     """Telethon-based Telegram listener.
@@ -55,6 +59,7 @@ class TelegramListener:
         self._client: TelegramClient | None = None
         self._pipeline_cb: PipelineCallback | None = None
         self._edit_cb: EditCallback | None = None
+        self._reply_cb: ReplyCallback | None = None
         self._reset_task: asyncio.Task | None = None
         self._running = False
 
@@ -65,6 +70,10 @@ class TelegramListener:
     def set_edit_callback(self, callback: EditCallback) -> None:
         """Set the callback for edited messages."""
         self._edit_cb = callback
+
+    def set_reply_callback(self, callback: ReplyCallback) -> None:
+        """Set the callback for reply messages."""
+        self._reply_cb = callback
 
     @property
     def client(self) -> TelegramClient | None:
@@ -181,6 +190,31 @@ class TelegramListener:
         raw_text = message.text
         chat_id = str(message.chat_id) if message.chat_id else ""
         message_id = str(message.id) if message.id else ""
+
+        # Check if this is a reply to another message
+        reply_to_id = getattr(message.reply_to, "reply_to_msg_id", None) if message.reply_to else None
+
+        if reply_to_id and self._reply_cb:
+            log_event(
+                "reply_received",
+                symbol="",
+                source_chat_id=chat_id,
+                source_message_id=message_id,
+                reply_to_msg_id=str(reply_to_id),
+                text_preview=raw_text[:80],
+            )
+            try:
+                result = self._reply_cb(raw_text, chat_id, message_id, str(reply_to_id))
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as exc:
+                log_event(
+                    "reply_callback_error",
+                    symbol="",
+                    source_message_id=message_id,
+                    error=str(exc),
+                )
+            return  # Don't fall through to signal parser
 
         log_event(
             "signal_received",

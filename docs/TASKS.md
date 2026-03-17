@@ -51,6 +51,14 @@
 - [x] Command response via Telegram — reply to source chat + admin log
 - [x] Position manager Telegram alerts — breakeven/trailing/partial close with throttle + channel context
 
+### P7: Reply-Based Signal Management (v0.8.0)
+- [x] Reply action parser (`reply_action_parser.py`) — close/exit/đóng, SL/TP price, BE, close N%
+- [x] Reply command executor (`reply_command_executor.py`) — per-ticket operations with position check
+- [x] Telegram listener reply_to_msg_id forwarding (ReplyCallback)
+- [x] Storage `get_orders_by_message()` — multi-order lookup
+- [x] TradeTracker reply-closed suppression with 5min TTL
+- [x] main.py `_process_reply()` — multi-order, channel guard, grouped results
+
 ## Completed (from previous phases)
 - [x] All P0 tasks (documentation foundation)
 - [x] All P1 tasks (signal parser pipeline, validation, risk manager, storage, tooling)

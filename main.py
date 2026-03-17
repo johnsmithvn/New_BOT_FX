@@ -44,6 +44,8 @@ from core.channel_manager import ChannelManager
 from core.trade_tracker import TradeTracker
 from core.command_parser import CommandParser
 from core.command_executor import CommandExecutor
+from core.reply_action_parser import ReplyActionParser, ReplyActionType
+from core.reply_command_executor import ReplyCommandExecutor
 from utils.logger import setup_logger, log_event
 from utils.symbol_mapper import SymbolMapper
 
@@ -114,6 +116,8 @@ class Bot:
         self.trade_tracker: TradeTracker | None = None
         self.command_parser: CommandParser | None = None
         self.command_executor: CommandExecutor | None = None
+        self.reply_parser: ReplyActionParser | None = None
+        self.reply_executor: ReplyCommandExecutor | None = None
         self._cleanup_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._metrics = _SessionMetrics()
@@ -217,6 +221,7 @@ class Bot:
         )
         self.listener.set_pipeline_callback(self._process_signal)
         self.listener.set_edit_callback(self._process_edit)
+        self.listener.set_reply_callback(self._process_reply)
 
         # Lifecycle Manager — check interval from config
         self.lifecycle_mgr = OrderLifecycleManager(
@@ -286,6 +291,12 @@ class Bot:
         # Command Parser + Executor
         self.command_parser = CommandParser()
         self.command_executor = CommandExecutor(
+            magic=s.execution.bot_magic_number,
+        )
+
+        # Reply Parser + Executor
+        self.reply_parser = ReplyActionParser()
+        self.reply_executor = ReplyCommandExecutor(
             magic=s.execution.bot_magic_number,
         )
 
@@ -886,6 +897,167 @@ class Bot:
                     new_fingerprint=decision.new_signal.fingerprint,
                 )
                 self._do_process_signal(raw_text, chat_id, message_id)
+
+    # ── Reply Handler ─────────────────────────────────────────────
+
+    def _process_reply(
+        self,
+        raw_text: str,
+        chat_id: str,
+        message_id: str,
+        reply_to_msg_id: str,
+    ) -> None:
+        """Handle a reply to a previously processed signal.
+
+        Flow:
+        1. Lookup ALL orders by (chat_id, reply_to_msg_id).
+        2. Channel guard: filter orders matching current chat.
+        3. Parse reply text as a trade action.
+        4. Execute on each matching ticket (with position check).
+        5. Reply with grouped results.
+        """
+        try:
+            self._do_process_reply(raw_text, chat_id, message_id, reply_to_msg_id)
+        except Exception as exc:
+            log_event(
+                "reply_handler_error",
+                source_chat_id=chat_id,
+                source_message_id=message_id,
+                reply_to=reply_to_msg_id,
+                error=str(exc),
+            )
+
+    def _do_process_reply(
+        self,
+        raw_text: str,
+        chat_id: str,
+        message_id: str,
+        reply_to_msg_id: str,
+    ) -> None:
+        """Internal reply processing logic."""
+        dry_run = self.settings.runtime.dry_run
+
+        # Step 1: Lookup ALL orders for the original signal message
+        orders = self.storage.get_orders_by_message(chat_id, reply_to_msg_id)
+        if not orders:
+            log_event(
+                "reply_no_orders",
+                source_chat_id=chat_id,
+                reply_to=reply_to_msg_id,
+            )
+            try:
+                msg_id_int = int(message_id) if message_id else None
+                if msg_id_int:
+                    self.alerter.reply_to_message_sync(
+                        chat_id, msg_id_int,
+                        "⚠️ No active trade found for this message",
+                    )
+            except (ValueError, TypeError):
+                pass
+            return
+
+        # Step 2: Channel guard + success filter
+        orders = [
+            o for o in orders
+            if o["channel_id"] == chat_id and o["success"]
+        ]
+        if not orders:
+            log_event(
+                "reply_no_matching_orders",
+                source_chat_id=chat_id,
+                reply_to=reply_to_msg_id,
+                reason="no successful orders from this channel",
+            )
+            return
+
+        # Step 3: Parse reply text as action
+        action = self.reply_parser.parse(raw_text)
+        if not action:
+            # Not an actionable reply — just a comment, skip silently
+            log_event(
+                "reply_not_action",
+                source_chat_id=chat_id,
+                reply_to=reply_to_msg_id,
+                text_preview=raw_text[:80],
+            )
+            return
+
+        log_event(
+            "reply_action_parsed",
+            action=action.action.value,
+            price=action.price,
+            percent=action.percent,
+            source_chat_id=chat_id,
+            reply_to=reply_to_msg_id,
+        )
+
+        # Step 4: Execute on each order
+        success_results: list[str] = []
+        skipped_tickets: list[str] = []
+
+        for order in orders:
+            ticket = order["ticket"]
+            fp = order["fingerprint"]
+            symbol = order["symbol"]
+
+            log_event(
+                "reply_action",
+                fingerprint=fp,
+                ticket=ticket,
+                symbol=symbol,
+                action=action.action.value,
+                chat_id=chat_id,
+            )
+
+            summary = self.reply_executor.execute(
+                ticket, action,
+                expected_symbol=symbol,
+                dry_run=dry_run,
+            )
+
+            if summary.startswith("⚠️"):
+                skipped_tickets.append(f"#{ticket}")
+            else:
+                success_results.append(f"#{ticket}: {summary}")
+
+            # Mark for TradeTracker suppression
+            if (
+                action.action in (ReplyActionType.CLOSE, ReplyActionType.CLOSE_PARTIAL)
+                and self.trade_tracker
+                and not dry_run
+            ):
+                self.trade_tracker.mark_reply_closed(ticket)
+
+            self.storage.store_event(
+                fingerprint=fp,
+                event_type="reply_executed",
+                symbol=symbol,
+                details={
+                    "action": action.action.value,
+                    "ticket": ticket,
+                    "summary": summary,
+                },
+                channel_id=chat_id,
+            )
+
+        # Step 5: Aggregated reply
+        parts: list[str] = []
+        if success_results:
+            parts.append("✅ " + "\n".join(success_results))
+        if skipped_tickets:
+            parts.append(f"⏭ Already closed: {', '.join(skipped_tickets)}")
+
+        if parts:
+            msg = f"📋 **{action.action.value.upper()}**\n" + "\n".join(parts)
+            try:
+                msg_id_int = int(message_id) if message_id else None
+                if msg_id_int:
+                    self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
+            except (ValueError, TypeError):
+                pass
+            # Admin log
+            self.alerter.send_alert_sync("reply_command", msg)
+            print(f"  [REPLY] {action.action.value} → {len(success_results)} ok, {len(skipped_tickets)} skipped")
 
     # ── Background Tasks ─────────────────────────────────────────
 

@@ -17,6 +17,7 @@ All features are opt-in via TRADE_TRACKER_POLL_SECONDS > 0.
 from __future__ import annotations
 
 import asyncio
+import time as _time
 from datetime import datetime, timezone, timedelta
 from typing import TYPE_CHECKING
 
@@ -50,10 +51,37 @@ class TradeTracker:
         # Throttle partial close replies: {position_id: last_reply_epoch}
         self._partial_reply_times: dict[int, float] = {}
         self._PARTIAL_REPLY_COOLDOWN = 60  # seconds
+        # Reply-closed tickets: suppress PnL reply for 5 minutes
+        self._reply_closed: dict[int, float] = {}  # ticket → epoch
+        self._REPLY_CLOSED_TTL = 300  # 5 minutes
 
     @property
     def is_enabled(self) -> bool:
         return self._poll_seconds > 0
+
+    def mark_reply_closed(self, ticket: int) -> None:
+        """Mark a ticket as closed via reply command.
+
+        TradeTracker will suppress PnL reply for this ticket
+        for up to _REPLY_CLOSED_TTL seconds.
+        """
+        self._reply_closed[ticket] = _time.time()
+
+    def _is_reply_closed(self, ticket: int) -> bool:
+        """Check if ticket was recently closed via reply.
+
+        Returns True and removes entry if within TTL.
+        Also cleans up expired entries.
+        """
+        ts = self._reply_closed.get(ticket)
+        if ts is None:
+            return False
+        if (_time.time() - ts) < self._REPLY_CLOSED_TTL:
+            del self._reply_closed[ticket]
+            return True
+        # Expired — cleanup
+        del self._reply_closed[ticket]
+        return False
 
     async def start(self) -> None:
         """Start the background poll loop."""
@@ -200,9 +228,17 @@ class TradeTracker:
             channel_id=channel_id,
         )
 
+        # Suppress PnL reply if ticket was closed via reply command
+        if self._is_reply_closed(deal.position_id):
+            log_event(
+                "trade_tracker_reply_suppressed",
+                deal_ticket=deal.ticket,
+                position_id=deal.position_id,
+            )
+            return
+
         # Dispatch PnL reply (with partial close throttle)
         if close_reason == "PARTIAL_CLOSE":
-            import time as _time
             last_reply = self._partial_reply_times.get(deal.position_id, 0.0)
             now = _time.time()
             if (now - last_reply) < self._PARTIAL_REPLY_COOLDOWN:

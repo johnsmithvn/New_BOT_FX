@@ -67,6 +67,18 @@ Signals stored in DB have status:
 - `trailing_alert` — Telegram alert on trailing SL moved ≥5 pips (60s throttle + delta)
 - `partial_close_alert` — Telegram alert on partial volume close (60s throttle per ticket)
 
+## Reply-Based Signal Management (v0.8.0)
+
+- `reply_received` — reply message detected with reply_to_msg_id
+- `reply_no_orders` — no orders found for replied message
+- `reply_no_matching_orders` — orders exist but filtered by channel guard
+- `reply_not_action` — reply text not parseable as action (comment)
+- `reply_action_parsed` — reply parsed: action, price, percent
+- `reply_action` — executing action on specific ticket (with fingerprint)
+- `reply_executed` — action result stored per ticket
+- `reply_command` — aggregated result sent to user + admin
+- `trade_tracker_reply_suppressed` — PnL reply suppressed for reply-closed ticket
+
 ## Log Format
 
 Logs are structured JSON (loguru file sink).

@@ -27,6 +27,9 @@ All alerts are sent to `TELEGRAM_ADMIN_CHAT` via the Telegram Alerter. Each aler
 | `breakeven_alert` | 🔒 Info | SL moved to breakeven | Throttled per-ticket 60s (v0.7.1) |
 | `trailing_alert` | 📐 Info | Trailing SL moved ≥5 pips | Throttled per-ticket 60s + delta (v0.7.1) |
 | `partial_close_alert` | ✂️ Info | Volume partially closed | Throttled per-ticket 60s (v0.7.1) |
+| `reply_command` | 📋 Info | Reply action executed on signal | Multi-order grouped results (v0.8.0) |
+| `reply_no_orders` | ⚠️ Info | Reply to non-signal message | "No active trade" response (v0.8.0) |
+| `trade_tracker_reply_suppressed` | 🔇 Info | PnL reply suppressed | Ticket closed via reply, 5min TTL (v0.8.0) |
 
 ---
 
