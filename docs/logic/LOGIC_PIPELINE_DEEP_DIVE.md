@@ -318,7 +318,7 @@ BUY: SL(2940) >= entry(2935) = True
 
 ---
 
-### Step 0: ⚡ COMMAND INTERCEPT (dòng 367-377)
+### Step 0: ⚡ COMMAND INTERCEPT (dòng 518-543)
 ```python
 cmd = self.command_parser.parse(raw_text)
 if cmd is not None:
@@ -342,12 +342,12 @@ if cmd is not None:
 
 ---
 
-### Step 1: Parse signal (dòng 379-438)
+### Step 1: Parse signal (dòng 545-577)
 > Phần này giữ nguyên logic từ trước. Xem section UseCase để hiểu chi tiết.
 
 ---
 
-### Dòng 364: Đọc chế độ chạy
+### Dòng 515: Đọc chế độ chạy
 ```python
 dry_run = self.settings.runtime.dry_run
 ```
@@ -356,7 +356,7 @@ dry_run = self.settings.runtime.dry_run
 - **Ý nghĩa**: `True` = không gửi lệnh thật, chỉ mô phỏng
 - **Đổi →**: Toàn bộ logic MT5 bị skip, dùng giá giả
 
-### Dòng 296-297: Lấy signal + fingerprint
+### Dòng 579-580: Lấy signal + fingerprint
 ```python
 signal_obj: ParsedSignal = result      # Signal đã parse xong
 fp = signal_obj.fingerprint[:12]       # Cắt 12 ký tự đầu để log gọn
@@ -365,7 +365,7 @@ fp = signal_obj.fingerprint[:12]       # Cắt 12 ký tự đầu để log gọ
 - **`fp`**: Viết tắt fingerprint dùng trong log, 12 ký tự đủ unique
 - **Đổi →**: Nếu đổi từ `[:12]` sang `[:8]` → chỉ ảnh hưởng log display, không ảnh hưởng logic
 
-### Dòng 299-324: Log + DB events
+### Dòng 582-611: Log + DB events
 ```python
 log_event("parse_success", fingerprint=fp, symbol=..., side=..., entry=...)
 self.storage.store_event(fingerprint=fp, event_type="signal_received", ...)
@@ -376,7 +376,7 @@ self.storage.store_event(fingerprint=fp, event_type="signal_parsed", ...)
 
 ---
 
-### Step 2: ⛔ CIRCUIT BREAKER CHECK (dòng 440-447)
+### Step 2: ⛔ CIRCUIT BREAKER CHECK (dòng 613-621)
 ```python
 if not self.circuit_breaker.is_trading_allowed:
     reason = "circuit breaker OPEN — trading paused"
@@ -397,7 +397,7 @@ if not self.circuit_breaker.is_trading_allowed:
 
 ---
 
-### Step 2b: ⛔ DAILY RISK GUARD CHECK (dòng 449-457)
+### Step 2b: ⛔ DAILY RISK GUARD CHECK (dòng 623-632)
 ```python
 if self.daily_guard:
     allowed, guard_reason = self.daily_guard.is_trading_allowed
@@ -675,16 +675,17 @@ if open_positions is not None:
         → REJECT "max open trades reached (5/5)"
 ```
 
-> ⚠️ **Lưu ý v0.5.1**: Ngoài 8 rules trong validator, pipeline còn có:
+> ⚠️ **Lưu ý v0.9.0**: Ngoài 8 rules trong validator, pipeline còn có:
 > - **Step 2b** (daily risk guard: max trades/loss/consecutive) chạy TRƯỚC validator
 > - **Step 2c** (exposure guard: same symbol + correlation) chạy TRƯỚC validator
-> - **Step 8b** (entry drift guard: tight 10 pip guard for MARKET) chạy SAU order decision
+> - **Entry drift guard** (tight 10 pip guard for MARKET) chạy SAU validate, TRƯỚC pipeline execute
+> - **Re-entry risk guards** (circuit breaker + daily + exposure) chạy mỗi lần RangeMonitor trigger
 >
-> Tổng cộng = **11 lớp bảo vệ**.
+> Tổng cộng = **12+ lớp bảo vệ**.
 
 ---
 
-### Step 6: Store signal (dòng 554-555)
+### Step 6: Store signal (dòng 735-736)
 ```python
 self.storage.store_signal(signal_obj, SignalStatus.PARSED)
 ```
@@ -952,10 +953,10 @@ success = result.retcode in (10008, 10009)
 |-----|---------|-------------|-----------|
 | `MAX_ENTRY_DISTANCE_PIPS` | 50.0 | `signal_validator.py` | Tăng → chấp nhận entry xa giá hơn |
 | `MAX_ENTRY_DRIFT_PIPS` | 10.0 | `signal_validator.py` | Tight guard cho MARKET orders (Step 8b) |
-| `MAX_SPREAD_PIPS` | 5.0 | `signal_validator.py` | Tăng → chấp nhận spread rộng hơn |
+| `MAX_SPREAD_PIPS` | 5.0 | `signal_validator.py` | Tăng → chấp nhận spread rộng hơn (⚠️ hiện tại bị comment out) |
 | `MAX_OPEN_TRADES` | 5 | `signal_validator.py` | Tăng → đồng thời nhiều lệnh hơn |
 | `SIGNAL_AGE_TTL_SECONDS` | 60 | `signal_validator.py`, `storage.py` | Tăng → chấp nhận signal cũ hơn + dedupe window rộng hơn |
-| `MARKET_TOLERANCE_POINTS` | 5.0 | `order_builder.py` | Tăng → nhiều MARKET order hơn, ít LIMIT/STOP hơn |
+| `MARKET_TOLERANCE_POINTS` | 30.0 | `order_builder.py` | Tăng → nhiều MARKET order hơn, ít LIMIT/STOP hơn |
 | `DEVIATION_POINTS` | 20 | `order_builder.py` | Base slippage tolerance (trước dynamic) |
 | `DYNAMIC_DEVIATION_MULTIPLIER` | 0.0 | `order_builder.py` | >0 → deviation = max(base, spread×multiplier). 0=disabled |
 | `PENDING_ORDER_TTL_MINUTES` | 15 | `order_lifecycle_manager.py` | Tăng → lệnh pending sống lâu hơn |
@@ -973,21 +974,20 @@ success = result.retcode in (10008, 10009)
 | `PARTIAL_CLOSE_PERCENT` | 0 | `position_manager.py` | % volume to close at TP1. 0=disabled |
 | `DRY_RUN` | false | `main.py` | true → không giao dịch thật |
 
-### Biến nội bộ quan trọng trong pipeline
+### Biến nội bộ quan trọng trong pipeline (v0.9.0)
 
 | Biến | Nơi tạo | Kiểu | Truyền cho | Ý nghĩa |
 |------|---------|------|-----------|---------|
-| `point` | `main.py:348` | float | `order_builder.decide_order_type()` | Đơn vị giá nhỏ nhất (XAU=0.01, EUR=0.00001) |
-| `pip_size` | `main.py:349` | float | `validator.validate()` | Size 1 pip (XAU=0.1, EUR=0.0001) |
-| `bid` | `main.py:352/389` | float | `order_builder` (SELL ref) | Giá mua hiện tại |
-| `ask` | `main.py:352/390` | float | `order_builder` (BUY ref) | Giá bán hiện tại |
-| `current_price` | `main.py:353/392` | float | `validator` (entry distance) | = ask nếu BUY, bid nếu SELL |
-| `current_spread_pips` | `main.py:399` | float | `validator` (spread gate) | Spread tính bằng pips |
+| `point` | `main.py:659` | float | `pipeline`, `order_builder` | Đơn vị giá nhỏ nhất (XAU=0.01, EUR=0.00001) |
+| `pip_size` | `main.py:660` | float | `validator.validate()` | Size 1 pip (XAU=0.1, EUR=0.0001) |
+| `bid` | `main.py:663/700` | float | `pipeline`, `order_builder` | Giá mua hiện tại |
+| `ask` | `main.py:663/701` | float | `pipeline`, `order_builder` | Giá bán hiện tại |
+| `current_price` | `main.py:664/703` | float | `validator` (entry distance) | = ask nếu BUY, bid nếu SELL |
+| `current_spread_pips` | `main.py:709` | float | `validator` (spread gate) | Spread tính bằng pips |
+| `is_dup` | `main.py:646` | bool | `validator` | Duplicate flag từ DB |
+| `balance` | `main.py:742-745` | float | `pipeline.execute_signal_plans()` | Account balance (10000 dry-run) |
+| `results` | `main.py:768` | list[dict] | metrics tracking | Danh sách kết quả execute (1 cho single, N cho multi) |
 | `tolerance` | `order_builder.py:67` | float | internal | `MARKET_TOLERANCE_POINTS × point` |
-| `is_dup` | `main.py:335` | bool | `validator` | Duplicate flag từ DB |
-| `volume` | `main.py:428` | float | `order_builder.build_request()` | Lot size đã clamp |
-| `decision` | `main.py:437` | TradeDecision | `build_request()`, `executor` | Loại lệnh + price + SL + TP |
-| `request` | `main.py:438` | dict | `executor.execute()` | MT5 request payload hoàn chỉnh |
 
 ---
 

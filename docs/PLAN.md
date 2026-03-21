@@ -2,7 +2,7 @@
 
 ## Current Phase
 - Phase: `P9 - Channel-Driven Strategy Architecture`
-- Status: Phase 1 in progress — Foundation (models, channel config, entry strategy).
+- Status: `complete`
 
 ## Execution Phases
 
@@ -86,12 +86,20 @@
   - 1 new env key: `TRADE_TRACKER_POLL_SECONDS`
 - Status: `complete`
 
-## Phase Completion Rule
-- Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
-- On completion:
-  - Mark current phase `complete`
-  - Move next phase to `in progress`
-  - Regenerate `docs/TASKS.md` for the new current phase
+### P7 - Reply-Based Signal Management
+- Goal:
+  - Allow users to reply to original signal messages to manage trades.
+- Major deliverables:
+  - `core/reply_action_parser.py` — parse reply commands (close, SL, TP, BE, close N%)
+  - `core/reply_command_executor.py` — per-ticket operations with position check
+  - Telegram listener `reply_to_msg_id` forwarding
+  - Storage `get_orders_by_message()` — multi-order lookup
+  - TradeTracker reply-closed suppression with 5min TTL
+  - `main.py` `_process_reply()` — multi-order, channel guard, grouped results
+- Status: `complete`
+
+### P8 - (Reserved)
+- No P8 phase was defined — numbering skipped to P9.
 
 ### P9 - Channel-Driven Strategy Architecture
 - Goal:
@@ -105,12 +113,19 @@
   - `channels.json` expanded: strategy, risk, validation per channel
   - `core/models.py` — EntryPlan, SignalState, order_fingerprint
   - Storage migration V3: `active_signals` table
-- Status: `in progress` — Phase 1: Foundation
+- Status: `complete`
+
+## Phase Completion Rule
+- Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
+- On completion:
+  - Mark current phase `complete`
+  - Move next phase to `in progress`
+  - Regenerate `docs/TASKS.md` for the new current phase
 
 ## What's Next
 - v0.7.0 done: per-channel metrics, message edit wiring, store_event channel_id, reply throttle
 - v0.7.1 done: command response via Telegram, position manager alerts with throttle
 - v0.8.0 done: reply-based signal management (reply to signal → close/SL/TP/BE on specific trade)
-- v0.9.0 in progress: channel-driven strategy architecture (P9)
+- v0.9.0 done: channel-driven strategy architecture (P9)
 - Deferred: parser overrides per detector (no concrete need yet)
 - Consider next: multi-account support, web dashboard

@@ -318,46 +318,6 @@ Reply message (reply_to = signal_msg_id)
 - Duplicate signal within TTL -> ignore and log dedupe event.
 
 
-## Observability and Signal Trace
+## Observability
 
-The system MUST provide full traceability for every signal processed.
-
-Each signal MUST have a unique `fingerprint` generated from:
-- symbol
-- side
-- entry
-- SL
-- TP values
-
-All processing stages MUST log structured events with this fingerprint.
-
-### Core Event Types
-
-signal_received
-- Telegram message received.
-
-parse_success
-- Signal successfully parsed into normalized format.
-
-parse_failed
-- Parser unable to interpret signal.
-
-validation_rejected
-- Signal rejected due to safety rule (spread, SL logic, duplicate, etc).
-
-duplicate_filtered
-- Signal ignored due to dedupe window.
-
-order_submitted
-- MT5 order request created and sent.
-
-order_result
-- MT5 execution response received.
-
-### Trace Requirement
-
-All logs and database records MUST include:
-- signal fingerprint
-- source message id
-- symbol
-- timestamp
+> For signal lifecycle events, event types, and trace requirements, see [OBSERVABILITY.md](OBSERVABILITY.md).
