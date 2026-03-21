@@ -123,7 +123,9 @@ class EntryStrategy:
         # Round to lot_step and enforce lot_min
         result = []
         for v in volumes:
-            rounded = math.floor(v / lot_step) * lot_step
+            # round before floor to avoid IEEE 754 truncation
+            # e.g. 0.02/0.01 = 1.9999... → round → 2.0 → floor → 2
+            rounded = math.floor(round(v / lot_step, 10)) * lot_step
             rounded = max(lot_min, rounded)
             decimals = len(str(lot_step).rstrip("0").split(".")[-1])
             rounded = round(rounded, decimals)
