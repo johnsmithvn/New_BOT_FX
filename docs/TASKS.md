@@ -1,7 +1,37 @@
 # TASKS
 
 ## Current Phase
-- `P9 - Channel-Driven Strategy Architecture`
+- `P10 - Smart Signal Group Management` ✅ COMPLETE
+
+### P10 Phase 1: Models + Routing (P10a)
+- [x] `core/models.py` — OrderGroup dataclass + GroupStatus enum
+- [x] `core/position_manager.py` — _groups dict, _ticket_to_group, _check_positions routing
+
+### P10 Phase 2: Config (P10b)
+- [x] `config/channels.example.json` — 6 new config fields (group_trailing_pips, sl_mode, etc.)
+
+### P10 Phase 3: Group SL Logic (P10c)
+- [x] `core/position_manager.py` — _manage_group, _calculate_group_sl, _modify_group_sl
+
+### P10 Phase 4: OrderBuilder STOP Filter (P10d)
+- [x] `core/order_builder.py` — allowed_types + zone params for STOP→MARKET/LIMIT fallback
+
+### P10 Phase 5: Pipeline Integration (P10e)
+- [x] `core/pipeline.py` — _register_group_from_results + re-entry add_order_to_group
+
+### P10 Phase 6: Reply Enhancement (P10f)
+- [x] `core/position_manager.py` — close_selective_entry + apply_group_be
+- [x] `main.py` — interceptor in _do_process_reply for selective close
+
+### P10 Phase 7: DB Persistence (P10g)
+- [x] `core/storage.py` — V4 migration signal_groups + CRUD methods
+- [x] `core/position_manager.py` — wire storage calls (store/update/complete)
+
+### P10 Documentation
+- [x] `CHANGELOG.md` — v0.10.0
+- [x] `docs/TASKS.md` — updated
+
+## Previous Phase
 
 ## High Priority
 

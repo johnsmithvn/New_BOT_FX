@@ -1,7 +1,7 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P9 - Channel-Driven Strategy Architecture`
+- Phase: `P10 - Smart Signal Group Management`
 - Status: `complete`
 
 ## Execution Phases
@@ -115,6 +115,23 @@
   - Storage migration V3: `active_signals` table
 - Status: `complete`
 
+### P10 - Smart Signal Group Management
+- Goal:
+  - Merge group management into PositionManager. Every signal = 1 managed group.
+  - Coordinated group SL (zone/trail/signal), selective close via reply, auto-BE.
+- Major deliverables:
+  - `core/models.py` — `OrderGroup` dataclass, `GroupStatus` enum
+  - `core/position_manager.py` — group-aware routing, register_group, group trailing SL,
+    _calculate_group_sl (zone/signal/fixed/trail), _modify_group_sl (atomic apply to all tickets),
+    close_selective_entry (strategy-based), apply_group_be, query methods, DB wiring
+  - `core/pipeline.py` — _register_group_from_results, re-entry add_order_to_group
+  - `core/order_builder.py` — order_types_allowed filter (STOP→MARKET/LIMIT fallback)
+  - `main.py` — P10f selective close interceptor in _do_process_reply
+  - `core/storage.py` — Migration V4: `signal_groups` table + 5 CRUD methods
+  - `config/channels.example.json` — 6 new config fields
+  - Restart recovery: `_restore_groups_from_db()` loads active groups on startup
+- Status: `complete`
+
 ## Phase Completion Rule
 - Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
 - On completion:
@@ -123,9 +140,38 @@
   - Regenerate `docs/TASKS.md` for the new current phase
 
 ## What's Next
-- v0.7.0 done: per-channel metrics, message edit wiring, store_event channel_id, reply throttle
-- v0.7.1 done: command response via Telegram, position manager alerts with throttle
-- v0.8.0 done: reply-based signal management (reply to signal → close/SL/TP/BE on specific trade)
-- v0.9.0 done: channel-driven strategy architecture (P9)
-- Deferred: parser overrides per detector (no concrete need yet)
-- Consider next: multi-account support, web dashboard
+
+### Done
+- v0.7.0: per-channel metrics, message edit wiring, store_event channel_id, reply throttle
+- v0.7.1: command response via Telegram, position manager alerts with throttle
+- v0.8.0: reply-based signal management (reply to signal → close/SL/TP/BE on specific trade)
+- v0.9.0: channel-driven strategy architecture (P9)
+- v0.10.0: smart signal group management (P10) + restart recovery
+
+### Upcoming
+
+#### P10.1 — Edit & Delete Message Handling (Production Safety)
+- **Why**: Production cần — hiện tại edit message chạy lại pipeline từ đầu, delete message không được lắng nghe. Khi có group, cần quyết định: cancel cả group hay chỉ pending orders?
+- **Scope**: ~200 LOC, medium risk
+- **Deliverables**:
+  - Làm rõ edit flow: khi signal đã tạo group → skip re-parse hay cancel group?
+  - Thêm `MessageDeleted` listener → auto cancel tất cả orders trong group
+  - Update `message_update_handler.py` cho group-aware logic
+  - Guard: nếu group có orders đã fill → chỉ cancel pending, không đóng filled
+
+#### P11 — Web Analytics Dashboard
+- **Why**: Cần trực quan hóa PnL, win/loss, per-channel performance
+- **Scope**: New feature lớn, ~1500+ LOC
+- **Deliverables**:
+  - FastAPI backend — API endpoints cho trade data, group stats, channel metrics
+  - Frontend (Next.js hoặc pure HTML) — charts, filters, date range
+  - DB view/aggregation queries trên existing tables
+
+#### P12 — Multi-Account Support
+- **Why**: Chạy nhiều account broker từ 1 bot instance
+- **Scope**: Architecture change, cần careful planning
+- **Deliverables**: TODO — cần spec sau khi P11 xong
+
+### Deferred
+- Parser overrides per detector (no concrete need yet)
+

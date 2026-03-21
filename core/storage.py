@@ -164,6 +164,37 @@ _MIGRATIONS: dict[int, str] = {
         CREATE INDEX IF NOT EXISTS idx_orders_source_msg
             ON orders(source_chat_id, source_message_id);
     """,
+    4: """
+        -- V4: Signal groups for P10 group management
+        CREATE TABLE IF NOT EXISTS signal_groups (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            fingerprint           TEXT NOT NULL UNIQUE,
+            symbol                TEXT NOT NULL,
+            side                  TEXT NOT NULL,
+            channel_id            TEXT NOT NULL,
+            source_message_id     TEXT,
+            zone_low              REAL,
+            zone_high             REAL,
+            signal_sl             REAL,
+            signal_tp             TEXT,          -- JSON array
+            tickets               TEXT NOT NULL, -- JSON array of ints
+            entry_prices          TEXT NOT NULL, -- JSON {ticket: price}
+            sl_mode               TEXT NOT NULL DEFAULT 'signal',
+            sl_max_pips_from_zone REAL DEFAULT 50.0,
+            group_trailing_pips   REAL DEFAULT 0.0,
+            group_be_on_partial   INTEGER DEFAULT 0,
+            reply_close_strategy  TEXT DEFAULT 'all',
+            current_group_sl      REAL,
+            status                TEXT NOT NULL DEFAULT 'active',
+            created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_signal_groups_status
+            ON signal_groups(status);
+        CREATE INDEX IF NOT EXISTS idx_signal_groups_channel
+            ON signal_groups(channel_id);
+    """,
 }
 
 
@@ -635,6 +666,118 @@ class Storage:
         )
         return cursor.rowcount
 
+    # ── P10: Signal Group Persistence ──────────────────────────────
+
+    def store_group(
+        self,
+        fingerprint: str,
+        symbol: str,
+        side: str,
+        channel_id: str,
+        source_message_id: str,
+        tickets: list[int],
+        entry_prices: dict[int, float],
+        zone_low: float | None = None,
+        zone_high: float | None = None,
+        signal_sl: float | None = None,
+        signal_tp: list[float] | None = None,
+        sl_mode: str = "signal",
+        sl_max_pips_from_zone: float = 50.0,
+        group_trailing_pips: float = 0.0,
+        group_be_on_partial: bool = False,
+        reply_close_strategy: str = "all",
+    ) -> None:
+        """Persist a signal group to DB for restart recovery."""
+        self._execute_with_retry(
+            """INSERT OR REPLACE INTO signal_groups (
+                fingerprint, symbol, side, channel_id, source_message_id,
+                zone_low, zone_high, signal_sl, signal_tp,
+                tickets, entry_prices,
+                sl_mode, sl_max_pips_from_zone, group_trailing_pips,
+                group_be_on_partial, reply_close_strategy,
+                status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))""",
+            (
+                fingerprint, symbol, side, channel_id, source_message_id,
+                zone_low, zone_high, signal_sl,
+                json.dumps(signal_tp) if signal_tp else None,
+                json.dumps(tickets),
+                json.dumps({str(k): v for k, v in entry_prices.items()}),
+                sl_mode, sl_max_pips_from_zone, group_trailing_pips,
+                1 if group_be_on_partial else 0,
+                reply_close_strategy,
+            ),
+        )
+
+    def get_active_groups(self) -> list[dict]:
+        """Get all active signal groups for restart recovery.
+
+        Returns list of dicts with parsed JSON fields.
+        """
+        try:
+            cursor = self._execute_with_retry(
+                "SELECT * FROM signal_groups WHERE status = 'active'"
+            )
+            rows = cursor.fetchall()
+        except Exception:
+            return []
+
+        groups = []
+        for row in rows:
+            row_dict = dict(row)
+            # Parse JSON fields
+            try:
+                row_dict["tickets"] = json.loads(row_dict["tickets"])
+            except (json.JSONDecodeError, TypeError):
+                row_dict["tickets"] = []
+            try:
+                raw_prices = json.loads(row_dict["entry_prices"])
+                row_dict["entry_prices"] = {int(k): v for k, v in raw_prices.items()}
+            except (json.JSONDecodeError, TypeError):
+                row_dict["entry_prices"] = {}
+            try:
+                tp = row_dict.get("signal_tp")
+                row_dict["signal_tp"] = json.loads(tp) if tp else []
+            except (json.JSONDecodeError, TypeError):
+                row_dict["signal_tp"] = []
+            row_dict["group_be_on_partial"] = bool(row_dict.get("group_be_on_partial", 0))
+            groups.append(row_dict)
+
+        return groups
+
+    def update_group_sl(self, fingerprint: str, new_sl: float) -> None:
+        """Update the current SL for a signal group."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET current_group_sl = ?, updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (new_sl, fingerprint),
+        )
+
+    def update_group_tickets(
+        self, fingerprint: str, tickets: list[int], entry_prices: dict[int, float],
+    ) -> None:
+        """Update tickets and entry_prices after re-entry adds order."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET tickets = ?, entry_prices = ?, updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (
+                json.dumps(tickets),
+                json.dumps({str(k): v for k, v in entry_prices.items()}),
+                fingerprint,
+            ),
+        )
+
+    def complete_group_db(self, fingerprint: str) -> None:
+        """Mark a signal group as completed in DB."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET status = 'completed', updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (fingerprint,),
+        )
+
     # ── Cleanup ──────────────────────────────────────────────────
 
     def cleanup_old_records(self, retention_days: int = 30) -> dict:
@@ -651,6 +794,7 @@ class Storage:
             ("events", "timestamp"),
             ("trades", "created_at"),
             ("active_signals", "created_at"),
+            ("signal_groups", "created_at"),
         ]
         for table, col in tables:
             try:

@@ -1003,6 +1003,56 @@ class Bot:
         )
 
         # Step 4: Execute on each order
+        # ── P10f: Group-aware selective close ────────────────────
+        # If this is a CLOSE action and there's a group with selective
+        # strategy, route through PositionManager instead of closing all.
+        if (
+            action.action == ReplyActionType.CLOSE
+            and hasattr(self, "position_manager")
+            and self.position_manager
+        ):
+            # Try to find group by first order's fingerprint
+            first_fp = orders[0]["fingerprint"]
+            # Strip level suffix to get base fingerprint
+            base_fp = first_fp.split(":L")[0] if ":L" in first_fp else first_fp
+            group = self.position_manager.get_group(base_fp)
+
+            if group and group.reply_close_strategy != "all":
+                # Selective close: close ONE order based on strategy
+                result = self.position_manager.close_selective_entry(
+                    base_fp,
+                    reply_executor=self.reply_executor,
+                    dry_run=dry_run,
+                )
+                if result and result.get("status") == "closed":
+                    ticket = result["ticket"]
+                    remaining = result["remaining_count"]
+                    total = result["total_count"]
+                    entry_price = result["entry_price"]
+
+                    # Mark for TradeTracker suppression
+                    if self.trade_tracker and not dry_run:
+                        self.trade_tracker.mark_reply_closed(ticket)
+
+                    msg = (
+                        f"📋 **CLOSE** (selective: {group.reply_close_strategy})\n"
+                        f"✅ Closed #{ticket} (entry {entry_price})\n"
+                        f"Remaining: {remaining}/{total} orders"
+                    )
+                    try:
+                        msg_id_int = int(message_id) if message_id else None
+                        if msg_id_int:
+                            self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
+                    except (ValueError, TypeError):
+                        pass
+                    self.alerter.send_alert_sync("reply_command", msg)
+                    print(f"  [REPLY] selective_close → #{ticket}, {remaining} remaining")
+                    return
+                elif result and result.get("status") == "no_open_orders":
+                    # All orders already closed
+                    pass  # Fall through to existing logic
+
+        # ── Original close-all logic (for strategy="all" or no group) ─
         success_results: list[str] = []
         skipped_tickets: list[str] = []
 

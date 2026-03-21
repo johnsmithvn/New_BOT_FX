@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 0.10.0 - 2026-03-21
+
+### Added
+- **P10: Smart Signal Group Management** — every signal creates a managed order group
+- `core/models.py` — `OrderGroup` dataclass and `GroupStatus` enum for group lifecycle
+- `core/position_manager.py` — Group-aware position management:
+  - `_check_positions()` routes to group vs individual management
+  - `register_group()` creates groups from pipeline results
+  - `add_order_to_group()` for re-entry orders from RangeMonitor
+  - `_manage_group()` with group trailing SL, zone SL, and auto-BE
+  - `_calculate_group_sl()` — multi-source SL calculation (zone, signal, fixed, trail)
+  - `_modify_group_sl()` — applies SL to ALL tickets atomically
+  - `close_selective_entry()` — strategy-based single order close from reply
+  - `apply_group_be()` — auto-breakeven after partial group close
+  - `get_group()`, `get_group_by_ticket()`, `get_group_status()` — query methods
+- `core/pipeline.py` — `_register_group_from_results()` called after every execution
+- `core/order_builder.py` — `order_types_allowed` filter (P10d):
+  - STOP not allowed → MARKET (if price in zone) or LIMIT at zone midpoint
+- `core/storage.py` — Migration V4: `signal_groups` table for restart recovery
+  - `store_group()`, `get_active_groups()`, `update_group_sl()`, `update_group_tickets()`, `complete_group_db()`
+- `config/channels.example.json` — 6 new config fields:
+  - `group_trailing_pips`, `group_be_on_partial_close`, `reply_close_strategy`
+  - `sl_mode` (`signal`/`zone`/`fixed`), `sl_max_pips_from_zone`, `order_types_allowed`
+
+### Changed
+- `main.py` — Reply handler intercepts CLOSE for groups with selective strategy
+- `core/position_manager.py` — Per-position logic extracted to `_manage_individual()`
+- Cleanup task now includes `signal_groups` table
+
 ## 0.9.0 - 2026-03-21
 
 ### Added

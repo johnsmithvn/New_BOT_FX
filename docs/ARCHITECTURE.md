@@ -76,6 +76,10 @@ when parsing fails.
 - Build MT5 request payload (action, type, price, SL, TP, metadata).
 - Dynamic deviation: `compute_deviation(spread_points)` widens slippage tolerance
   during high-spread conditions when `DYNAMIC_DEVIATION_MULTIPLIER > 0`.
+- **P10**: `order_types_allowed` filter — when STOP not in allowed list:
+  - Price inside zone → MARKET
+  - Price outside zone → LIMIT at zone midpoint
+  - No zone info → MARKET fallback
 Price Reference Rule
 
 Order decision must use correct MT5 reference prices:
@@ -130,8 +134,10 @@ SELL:
   - `tracker_state` — key-value persistence for `TradeTracker` poll time (v0.6.0)
   - `schema_versions` — migration version tracking (v0.6.0)
   - `active_signals` — active signal lifecycle state for multi-order strategies (v0.9.0)
+  - `signal_groups` — signal group state for restart recovery (v0.10.0/P10)
 - Fingerprint lookup by message: `get_fingerprint_by_message()` (v0.7.0)
 - `get_orders_by_message()` — P9: direct join via `source_message_id` on orders table (supports sub-fingerprints).
+- **P10 group persistence**: `store_group()`, `get_active_groups()`, `update_group_sl()`, `update_group_tickets()`, `complete_group_db()`.
 
 ### `core/entry_strategy.py` (v0.9.0)
 - Generate multi-entry plans from signal + strategy config + live tick.
@@ -229,6 +235,14 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Per-channel rules via `ChannelManager` (v0.6.0)
 - Telegram alerts on breakeven/trailing/partial with per-ticket 60s throttle (v0.7.1)
 - Trailing alert delta threshold: ≥5 pips before alerting (v0.7.1)
+- **P10: Group-aware management**:
+  - Every signal = 1 `OrderGroup` (group of 1 for single mode, group of N for range/scale_in)
+  - `_check_positions()` routes to `_manage_group()` or `_manage_individual()`
+  - Group SL: `_calculate_group_sl()` picks best SL from zone/signal/fixed/trail candidates
+  - `_modify_group_sl()` applies SL atomically to ALL tickets, only moves favorably
+  - `close_selective_entry()` — reply "close" closes one order by strategy (highest_entry/lowest_entry/oldest)
+  - `apply_group_be()` — auto-sets SL to min remaining entry after partial close
+  - DB persistence via `storage.py` for restart recovery
 
 ### `core/command_parser.py`
 - Parse Telegram management commands (CLOSE ALL, CLOSE SYMBOL, MOVE SL, BREAKEVEN).
@@ -252,14 +266,18 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Symbol consistency guard: verify position matches expected symbol.
 - Supports: close, close partial (percent), move SL, move TP, breakeven.
 
-### Reply-Based Signal Management Flow (v0.8.0)
+### Reply-Based Signal Management Flow (v0.8.0, enhanced v0.10.0)
 ```
 Reply message (reply_to = signal_msg_id)
   → listener detects reply_to_msg_id → forward to _process_reply()
   → storage.get_orders_by_message() → list of ALL orders for that signal
   → channel guard + success filter
   → reply_action_parser.parse() → ReplyAction | None
-  → for each order: execute on ticket (with position check)
+  → P10: if CLOSE + group has selective strategy:
+      → PositionManager.close_selective_entry(strategy)
+      → auto apply_group_be if configured
+      → return early with selective result
+  → else: for each order: execute on ticket (with position check)
   → group results: "✅ closed" / "⏭ already closed"
   → reply aggregated summary to user
   → mark_reply_closed() → TradeTracker suppresses duplicate PnL reply

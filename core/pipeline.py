@@ -134,14 +134,83 @@ class SignalPipeline:
 
         # ── Single mode: delegate to classic single-order path ───
         if mode == "single":
-            return self._execute_single(
+            results = self._execute_single(
                 signal, bid, ask, point, balance, current_spread, dry_run,
             )
+        else:
+            # ── Multi-order mode (range / scale_in) ──────────────
+            results = self._execute_multi(
+                signal, strategy_config, bid, ask, point,
+                balance, current_spread, dry_run,
+            )
 
-        # ── Multi-order mode (range / scale_in) ─────────────────
-        return self._execute_multi(
-            signal, strategy_config, bid, ask, point,
-            balance, current_spread, dry_run,
+        # ── P10: Register order group in PositionManager ─────────
+        self._register_group_from_results(signal, chat_id, results)
+
+        return results
+
+    def _register_group_from_results(
+        self,
+        signal: ParsedSignal,
+        chat_id: str,
+        results: list[dict[str, Any]],
+    ) -> None:
+        """Register successful orders as a group in PositionManager (P10).
+
+        Called after both single and multi mode execution.
+        Every signal creates a group (group of 1 for single mode).
+
+        Skips registration if no position manager or no successful orders.
+        """
+        if not self._position_mgr:
+            return
+
+        # Collect successful tickets and their entry prices
+        tickets: list[int] = []
+        entry_prices: dict[int, float] = {}
+
+        for r in results:
+            if r.get("success") and r.get("ticket"):
+                ticket = r["ticket"]
+                tickets.append(ticket)
+                # Entry price from the request, or from plan level
+                price = (
+                    r.get("request", {}).get("price")
+                    or r.get("decision", None) and r["decision"].price
+                )
+                if price:
+                    entry_prices[ticket] = price
+
+        if not tickets:
+            return
+
+        # Get channel rules for config snapshot
+        rules = self._channel_mgr.get_rules(chat_id)
+
+        # Determine zone bounds
+        zone_low = None
+        zone_high = None
+        if signal.entry_range and len(signal.entry_range) == 2:
+            zone_low = min(signal.entry_range)
+            zone_high = max(signal.entry_range)
+        elif signal.entry:
+            # Single entry = zone of 1 point
+            zone_low = signal.entry
+            zone_high = signal.entry
+
+        self._position_mgr.register_group(
+            fingerprint=signal.fingerprint,
+            symbol=signal.symbol,
+            side=signal.side,
+            channel_id=chat_id,
+            source_message_id=signal.source_message_id,
+            tickets=tickets,
+            entry_prices=entry_prices,
+            zone_low=zone_low,
+            zone_high=zone_high,
+            signal_sl=signal.sl,
+            signal_tp=signal.tp if signal.tp else None,
+            rules=rules,
         )
 
     def handle_reentry(
@@ -290,6 +359,12 @@ class SignalPipeline:
             if self._position_mgr and exec_result.ticket:
                 self._position_mgr.register_ticket(
                     exec_result.ticket, signal_state.channel_id,
+                )
+                # P10: Add re-entry ticket to existing group
+                self._position_mgr.add_order_to_group(
+                    fingerprint=fp,
+                    ticket=exec_result.ticket,
+                    entry_price=plan.level,
                 )
             log_event(
                 "reentry_executed", fingerprint=order_fp,
@@ -485,9 +560,20 @@ class SignalPipeline:
             source_message_id=signal.source_message_id,
             fingerprint=fp,
         )
+        # P10d: Get order type restrictions from channel strategy config
+        strategy_config = self._channel_mgr.get_strategy(signal.source_chat_id)
+        allowed_types = strategy_config.get("order_types_allowed")
+        zone_low = None
+        zone_high = None
+        if signal.entry_range and len(signal.entry_range) == 2:
+            zone_low = min(signal.entry_range)
+            zone_high = max(signal.entry_range)
 
         decision = self._order_builder.decide_order_type(
             plan_signal, bid, ask, point,
+            allowed_types=allowed_types,
+            zone_low=zone_low,
+            zone_high=zone_high,
         )
         request = self._order_builder.build_request(
             plan_signal, decision, volume, bid, ask,

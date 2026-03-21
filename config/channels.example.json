@@ -5,7 +5,12 @@
             "breakeven_trigger_pips": 0,
             "breakeven_lock_pips": 2,
             "trailing_stop_pips": 0,
-            "partial_close_percent": 0
+            "partial_close_percent": 0,
+            "group_trailing_pips": 0,
+            "group_be_on_partial_close": false,
+            "reply_close_strategy": "all",
+            "sl_mode": "signal",
+            "sl_max_pips_from_zone": 50
         },
         "strategy": {
             "mode": "single",
@@ -13,7 +18,8 @@
             "reentry_enabled": false,
             "reentry_step_pips": 0,
             "signal_ttl_minutes": 15,
-            "volume_split": "equal"
+            "volume_split": "equal",
+            "order_types_allowed": ["MARKET", "LIMIT", "STOP"]
         },
         "risk": {},
         "validation": {}
@@ -25,7 +31,12 @@
                 "breakeven_trigger_pips": 50,
                 "breakeven_lock_pips": 30,
                 "trailing_stop_pips": 40,
-                "partial_close_percent": 0
+                "partial_close_percent": 0,
+                "group_trailing_pips": 50,
+                "group_be_on_partial_close": true,
+                "reply_close_strategy": "highest_entry",
+                "sl_mode": "zone",
+                "sl_max_pips_from_zone": 50
             },
             "strategy": {
                 "mode": "range",
@@ -33,7 +44,8 @@
                 "reentry_enabled": true,
                 "reentry_step_pips": 30,
                 "signal_ttl_minutes": 60,
-                "volume_split": "risk_based"
+                "volume_split": "risk_based",
+                "order_types_allowed": ["MARKET", "LIMIT"]
             },
             "risk": {
                 "mode": "FIXED_LOT",

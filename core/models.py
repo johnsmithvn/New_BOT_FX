@@ -166,3 +166,60 @@ def order_fingerprint(base_fp: str, level_id: int) -> str:
     """
     return f"{base_fp}:L{level_id}"
 
+
+# ── P10: Signal Group Management ────────────────────────────────
+
+
+class GroupStatus(str, enum.Enum):
+    """Lifecycle status of a signal order group (P10).
+
+    Transitions:
+        ACTIVE → COMPLETED  (all orders closed)
+        ACTIVE → EXPIRED    (TTL exceeded, no fills)
+    """
+
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+
+
+@dataclass
+class OrderGroup:
+    """Group of orders from one signal — managed as a unit (P10).
+
+    Created by PositionManager.register_group() after pipeline execution.
+    All orders in a group share SL management, trailing, and reply logic.
+
+    Group of 1 (single mode): behaves like legacy per-position management.
+    Group of N (range/scale_in): group trailing, selective close, auto BE.
+    """
+
+    # ── Identity ──
+    fingerprint: str              # Base fingerprint (same as signal)
+    symbol: str
+    side: Side                    # BUY or SELL
+    channel_id: str
+    source_message_id: str        # Telegram message_id for reply lookup
+
+    # ── Zone info (from signal) ──
+    zone_low: float | None        # Lowest entry in zone (None if single)
+    zone_high: float | None       # Highest entry in zone (None if single)
+    signal_sl: float | None       # Original SL from signal text
+    signal_tp: list[float] = field(default_factory=list)
+
+    # ── Orders in this group ──
+    tickets: list[int] = field(default_factory=list)
+    entry_prices: dict[int, float] = field(default_factory=dict)
+
+    # ── Per-channel config (snapshot at registration time) ──
+    sl_mode: str = "signal"              # "signal" / "zone" / "fixed"
+    sl_max_pips_from_zone: float = 50.0
+    group_trailing_pips: float = 0.0     # 0 = disabled
+    group_be_on_partial_close: bool = False
+    reply_close_strategy: str = "all"    # "all" / "highest_entry" / ...
+
+    # ── Runtime state ──
+    current_group_sl: float | None = None
+    status: GroupStatus = GroupStatus.ACTIVE
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
