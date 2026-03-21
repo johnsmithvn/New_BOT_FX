@@ -1,8 +1,8 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P6 - Multi-Channel & Trade Tracking (complete)`
-- Status: All core + medium-priority items done. See `docs/TASKS.md` for details.
+- Phase: `P9 - Channel-Driven Strategy Architecture`
+- Status: Phase 1 in progress — Foundation (models, channel config, entry strategy).
 
 ## Execution Phases
 
@@ -93,9 +93,24 @@
   - Move next phase to `in progress`
   - Regenerate `docs/TASKS.md` for the new current phase
 
+### P9 - Channel-Driven Strategy Architecture
+- Goal:
+  - Redesign system to be channel-driven strategy-based, not just signal-driven.
+  - Support range-based entry, multi-order per signal, dynamic re-entry.
+- Major deliverables:
+  - `core/entry_strategy.py` — multi-entry plan engine (single/range/scale_in)
+  - `core/signal_state_manager.py` — active signal lifecycle with state machine
+  - `core/range_monitor.py` — background price-cross re-entry trigger
+  - `core/pipeline.py` — extracted sole orchestrator from main.py
+  - `channels.json` expanded: strategy, risk, validation per channel
+  - `core/models.py` — EntryPlan, SignalState, order_fingerprint
+  - Storage migration V3: `active_signals` table
+- Status: `in progress` — Phase 1: Foundation
+
 ## What's Next
 - v0.7.0 done: per-channel metrics, message edit wiring, store_event channel_id, reply throttle
 - v0.7.1 done: command response via Telegram, position manager alerts with throttle
 - v0.8.0 done: reply-based signal management (reply to signal → close/SL/TP/BE on specific trade)
+- v0.9.0 in progress: channel-driven strategy architecture (P9)
 - Deferred: parser overrides per detector (no concrete need yet)
-- Consider next: extended parser formats, multi-account support, web dashboard
+- Consider next: multi-account support, web dashboard

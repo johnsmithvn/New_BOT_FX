@@ -102,11 +102,13 @@ SELL:
 - Maintain connection health and expose retry-safe execution.
 - Provide position query helpers for exposure guard integration.
 
-### `core/channel_manager.py` (v0.6.0)
+### `core/channel_manager.py` (v0.6.0, expanded v0.9.0)
 - Load per-channel rules from `config/channels.json`.
 - Merge default rules with channel-specific overrides.
 - Falls back gracefully if no config file exists.
 - Provides `get_rules(chat_id)` for per-channel rule lookup.
+- **v0.9.0**: `get_strategy(chat_id)` for entry strategy config (mode, max_entries, volume_split).
+- **v0.9.0**: `get_risk_config(chat_id)` and `get_validation_config(chat_id)` for per-channel overrides.
 
 ### `core/trade_tracker.py` (v0.6.0)
 - Background deal polling via MT5 `history_deals_get()`.
@@ -127,7 +129,35 @@ SELL:
   - `trades` — trade outcomes: PnL, commission, swap, close reason (v0.6.0)
   - `tracker_state` — key-value persistence for `TradeTracker` poll time (v0.6.0)
   - `schema_versions` — migration version tracking (v0.6.0)
+  - `active_signals` — active signal lifecycle state for multi-order strategies (v0.9.0)
 - Fingerprint lookup by message: `get_fingerprint_by_message()` (v0.7.0)
+- `get_orders_by_message()` — P9: direct join via `source_message_id` on orders table (supports sub-fingerprints).
+
+### `core/entry_strategy.py` (v0.9.0)
+- Generate multi-entry plans from signal + strategy config + live tick.
+- Strategy modes: `single` (1:1), `range` (N orders across range), `scale_in` (stepped re-entries).
+- Volume split algorithms: `equal`, `pyramid`, `risk_based` (weighted by SL distance).
+- Pure logic only — no execution, no state, no side effects.
+
+### `core/signal_state_manager.py` (v0.9.0)
+- Track active signal lifecycle with state machine: PENDING → PARTIAL → COMPLETED → EXPIRED.
+- In-memory registry backed by DB persistence for restart recovery.
+- Query pending re-entry levels for RangeMonitor.
+- Only tracks range/scale_in signals — single mode is fire-and-forget.
+
+### `core/pipeline.py` (v0.9.0)
+- **SOLE orchestrator** for all order execution.
+- `execute_signal_plans()`: replaces steps 7-9 for multi-order support.
+- `handle_reentry()`: callback from RangeMonitor with full risk guard gauntlet.
+- Delegates to EntryStrategy for plan generation, OrderBuilder for request building.
+- Responsibility: Strategy generates, Monitor emits, **Pipeline decides**.
+
+### `core/range_monitor.py` (v0.9.0)
+- Background asyncio price monitor for re-entry triggers.
+- Price-cross detection: triggers only when price **crosses through** a level.
+- 30-second debounce per level to prevent spam.
+- Symbol-grouped tick requests for efficiency.
+- Emits events to Pipeline via callback — never executes orders directly.
 
 ### `utils/symbol_mapper.py`
 - Map channel symbol aliases to broker symbols.

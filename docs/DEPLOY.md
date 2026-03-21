@@ -77,7 +77,7 @@ nano .env  # fill in all credentials
 
 # Multi-channel rules (optional)
 cp config/channels.example.json config/channels.json
-nano config/channels.json  # per-channel breakeven/trailing/partial rules
+nano config/channels.json  # per-channel strategy/risk/validation/breakeven/trailing/partial rules
 ```
 
 ### Critical `.env` Values

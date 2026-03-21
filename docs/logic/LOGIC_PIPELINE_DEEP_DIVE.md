@@ -312,8 +312,9 @@ BUY: SL(2940) >= entry(2935) = True
 
 ## 3. Từng bước pipeline — giải thích từng dòng code
 
-> File: `main.py`, function `_do_process_signal()`, dòng 357-659
-> Pipeline v0.5.1: Step 0 → Step 1 → Step 2 → Step 2b → Step 2c → Step 3 → Step 4 → Step 5 → Step 6 → Step 7 → Step 8 → Step 8b → Step 9
+> File: `main.py`, function `_do_process_signal()`
+> Pipeline v0.9.0: Steps 0–6 unchanged. Steps 7–9 now delegated to `SignalPipeline.execute_signal_plans()` (single/range/scale_in modes).
+> The step-by-step breakdown below describes the **pre-P9 logic** for reference. In v0.9.0, the Pipeline handles volume, order building, and execution internally.
 
 ---
 
@@ -691,7 +692,9 @@ self.storage.store_signal(signal_obj, SignalStatus.PARSED)
 
 ---
 
-### Step 7: 💰 CALCULATE VOLUME (dòng 557-568)
+### Step 7: 💰 CALCULATE VOLUME
+
+> ⚠️ **v0.9.0 Note**: In P9, volume calculation is handled inside `SignalPipeline.execute_signal_plans()`. For `range`/`scale_in` modes, volume is split across entry levels by `EntryStrategy.split_volume()` (equal/pyramid/risk_based).
 
 ```python
 if dry_run:
@@ -736,7 +739,9 @@ volume = round(volume, 2)                            # Fix floating point
 
 ---
 
-### Step 8: 🎯 BUILD ORDER (QUYẾT ĐỊNH VÀO LỆNH) (dòng 570-577)
+### Step 8: 🎯 BUILD ORDER
+
+> ⚠️ **v0.9.0 Note**: In P9, order building is done per-level inside `SignalPipeline`. Each level gets its own `decide_order_type()` → `build_request()` call with the level-specific price and volume.
 
 ```python
 decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
@@ -850,7 +855,9 @@ if drift_pips > MAX_ENTRY_DRIFT_PIPS:   # ENV: 10.0
 
 ---
 
-### Step 9: ⚡ EXECUTE (dòng 605-659)
+### Step 9: ⚡ EXECUTE
+
+> ⚠️ **v0.9.0 Note**: In P9, execution is handled by `SignalPipeline`. For multi-order mode, each level is executed sequentially. Results are returned as a list of dicts to `main.py` for metrics tracking.
 
 #### DRY_RUN (dòng 452-467):
 ```python

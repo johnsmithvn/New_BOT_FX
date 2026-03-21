@@ -7,7 +7,7 @@ Update this list when a new unsupported format is discovered.
 ## Known Unsupported Formats
 
 ### Not Yet Supported
-- [ ] Signals with multiple entry zones (e.g. `ENTRY 1: 2030, ENTRY 2: 2025`)
+- [x] Signals with multiple entry zones (e.g. `ENTRY 1: 2030, ENTRY 2: 2025`) — ✅ handled via P9 `EntryStrategy` range/scale_in mode (v0.9.0)
 - [x] Signals with partial close instructions — ✅ handled via `PARTIAL_CLOSE_PERCENT` config + `CLOSE HALF` command
 - [x] Signals with trailing stop instructions — ✅ handled via `TRAILING_STOP_PIPS` config in position manager
 - [ ] Signals with risk/reward ratio only (no explicit SL/TP prices)

@@ -14,8 +14,9 @@ signal_received
   → exposure_guard_check
   → duplicate_check
   → validation_pass / validation_rejected
-  → order_submitted
+  → pipeline_execute (single or multi-order via SignalPipeline)
   → order_result (executed / failed)
+  → [if range/scale_in] signal_state_registered → range_monitor_trigger → reentry_executed
 ```
 
 ## Command Lifecycle
@@ -78,6 +79,19 @@ Signals stored in DB have status:
 - `reply_executed` — action result stored per ticket
 - `reply_command` — aggregated result sent to user + admin
 - `trade_tracker_reply_suppressed` — PnL reply suppressed for reply-closed ticket
+
+## Multi-Order Strategy Events (v0.9.0)
+
+- `pipeline_single_execute` — single mode: one order executed via SignalPipeline
+- `pipeline_multi_execute` — range/scale_in: N orders created from one signal
+- `signal_state_registered` — signal entered state machine (PENDING)
+- `signal_state_partial` — at least one level filled
+- `signal_state_completed` — all levels filled or max_entries reached
+- `signal_state_expired` — signal TTL exceeded, removed from monitoring
+- `range_monitor_trigger` — price crossed through re-entry level (with debounce)
+- `range_monitor_callback_error` — re-entry callback failed
+- `reentry_executed` — re-entry order placed via Pipeline.handle_reentry()
+- `reentry_blocked` — re-entry rejected by risk guards (circuit breaker, daily, exposure)
 
 ## Log Format
 

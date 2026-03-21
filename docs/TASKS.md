@@ -1,9 +1,36 @@
 # TASKS
 
 ## Current Phase
-- `P6 - Multi-Channel & Trade Outcome Tracking`
+- `P9 - Channel-Driven Strategy Architecture`
 
 ## High Priority
+
+### P9 Phase 1: Foundation
+- [x] `core/models.py` — add EntryPlan, SignalState, order_fingerprint()
+- [x] `config/channels.json` — expand schema with strategy/risk/validation
+- [x] `core/channel_manager.py` — add get_strategy(), get_risk_config(), get_validation_config()
+- [x] `core/entry_strategy.py` — new, multi-entry plan engine (single/range/scale_in)
+
+### P9 Phase 2: Signal State + Storage
+- [x] `core/storage.py` — migration V3, active_signals table + CRUD
+- [x] `core/storage.py` — update get_orders_by_message() to join via source_message_id directly
+- [x] `core/signal_state_manager.py` — new, state machine + registry
+
+### P9 Phase 3: Pipeline Refactor
+- [x] `core/pipeline.py` — new, extract from main.py, multi-order loop + handle_reentry()
+- [x] `main.py` — thin orchestration, delegate to pipeline
+
+### P9 Phase 4: Range Monitor
+- [x] `core/range_monitor.py` — new, price-cross detection + debounce
+- [x] `main.py` — wire RangeMonitor lifecycle (start/stop)
+
+### P9 Phase 5: Documentation
+- [x] `docs/ARCHITECTURE.md` — update
+- [x] `CHANGELOG.md` — v0.9.0
+- [x] `docs/TASKS.md` — finalize
+- [x] `config/channels.example.json` — update
+
+### Previous Phases (completed)
 
 ### Schema Migration System
 - [x] `core/storage.py` — versioned migration system with `schema_versions` table

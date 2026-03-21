@@ -41,6 +41,17 @@ Dưới đây là chi tiết nhịp đập (interval) của từng module:
 - **Biến điều khiển**: Bị ép cứng trong Source Code ở hàm `_storage_cleanup_loop`. Giữ lại Data số ngày cấu hình ở `STORAGE_RETENTION_DAYS`.
 - **Tần suất lặp mặc định**: `24 * 3600` giây (Mỗi 24 giờ / lần).
 
+### 1.6 Range Monitor — Giám sát giá để Re-entry (v0.9.0)
+- **Nhiệm vụ**: Theo dõi giá thị trường real-time để phát hiện khi giá **xuyên qua** (cross through) một mức entry đã lên kế hoạch. Khi phát hiện → emit event cho Pipeline tạo lệnh re-entry.
+- **Biến điều khiển**: `poll_seconds=5` và `debounce_seconds=30` (cấu hình trong code, chưa expose ra `.env`).
+- **Tần suất lặp mặc định**: `5` giây / lần.
+- **Cơ chế**:
+  - Chỉ chạy khi có signal active ở mode `range` hoặc `scale_in`.
+  - **Price-cross detection**: Chỉ trigger khi giá đi **xuyên qua** level (prev > level → current ≤ level cho BUY). Không trigger khi giá chỉ "gần" level.
+  - **Debounce 30 giây**: Sau khi trigger 1 level, tạm bỏ qua level đó trong 30 giây để tránh spam order.
+  - Group tất cả pending levels theo symbol → gọi `get_tick()` 1 lần per symbol (tiết kiệm API calls).
+  - Emit callback → `Pipeline.handle_reentry()` thực thi lệnh với đầy đủ risk guards.
+
 
 ---
 

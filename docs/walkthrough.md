@@ -1,4 +1,4 @@
-# 📊 Phân Tích Luồng Chạy — telegram-mt5-bot v0.5.1
+# 📊 Phân Tích Luồng Chạy — telegram-mt5-bot v0.9.0
 
 > Full codebase analysis: 20+ modules, ~5500 lines of production code.
 
@@ -31,12 +31,16 @@ graph TB
         S4["Step 4: Market Data + pip_size"]
         S5["Step 5: Validate"]
         S6["Step 6: Store Signal"]
-        S7["Step 7: Calculate Volume"]
-        S8["Step 8: Build Order"]
-        S8b["Step 8b: Drift Guard"]
-        S9["Step 9: Execute"]
+        S79["Step 7-9: Pipeline Execute\n(SignalPipeline)"]
 
-        S0 --> S1 --> S2 --> S2b --> S2c --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S8b --> S9
+        S0 --> S1 --> S2 --> S2b --> S2c --> S3 --> S4 --> S5 --> S6 --> S79
+    end
+
+    subgraph "P9 Strategy Layer (v0.9.0)"
+        ES["EntryStrategy\n(plan_entries)"]
+        SSM["SignalStateManager\n(PENDING→COMPLETED)"]
+        SPL["SignalPipeline\n(sole orchestrator)"]
+        RMN["RangeMonitor\n(price-cross re-entry)"]
     end
 
     subgraph "Background Tasks (Live Only)"
@@ -47,16 +51,22 @@ graph TB
         BG5["TradeTracker<br/>(PnL Tracking)"]
         BG6["Storage Cleanup<br/>(24h retention)"]
         BG7["Heartbeat<br/>(Status logging)"]
+        BG8["RangeMonitor<br/>(Re-entry triggers, 5s poll)"]
     end
 
     subgraph "Persistence"
-        DB["SQLite (data/bot.db)<br/>signals | orders | events | trades"]
+        DB["SQLite (data/bot.db)<br/>signals | orders | events | trades | active_signals"]
     end
 
     TL --> NM
     TL --> EM
-    S9 --> DB
+    S79 --> DB
+    S79 --> SPL
+    SPL --> ES
+    SPL --> SSM
+    RMN --> SPL
     BG5 --> DB
+    BG8 --> SPL
 ```
 
 ---
@@ -245,6 +255,7 @@ sequenceDiagram
 | **Daily Risk Guard** | [DailyRiskGuard](file:///d:/Development/Workspace/Python_Projects/Forex/core/daily_risk_guard.py#36-291) | 5min | Poll MT5 deals, enforce daily limits |
 | **Position Manager** | [PositionManager](file:///d:/Development/Workspace/Python_Projects/Forex/core/position_manager.py#30-471) | 5s | Breakeven, trailing stop, partial close |
 | **Trade Tracker** | [TradeTracker](file:///d:/Development/Workspace/Python_Projects/Forex/core/trade_tracker.py#31-379) | 30s | Poll deals, record PnL, reply to signals |
+| **Range Monitor** | [RangeMonitor](file:///d:/Development/Workspace/Python_Projects/Forex/core/range_monitor.py) | 5s | Price-cross re-entry trigger, debounce 30s (v0.9.0) |
 | **Storage Cleanup** | Bot._storage_cleanup_loop | 24h | Delete records > retention_days |
 | **Heartbeat** | Bot._heartbeat_loop | 30min | Log rich system status |
 
@@ -274,6 +285,7 @@ sequenceDiagram
 | [trades](file:///d:/Development/Workspace/Python_Projects/Forex/core/signal_validator.py#165-173) | Trade outcomes | ticket, deal_ticket (UNIQUE), pnl, close_reason |
 | [tracker_state](file:///d:/Development/Workspace/Python_Projects/Forex/core/storage.py#489-496) | Worker state | key-value (last_deal_poll_time) |
 | `schema_versions` | Migration history | version, applied_at |
+| `active_signals` | Multi-order signal lifecycle state (v0.9.0) | fingerprint, status, plans (JSON), expires_at |
 
 ### Migration System:
 - V1: Multi-channel columns (channel_id, source_chat_id, source_message_id, position_ticket)
@@ -312,6 +324,10 @@ graph LR
         BOT --> CE["CommandExecutor"]
         BOT --> RAP["ReplyActionParser"]
         BOT --> RCE["ReplyCommandExecutor"]
+        BOT --> SPLL["SignalPipeline"]
+        BOT --> RMNN["RangeMonitor"]
+        SPLL --> ESS["EntryStrategy"]
+        SPLL --> SSMM["SignalStateManager"]
     end
 
     SP --> SM["SymbolMapper"]
@@ -363,7 +379,11 @@ d:\Development\Workspace\Python_Projects\Forex\
 │   ├── command_parser.py       # Management commands
 │   ├── command_executor.py     # Command execution
 │   ├── reply_action_parser.py  # Reply parsing
-│   └── reply_command_executor.py   # Reply execution
+│   ├── reply_command_executor.py   # Reply execution
+│   ├── entry_strategy.py       # Multi-entry plan engine (v0.9.0)
+│   ├── signal_state_manager.py # Signal lifecycle state machine (v0.9.0)
+│   ├── pipeline.py             # Sole execution orchestrator (v0.9.0)
+│   └── range_monitor.py        # Price-cross re-entry monitor (v0.9.0)
 ├── utils/
 │   ├── logger.py               # Structured logging
 │   └── symbol_mapper.py        # Alias → broker symbol
@@ -391,4 +411,7 @@ d:\Development\Workspace\Python_Projects\Forex\
 > **Circuit breaker** → **Alerter** wiring: khi breaker opens, nó fire callback đến alerter. Nhưng alerter rate-limits theo `alert_type`, nên nếu breaker open/close liên tục, chỉ alert đầu tiên được gửi.
 
 > [!WARNING]
-> **[main.py](file:///d:/Development/Workspace/Python_Projects/Forex/main.py) quá lớn** (1386 lines). Tất cả pipeline logic nằm trong 1 file. Đây là technical debt cần refactor nếu scale thêm features.
+> **main.py tuy đã refactor step 7-9 ra `pipeline.py`** nhưng vẫn còn lớn (~1350 dòng). Các phase sau nên xem xét tách thêm step 0-6 và reply/edit handler ra.
+
+> [!NOTE]
+> **v0.9.0**: P9 modules (pipeline, range_monitor, entry_strategy, signal_state_manager) đã được tạo và wire vào main.py. Default mode là `single` — backward compatible hoàn toàn.

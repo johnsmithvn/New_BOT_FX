@@ -30,6 +30,9 @@ All alerts are sent to `TELEGRAM_ADMIN_CHAT` via the Telegram Alerter. Each aler
 | `reply_command` | 📋 Info | Reply action executed on signal | Multi-order grouped results (v0.8.0) |
 | `reply_no_orders` | ⚠️ Info | Reply to non-signal message | "No active trade" response (v0.8.0) |
 | `trade_tracker_reply_suppressed` | 🔇 Info | PnL reply suppressed | Ticket closed via reply, 5min TTL (v0.8.0) |
+| `range_monitor_trigger` | 🔄 Info | Price crossed re-entry level | Re-entry order triggered (v0.9.0) |
+| `range_monitor_expired` | ⏳ Info | Active signals expired | TTL exceeded, removed from monitoring (v0.9.0) |
+| `signal_state_registered` | 📋 Info | Multi-order signal registered | State machine tracking started (v0.9.0) |
 
 ---
 

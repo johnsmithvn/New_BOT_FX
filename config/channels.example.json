@@ -6,24 +6,44 @@
             "breakeven_lock_pips": 2,
             "trailing_stop_pips": 0,
             "partial_close_percent": 0
-        }
+        },
+        "strategy": {
+            "mode": "single",
+            "max_entries": 1,
+            "reentry_enabled": false,
+            "reentry_step_pips": 0,
+            "signal_ttl_minutes": 15,
+            "volume_split": "equal"
+        },
+        "risk": {},
+        "validation": {}
     },
     "channels": {
         "-1001234567890": {
-            "name": "Gold VIP Channel",
+            "name": "My Signal Channel",
             "rules": {
-                "breakeven_trigger_pips": 20,
-                "breakeven_lock_pips": 3,
-                "trailing_stop_pips": 15,
-                "partial_close_percent": 50
-            }
-        },
-        "-1009876543210": {
-            "name": "Forex Signals Pro",
-            "rules": {
-                "breakeven_trigger_pips": 10,
-                "trailing_stop_pips": 8,
+                "breakeven_trigger_pips": 50,
+                "breakeven_lock_pips": 30,
+                "trailing_stop_pips": 40,
                 "partial_close_percent": 0
+            },
+            "strategy": {
+                "mode": "range",
+                "max_entries": 3,
+                "reentry_enabled": true,
+                "reentry_step_pips": 30,
+                "signal_ttl_minutes": 60,
+                "volume_split": "risk_based"
+            },
+            "risk": {
+                "mode": "FIXED_LOT",
+                "fixed_lot_size": 0.05,
+                "risk_percent": 1.0
+            },
+            "validation": {
+                "max_entry_distance_pips": 80.0,
+                "max_entry_drift_pips": 15.0,
+                "max_spread_pips": 8.0
             }
         }
     }

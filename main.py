@@ -46,6 +46,10 @@ from core.command_parser import CommandParser
 from core.command_executor import CommandExecutor
 from core.reply_action_parser import ReplyActionParser, ReplyActionType
 from core.reply_command_executor import ReplyCommandExecutor
+from core.entry_strategy import EntryStrategy
+from core.signal_state_manager import SignalStateManager
+from core.pipeline import SignalPipeline
+from core.range_monitor import RangeMonitor
 from utils.logger import setup_logger, log_event
 from utils.symbol_mapper import SymbolMapper
 
@@ -118,6 +122,9 @@ class Bot:
         self.command_executor: CommandExecutor | None = None
         self.reply_parser: ReplyActionParser | None = None
         self.reply_executor: ReplyCommandExecutor | None = None
+        self.signal_pipeline: SignalPipeline | None = None
+        self.range_monitor: RangeMonitor | None = None
+        self._state_mgr: SignalStateManager | None = None
         self._cleanup_task: asyncio.Task | None = None
         self._heartbeat_task: asyncio.Task | None = None
         self._metrics = _SessionMetrics()
@@ -298,6 +305,31 @@ class Bot:
         self.reply_parser = ReplyActionParser()
         self.reply_executor = ReplyCommandExecutor(
             magic=s.execution.bot_magic_number,
+        )
+
+        # ── P9: Signal Pipeline + Range Monitor ──────────────────
+        entry_strategy = EntryStrategy()
+        self._state_mgr = SignalStateManager(self.storage)
+
+        self.signal_pipeline = SignalPipeline(
+            entry_strategy=entry_strategy,
+            state_manager=self._state_mgr,
+            channel_manager=self.channel_mgr,
+            order_builder=self.order_builder,
+            risk_manager=self.risk_manager,
+            executor=self.executor,
+            storage=self.storage,
+            validator=self.validator,
+            circuit_breaker=self.circuit_breaker,
+            daily_guard=self.daily_guard,
+            exposure_guard=self.exposure_guard,
+            position_mgr=self.position_mgr,
+        )
+
+        self.range_monitor = RangeMonitor(
+            executor=self.executor,
+            state_manager=self._state_mgr,
+            on_reentry=self.signal_pipeline.handle_reentry,
         )
 
     # ── Alert Callbacks ──────────────────────────────────────────
@@ -703,32 +735,19 @@ class Bot:
         # ── Step 6: Store signal ─────────────────────────────────
         self.storage.store_signal(signal_obj, SignalStatus.PARSED)
 
-        # ── Step 7: Calculate volume ─────────────────────────────
+        # ── Step 7-9: Execute via Pipeline (P9) ──────────────────
+        #    Pipeline handles single/range/scale_in modes, volume calc,
+        #    order building, execution, and state management.
         if dry_run:
             balance = 10000.0
         else:
             account = self.executor.account_info()
             balance = account["balance"] if account else 0.0
 
-        volume = self.risk_manager.calculate_volume(
-            balance=balance,
-            entry=signal_obj.entry,
-            sl=signal_obj.sl,
-        )
-
-        # ── Step 8: Build order ──────────────────────────────────
-        # point and pip_size already resolved in Step 4
-
-        decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
-        request = self.order_builder.build_request(
-            signal_obj, decision, volume, bid, ask,
-            spread_points=current_spread if current_spread else 0.0,
-        )
-
-        # ── Step 8b: Entry drift guard for MARKET orders ─────────
-        #    When entry is explicit but order is MARKET (within tolerance),
-        #    reject if price has drifted too far from signal entry.
-        if decision.order_kind == OrderKind.MARKET and signal_obj.entry is not None:
+        # Entry drift guard (check before pipeline execution)
+        # Quick check: if single MARKET order would drift too far, reject early
+        test_decision = self.order_builder.decide_order_type(signal_obj, bid, ask, point)
+        if test_decision.order_kind == OrderKind.MARKET and signal_obj.entry is not None:
             drift_result = self.validator.validate_entry_drift(
                 signal_obj, current_price, pip_size
             )
@@ -745,91 +764,77 @@ class Bot:
                 print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order=MARKET drift=REJECTED reason=\"{drift_result.reason}\"")
                 return
 
-        # ── Debug message: order decision ──────────────────────────
-        self._send_signal_debug(
-            raw_text, signal_obj, bid, ask, current_spread,
-            decision=decision, volume=volume, request=request,
+        # Delegate to SignalPipeline for execution (single or multi-order)
+        results = self.signal_pipeline.execute_signal_plans(
+            signal=signal_obj,
+            bid=bid,
+            ask=ask,
+            point=point,
+            balance=balance,
+            current_spread=current_spread,
+            dry_run=dry_run,
         )
 
-        log_event(
-            "order_submitted",
-            fingerprint=fp,
-            symbol=signal_obj.symbol,
-            order_kind=decision.order_kind.value,
-            volume=volume,
-            price=request.get("price"),
-        )
-        self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.SUBMITTED)
-        self.storage.store_event(fingerprint=fp, event_type="signal_submitted", symbol=signal_obj.symbol, details={"order_kind": decision.order_kind.value, "volume": volume, "price": request.get("price")}, channel_id=signal_obj.source_chat_id)
+        # Process results and update metrics
+        latency_ms = int((time.monotonic() - t_start) * 1000)
+        any_success = False
+        any_failure = False
 
-        # ── Step 9: Execute ──────────────────────────────────────
-        if dry_run:
-            # Simulate execution
-            log_event(
-                "dry_run_execution",
-                fingerprint=fp,
-                symbol=signal_obj.symbol,
-                order_kind=decision.order_kind.value,
-                volume=volume,
-                price=request.get("price"),
-                sl=decision.sl,
-                tp=decision.tp,
-            )
+        for r in results:
+            r_fp = r.get("fingerprint", fp)
+            r_kind = r.get("order_kind", "MARKET")
+            r_vol = r.get("volume", 0)
+            r_decision = r.get("decision")
+            r_request = r.get("request")
+
+            if r.get("dry_run"):
+                # Dry run path
+                log_event(
+                    "dry_run_execution", fingerprint=r_fp,
+                    symbol=signal_obj.symbol, order_kind=r_kind,
+                    volume=r_vol, level_id=r.get("level_id", 0),
+                )
+                any_success = True
+                # Debug message for first result only
+                if r.get("level_id", 0) == 0 and r_decision:
+                    self._send_signal_debug(
+                        raw_text, signal_obj, bid, ask, current_spread,
+                        decision=r_decision, volume=r_vol, request=r_request,
+                    )
+                print(f"  [PIPELINE] fp={r_fp} symbol={signal_obj.symbol} order={r_kind} exec=DRY_RUN_OK vol={r_vol} level={r.get('level_id', 0)}")
+
+            elif r.get("success"):
+                any_success = True
+                # Debug message for first result only
+                if r.get("level_id", 0) == 0 and r_decision:
+                    self._send_signal_debug(
+                        raw_text, signal_obj, bid, ask, current_spread,
+                        decision=r_decision, volume=r_vol, request=r_request,
+                    )
+                print(f"  [PIPELINE] fp={r_fp} symbol={signal_obj.symbol} order={r_kind} exec=SUCCESS ticket={r.get('ticket')} vol={r_vol} level={r.get('level_id', 0)}")
+
+            else:
+                any_failure = True
+                print(f"  [PIPELINE] fp={r_fp} symbol={signal_obj.symbol} order={r_kind} exec=FAILED retcode={r.get('retcode')} level={r.get('level_id', 0)}")
+
+        # Update signal status
+        if any_success:
             self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.EXECUTED)
-            self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"dry_run": True, "order_kind": decision.order_kind.value}, channel_id=signal_obj.source_chat_id)
-            self.circuit_breaker.record_success()
-            latency_ms = int((time.monotonic() - t_start) * 1000)
+            self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"orders": len(results), "mode": self.channel_mgr.get_strategy(chat_id).get("mode", "single")}, channel_id=signal_obj.source_chat_id)
             self._metrics.executed += 1
             self._metrics.record_latency(latency_ms)
             self._get_ch_metrics(signal_obj.source_chat_id).executed += 1
-            print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=DRY_RUN_OK vol={volume} latency={latency_ms}ms")
-        else:
-            exec_result = self.executor.execute(request, fingerprint=fp)
+        elif any_failure:
+            self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.FAILED)
+            self.storage.store_event(fingerprint=fp, event_type="signal_failed", symbol=signal_obj.symbol, details={"orders": len(results)}, channel_id=signal_obj.source_chat_id)
+            self._metrics.failed += 1
+            self._get_ch_metrics(signal_obj.source_chat_id).failed += 1
 
-            if exec_result.success:
-                self.circuit_breaker.record_success()
-                self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.EXECUTED)
-                self.storage.store_order(
-                    ticket=exec_result.ticket, fingerprint=fp,
-                    order_kind=decision.order_kind.value,
-                    price=request.get("price"), sl=decision.sl, tp=decision.tp,
-                    retcode=exec_result.retcode, success=True,
-                    channel_id=getattr(signal_obj, 'source_chat_id', ''),
-                    source_chat_id=signal_obj.source_chat_id,
-                    source_message_id=signal_obj.source_message_id,
-                )
-                # Register ticket→channel for PositionManager
-                if self.position_mgr and exec_result.ticket:
-                    self.position_mgr.register_ticket(
-                        exec_result.ticket, signal_obj.source_chat_id,
-                    )
-                self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"ticket": exec_result.ticket, "retcode": exec_result.retcode}, channel_id=signal_obj.source_chat_id)
-                latency_ms = int((time.monotonic() - t_start) * 1000)
-                self._metrics.executed += 1
-                self._metrics.record_latency(latency_ms)
-                self._get_ch_metrics(signal_obj.source_chat_id).executed += 1
-                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=SUCCESS ticket={exec_result.ticket} latency={latency_ms}ms")
+        # Log remaining TPs
+        if len(signal_obj.tp) > 1:
+            log_event("multi_tp_info", fingerprint=fp, symbol=signal_obj.symbol, remaining_tps=signal_obj.tp[1:])
 
-                # Log remaining TPs
-                if len(signal_obj.tp) > 1:
-                    log_event("multi_tp_info", fingerprint=fp, symbol=signal_obj.symbol, remaining_tps=signal_obj.tp[1:])
-            else:
-                self.circuit_breaker.record_failure()
-                self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.FAILED)
-                self.storage.store_order(
-                    ticket=None, fingerprint=fp,
-                    order_kind=decision.order_kind.value,
-                    price=request.get("price"), sl=decision.sl, tp=decision.tp,
-                    retcode=exec_result.retcode, success=False,
-                    channel_id=getattr(signal_obj, 'source_chat_id', ''),
-                    source_chat_id=signal_obj.source_chat_id,
-                    source_message_id=signal_obj.source_message_id,
-                )
-                self.storage.store_event(fingerprint=fp, event_type="signal_failed", symbol=signal_obj.symbol, details={"retcode": exec_result.retcode, "message": exec_result.message}, channel_id=signal_obj.source_chat_id)
-                latency_ms = int((time.monotonic() - t_start) * 1000)
-                self._metrics.failed += 1
-                self._get_ch_metrics(signal_obj.source_chat_id).failed += 1
-                print(f"  [PIPELINE] fp={fp} symbol={signal_obj.symbol} parsed=OK validated=OK order={decision.order_kind.value} exec=FAILED retcode={exec_result.retcode} latency={latency_ms}ms")
+        print(f"  [PIPELINE] fp={fp} total_orders={len(results)} latency={latency_ms}ms")
 
     def _process_edit(
         self,
@@ -1235,7 +1240,7 @@ class Bot:
         # Banner
         s = self.settings
         print("=" * 55)
-        print(f"  telegram-mt5-bot  v0.5.1  {'[DRY RUN]' if dry_run else '[LIVE]'}")
+        print(f"  telegram-mt5-bot  v0.9.0  {'[DRY RUN]' if dry_run else '[LIVE]'}")
         print("=" * 55)
         print(f"  Risk mode    : {s.risk.mode}")
         print(f"  Max spread   : {s.safety.max_spread_pips} pips")
@@ -1282,6 +1287,13 @@ class Bot:
                 await self.position_mgr.start()
             if self.trade_tracker:
                 await self.trade_tracker.start()
+            # P9: Rebuild active signals from DB and start range monitor
+            if self._state_mgr:
+                restored = self._state_mgr.rebuild_from_db()
+                if restored > 0:
+                    print(f"  [P9] Restored {restored} active signals from DB")
+            if self.range_monitor:
+                await self.range_monitor.start()
 
         self._cleanup_task = asyncio.create_task(self._storage_cleanup_loop())
 
@@ -1355,6 +1367,9 @@ class Bot:
             except asyncio.CancelledError:
                 pass
 
+        # P9: Stop range monitor
+        if self.range_monitor:
+            await self.range_monitor.stop()
         if self.daily_guard:
             await self.daily_guard.stop()
         if self.position_mgr:

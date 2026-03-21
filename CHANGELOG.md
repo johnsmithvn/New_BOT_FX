@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 0.9.0 - 2026-03-21
+
+### Added
+- **Channel-driven strategy architecture** (P9) — multi-order per signal with per-channel strategy config
+- `core/entry_strategy.py` — generate multi-entry plans from signal + strategy config
+  - Strategy modes: `single` (backward-compat), `range` (N orders across entry zone), `scale_in` (stepped re-entries)
+  - Volume split: `equal`, `pyramid`, `risk_based` (weighted by SL distance per entry)
+- `core/signal_state_manager.py` — active signal lifecycle tracking
+  - State machine: PENDING → PARTIAL → COMPLETED → EXPIRED
+  - DB-backed persistence for restart recovery
+- `core/pipeline.py` — sole orchestrator for multi-order execution
+  - `execute_signal_plans()` replaces single-order execute path
+  - `handle_reentry()` with full risk guard gauntlet (circuit breaker, daily guard, exposure guard)
+- `core/range_monitor.py` — background price-cross re-entry trigger
+  - Price-cross detection (not proximity — only triggers on actual crossing)
+  - 30-second debounce per level to prevent order spam
+- **Order fingerprint v2**: `base_fp:L{N}` — unique per order, debuggable, linkable via base_fp
+- `core/models.py` — `EntryPlan`, `SignalState`, `SignalLifecycle` enum, `order_fingerprint()`
+- Storage migration V3: `active_signals` table with status/plans/expiry tracking
+- `channels.json` schema expanded: `strategy`, `risk`, `validation` sections per channel
+- Index `idx_orders_source_msg` on `(source_chat_id, source_message_id)` for P9 reply handler
+
+### Changed
+- `core/channel_manager.py` — `get_strategy()`, `get_risk_config()`, `get_validation_config()` with `_get_section()` DRY pattern
+- `core/storage.py` — `get_orders_by_message()` now uses direct source_message_id join (supports sub-fingerprints), with fallback to old fingerprint JOIN for pre-P9 orders
+- `config/channels.example.json` — updated with full strategy/risk/validation example
+
 ## 0.8.1 - 2026-03-18
 
 ### Fixed

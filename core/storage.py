@@ -135,6 +135,35 @@ _MIGRATIONS: dict[int, str] = {
             value TEXT NOT NULL
         );
     """,
+    3: """
+        -- V3: Active signal tracking for multi-order strategies (P9)
+        CREATE TABLE IF NOT EXISTS active_signals (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            fingerprint       TEXT NOT NULL UNIQUE,
+            symbol            TEXT NOT NULL,
+            side              TEXT NOT NULL,
+            entry_range       TEXT,
+            sl                REAL,
+            tp                TEXT,
+            source_chat_id    TEXT,
+            source_message_id TEXT,
+            channel_id        TEXT,
+            entry_plans       TEXT,
+            total_volume      REAL,
+            status            TEXT NOT NULL DEFAULT 'pending',
+            created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at        TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_active_signals_status
+            ON active_signals(status);
+        CREATE INDEX IF NOT EXISTS idx_active_signals_fp
+            ON active_signals(fingerprint);
+
+        -- Add source_message_id index on orders for P9 reply handler
+        CREATE INDEX IF NOT EXISTS idx_orders_source_msg
+            ON orders(source_chat_id, source_message_id);
+    """,
 }
 
 
@@ -376,20 +405,37 @@ class Storage:
     ) -> list[dict]:
         """Get ALL orders associated with a signal message.
 
-        Joins signals → orders via fingerprint to get ticket, symbol,
-        channel_id, and success status. Returns list of dicts.
-        Used by reply handler to act on all orders from a signal.
+        P9 update: Direct query on orders table via source_chat_id +
+        source_message_id. No longer joins through signals.fingerprint,
+        because re-entry orders use sub-fingerprints (e.g. fp:L0, fp:L1)
+        that won't match the signal's base fingerprint.
+
+        Falls back to old JOIN path for orders that pre-date V3 migration
+        (orders without source_message_id).
         """
+        # Primary path (P9): direct lookup on orders table
         rows = self._conn.execute(
-            """SELECT o.ticket, s.symbol, o.fingerprint,
-                      o.channel_id, o.success
-               FROM orders o
-               JOIN signals s ON o.fingerprint = s.fingerprint
-               WHERE s.source_chat_id = ? AND s.source_message_id = ?
-                 AND o.ticket IS NOT NULL
-               ORDER BY o.id""",
+            """SELECT ticket, symbol, fingerprint, channel_id, success
+               FROM orders
+               WHERE source_chat_id = ? AND source_message_id = ?
+                 AND ticket IS NOT NULL
+               ORDER BY id""",
             (source_chat_id, source_message_id),
         ).fetchall()
+
+        if not rows:
+            # Fallback: old JOIN through signals table (pre-P9 orders)
+            rows = self._conn.execute(
+                """SELECT o.ticket, s.symbol, o.fingerprint,
+                          o.channel_id, o.success
+                   FROM orders o
+                   JOIN signals s ON o.fingerprint = s.fingerprint
+                   WHERE s.source_chat_id = ? AND s.source_message_id = ?
+                     AND o.ticket IS NOT NULL
+                   ORDER BY o.id""",
+                (source_chat_id, source_message_id),
+            ).fetchall()
+
         return [
             {
                 "ticket": row["ticket"],
@@ -504,6 +550,91 @@ class Storage:
             (key, value),
         )
 
+    # ── Active Signals (P9) ────────────────────────────────────────
+
+    def store_active_signal(
+        self,
+        fingerprint: str,
+        symbol: str,
+        side: str,
+        entry_range: list[float] | None,
+        sl: float | None,
+        tp: list[float],
+        source_chat_id: str,
+        source_message_id: str,
+        channel_id: str,
+        entry_plans_json: str,
+        total_volume: float,
+        expires_at: str,
+    ) -> int:
+        """Persist an active signal for restart recovery."""
+        cursor = self._execute_with_retry(
+            """
+            INSERT OR REPLACE INTO active_signals
+                (fingerprint, symbol, side, entry_range, sl, tp,
+                 source_chat_id, source_message_id, channel_id,
+                 entry_plans, total_volume, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                fingerprint, symbol, side,
+                json.dumps(entry_range) if entry_range else None,
+                sl,
+                json.dumps(tp),
+                source_chat_id, source_message_id, channel_id,
+                entry_plans_json, total_volume, expires_at,
+            ),
+        )
+        return cursor.lastrowid
+
+    def get_active_signals(self, status: str = "pending") -> list[dict]:
+        """Get all active signals with given status.
+
+        Returns raw dicts — caller (SignalStateManager) deserializes.
+        Includes both 'pending' and 'partial' by default for rebuild.
+        """
+        rows = self._conn.execute(
+            """SELECT * FROM active_signals
+               WHERE status IN ('pending', 'partial')
+               ORDER BY created_at""",
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_active_signal_status(
+        self, fingerprint: str, status: str,
+    ) -> None:
+        """Update the status of an active signal."""
+        self._execute_with_retry(
+            "UPDATE active_signals SET status = ? WHERE fingerprint = ?",
+            (status, fingerprint),
+        )
+
+    def update_active_signal_plans(
+        self, fingerprint: str, entry_plans_json: str,
+    ) -> None:
+        """Update entry plans JSON (after marking levels executed/cancelled)."""
+        self._execute_with_retry(
+            "UPDATE active_signals SET entry_plans = ? WHERE fingerprint = ?",
+            (entry_plans_json, fingerprint),
+        )
+
+    def delete_active_signal(self, fingerprint: str) -> None:
+        """Remove an active signal (completed or expired)."""
+        self._execute_with_retry(
+            "DELETE FROM active_signals WHERE fingerprint = ?",
+            (fingerprint,),
+        )
+
+    def expire_active_signals(self) -> int:
+        """Mark expired signals and return count."""
+        cursor = self._execute_with_retry(
+            """UPDATE active_signals
+               SET status = 'expired'
+               WHERE status IN ('pending', 'partial')
+                 AND datetime(expires_at) < datetime('now')""",
+        )
+        return cursor.rowcount
+
     # ── Cleanup ──────────────────────────────────────────────────
 
     def cleanup_old_records(self, retention_days: int = 30) -> dict:
@@ -519,6 +650,7 @@ class Storage:
             ("orders", "created_at"),
             ("events", "timestamp"),
             ("trades", "created_at"),
+            ("active_signals", "created_at"),
         ]
         for table, col in tables:
             try:

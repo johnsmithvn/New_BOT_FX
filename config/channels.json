@@ -6,7 +6,17 @@
             "breakeven_lock_pips": 2,
             "trailing_stop_pips": 0,
             "partial_close_percent": 0
-        }
+        },
+        "strategy": {
+            "mode": "single",
+            "max_entries": 1,
+            "reentry_enabled": false,
+            "reentry_step_pips": 0,
+            "signal_ttl_minutes": 15,
+            "volume_split": "equal"
+        },
+        "risk": {},
+        "validation": {}
     },
     "channels": {
         "-1002044139064": {

@@ -19,7 +19,7 @@ DEBUG_SIGNAL_DECISION=true
 
 ## How It Works
 
-The debug system sits inside the `Order Decision Engine` (pipeline steps 5 and 8 in `main.py`).
+The debug system sits inside the signal processing pipeline (`main.py`). It fires at validation, drift guard, and order decision stages. Since v0.9.0, order execution is delegated to `SignalPipeline` — debug messages are emitted for the first order in multi-order scenarios.
 
 Unlike standard alerts (which have a cooldown rate limit to prevent spam, e.g., circuit breaker open), **debug messages bypass rate limiting completely**. Every single processed signal will generate exactly one debug message to the admin chat.
 
