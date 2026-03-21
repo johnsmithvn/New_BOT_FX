@@ -351,7 +351,8 @@ class Bot:
     ) -> None:
         """Send pipeline debug message to admin Telegram.
 
-        Called at 3 pipeline points:
+        Called at 4 pipeline points:
+        - Parse FAIL       (signal=None, rejected=True, reject_reason set)
         - Validation FAIL  (rejected=True, reject_reason set)
         - Drift FAIL       (rejected=True, reject_reason set)
         - Order Decision   (decision + volume + request set)
@@ -387,11 +388,12 @@ class Bot:
             lines.append("Parsed: FAIL (could not parse)")
             lines.append("")
 
-        # Market
-        lines.append("Market:")
-        lines.append(f"  bid: {bid}  |  ask: {ask}")
-        lines.append(f"  spread: {spread} pts")
-        lines.append("")
+        # Market (skip if no market data, e.g. parse failure)
+        if bid > 0 or ask > 0:
+            lines.append("Market:")
+            lines.append(f"  bid: {bid}  |  ask: {ask}")
+            lines.append(f"  spread: {spread} pts")
+            lines.append("")
 
         # Decision or Rejection
         if rejected:
@@ -535,11 +537,15 @@ class Bot:
                 details={"reason": result.reason, "message_id": message_id},
                 channel_id=chat_id,
             )
+            self._send_signal_debug(
+                raw_text, None, 0.0, 0.0, None,
+                rejected=True, reject_reason=f"parse failed: {result.reason}",
+            )
             print(f"  [PIPELINE] parsed=FAIL reason=\"{result.reason}\"")
             return
 
         signal_obj: ParsedSignal = result
-        fp = signal_obj.fingerprint[:12]
+        fp = signal_obj.fingerprint
 
         # Count as parsed
         self._metrics.parsed += 1

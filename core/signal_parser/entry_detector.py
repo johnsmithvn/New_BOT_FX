@@ -13,10 +13,12 @@ import re
 from core.models import Side
 
 # Pattern for explicit numeric entry range.
-# Matches: ENTRY 2030 - 2035, BUY 2030/2035, BUY GOLD 2030 TO 2035
+# Matches: ENTRY 2030 - 2035, BUY GOLD 2030/2035, BUY GOLD ZONE 2030 TO 2035
 _ENTRY_RANGE_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bENTRY\s*(?:PRICE)?\s*:?\s*(\d+\.?\d*)\s*(?:-|/|TO)\s*(\d+\.?\d*)"),
-    re.compile(r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)?(\d+\.?\d*)\s*(?:-|/|TO)\s*(\d+\.?\d*)"),
+    re.compile(r"\bENTRY\s*(?:PRICE)?\s*:?\s*(\d+\.?\d*)\s*[-–/]\s*(\d+\.?\d*)"),
+    re.compile(r"\bENTRY\s*(?:PRICE)?\s*:?\s*(\d+\.?\d*)\s+TO\s+(\d+\.?\d*)"),
+    re.compile(r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\s*[-–/]\s*(\d+\.?\d*)"),
+    re.compile(r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\s+TO\s+(\d+\.?\d*)"),
 ]
 
 # Pattern for explicit numeric entry price.
@@ -76,20 +78,22 @@ def detect(text: str, side: Side | None = None) -> tuple[float | None, list[floa
                 if price > 0:
                     return price, None, False
 
-        # Check for market keywords
-        if _MARKET_KEYWORDS.search(text):
-            return None, None, True
-
         # Try to find a standalone price near BUY/SELL keyword.
-        # Pattern: BUY <price> or SELL <price> (not followed by SL/TP keywords)
+        # Pattern: BUY <price> or SELL <price> (allows multiple words in between)
         side_price = re.search(
-            r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)?(\d+\.?\d*)\b",
+            r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\b",
             text,
         )
         if side_price:
             price = float(side_price.group(1))
             if price > 0:
                 return price, None, False
+
+        # Check for market keywords LAST
+        # This ensures that "BUY GOLD zone 4963 - 4961 now" picks up
+        # the range first, and only falls back to market if nothing found.
+        if _MARKET_KEYWORDS.search(text):
+            return None, None, True
 
         return None, None, False
     except Exception:

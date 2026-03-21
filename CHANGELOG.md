@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.8.1 - 2026-03-18
+
+### Fixed
+- **CRITICAL**: Reply management completely broken — `orders.fingerprint` stored as truncated 12-char string while `signals.fingerprint` stored as full 16-char string, causing JOIN in `get_orders_by_message()` to never match. All reply actions (close, SL, TP, BE) were non-functional since v0.6.0. Fix: `fp` now uses full fingerprint for all DB operations, `fp_short` for console display only.
+- Signal debug messages now sent on **parse failures** — previously only triggered after successful parse
+- Market data section skipped in debug message when no market data available (parse fail stage)
+
 ## 0.8.0 - 2026-03-18
 
 ### Added
@@ -70,15 +77,19 @@
 - `main.py` — wires `ChannelManager`, `TradeTracker`, passes channel context through pipeline, `register_ticket()` on execution
 - `config/settings.py` — `trade_tracker_poll_seconds` in `ExecutionConfig`
 
-## 0.5.5 - 2026-03-15
+## 0.5.5 - 2026-03-18
 
 ### Added
-- **Entry Range Parsing**: `SignalParser` now accurately parses signal ranges (e.g., `Buy Gold 5162 - 5170`).
+- **Entry Range Parsing**: `SignalParser` now accurately parses signal ranges (e.g., `Buy Gold 5162 - 5170` or `BUY GOLD zone 4963 - 4961 now`).
+  - Supports multiple optional words between side keyword and price (e.g., `GOLD ZONE`).
+  - Supports `-`, `/`, `–` (em-dash), and `TO` as range separators.
   - Automatically identifies extreme bounds `[low, high]`.
   - Determines final execution `entry` strictly by `Side` (uses lowest for `BUY` and highest for `SELL`).
 
 ### Changed
 - **Strict Entry Enforcement**: If the parser cannot identify a single entry price and no explicit `MARKET` intent (like `NOW` or `CMP`) is passed, the signal is now explicitly REJECTED as a `ParseFailure` instead of wrongly defaulting to a market execution.
+- **Relative TP Filtering**: `tp_detector` now skips TP values followed by `PIPS`/`POINTS`/`PTS` — these are relative offsets from entry, not absolute price levels. Signals like `TP: 30 pips – 50 pips` correctly return `tp=[]`.
+- **Market Keyword Priority**: Market keywords (`NOW`, `CMP`, etc.) are now checked **last** in the entry detection chain, ensuring numeric entry/range detection always takes priority.
 
 ## 0.5.4 - 2026-03-15
 
