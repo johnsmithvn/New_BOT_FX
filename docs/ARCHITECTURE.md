@@ -336,6 +336,54 @@ Reply message (reply_to = signal_msg_id)
 - Duplicate signal within TTL -> ignore and log dedupe event.
 
 
+## Dashboard V2 — React SPA (v0.15.0–v0.16.1)
+
+### Frontend Architecture
+- **Tech**: React 19 + Vite 6 + Recharts + TanStack Query + Framer Motion
+- **Location**: `dashboard-v2/`
+- **Port**: `http://localhost:5173` (dev), proxied to FastAPI on `:8000`
+- **Design**: Dark glassmorphism, JetBrains Mono numbers, Framer Motion animations
+
+### Pages
+| Page | Component | Purpose |
+|------|-----------|---------|
+| Overview | `Overview.jsx` | SparkCards, Equity Curve, Daily PnL combo, Win/Loss donut, Top Channels, Active Positions, **Win Rate Gauge**, **Signal Breakdown**, **PnL by Weekday** (v0.16.1) |
+| Analytics | `Analytics.jsx` | Weekly win/loss, PnL distribution, drawdown, activity, symbol butterfly |
+| Channels | `Channels.jsx` | Channel comparison, interactive cards, daily drill-down |
+| Symbols | `Symbols.jsx` | Performance table, PnL ranking, radar chart |
+| Trades | `Trades.jsx` | Multi-filter, paginated table, CSV export |
+| Signals | `Signals.jsx` | **Expandable grouped signal table**, detail modal, cascade delete (v0.16.0) |
+| Settings | `Settings.jsx` | Connection status, API key, about |
+
+### Key Features (v0.16.x)
+- **Chart Toggle** (v0.16.1): `useChartVisibility()` hook — localStorage-persisted visibility map for 9 chart cards on Overview. "Customize" dropdown UI.
+- **Signal Lifecycle** (v0.16.0): Signals grouped by fingerprint, expandable child orders, `SignalDetailModal` with raw text → parsed → orders → trades timeline.
+- **ConfirmModal** (v0.16.0): Shared glassmorphism confirmation popup with type-to-confirm for destructive actions.
+
+### Backend — Dashboard API (`dashboard/`)
+- **`dashboard.py`**: FastAPI app, CORS (GET + DELETE), serves both V1 (Jinja2) and V2 (API).
+- **`routes.py`**: API router with all endpoints.
+- **`queries.py`**: `DashboardDB` class — read-only by default, `_connect_rw()` for write operations.
+
+### API Endpoints (v0.16.0 additions)
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/signals` | Paginated signals grouped by fingerprint |
+| `GET` | `/api/signals/{fingerprint}` | Full signal lifecycle detail |
+| `DELETE` | `/api/signals/{fingerprint}` | Cascade delete signal + orders + trades |
+| `DELETE` | `/api/orders/{order_id}` | Delete individual order |
+| `DELETE` | `/api/trades/{trade_id}` | Delete individual trade |
+| `GET` | `/api/data/counts` | Row counts per table |
+| `DELETE` | `/api/data/all` | Clear all data tables |
+| `DELETE` | `/api/data/{table}` | Clear specific table |
+
+### Data Flow
+```
+Browser (React) ──→ TanStack Query ──→ fetch(/api/*) ──→ Vite proxy ──→ FastAPI ──→ DashboardDB ──→ SQLite
+                                                                            ↕
+                                                                     _connect_rw (write ops)
+```
+
 ## Observability
 
 > For signal lifecycle events, event types, and trace requirements, see [OBSERVABILITY.md](OBSERVABILITY.md).

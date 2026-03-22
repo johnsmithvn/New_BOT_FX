@@ -812,3 +812,318 @@ class Storage:
             deleted_trades=counts.get("trades", 0),
         )
         return counts
+
+    # ── Signal Lifecycle Queries (Dashboard V2) ─────────────────
+
+    def get_signals_paginated(
+        self,
+        page: int = 1,
+        per_page: int = 20,
+        channel: str = "",
+        symbol: str = "",
+        status: str = "",
+        date_from: str = "",
+        date_to: str = "",
+    ) -> dict:
+        """Get signals with aggregated order/trade stats, paginated.
+
+        Returns {signals: [...], total: int, page: int, per_page: int}.
+        """
+        where_clauses = []
+        params: list = []
+
+        if channel:
+            where_clauses.append("s.source_chat_id = ?")
+            params.append(channel)
+        if symbol:
+            where_clauses.append("s.symbol = ?")
+            params.append(symbol)
+        if status:
+            where_clauses.append("s.status = ?")
+            params.append(status)
+        if date_from:
+            where_clauses.append("date(s.created_at) >= ?")
+            params.append(date_from)
+        if date_to:
+            where_clauses.append("date(s.created_at) <= ?")
+            params.append(date_to)
+
+        where_sql = (" AND " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        # Count total
+        count_row = self._conn.execute(
+            f"SELECT COUNT(*) as cnt FROM signals s WHERE 1=1{where_sql}",
+            params,
+        ).fetchone()
+        total = count_row["cnt"] if count_row else 0
+
+        # Query signals with aggregated stats
+        offset = (page - 1) * per_page
+        query_params = params + [per_page, offset]
+        rows = self._conn.execute(
+            f"""
+            SELECT s.*,
+                   COALESCE(o_stats.order_count, 0) as order_count,
+                   COALESCE(o_stats.success_count, 0) as success_count,
+                   COALESCE(t_stats.trade_count, 0) as trade_count,
+                   COALESCE(t_stats.total_pnl, 0.0) as total_pnl
+            FROM signals s
+            LEFT JOIN (
+                SELECT fingerprint,
+                       COUNT(*) as order_count,
+                       SUM(success) as success_count
+                FROM orders
+                GROUP BY fingerprint
+            ) o_stats ON s.fingerprint = o_stats.fingerprint
+            LEFT JOIN (
+                SELECT fingerprint,
+                       COUNT(*) as trade_count,
+                       SUM(pnl) as total_pnl
+                FROM trades
+                GROUP BY fingerprint
+            ) t_stats ON s.fingerprint = t_stats.fingerprint
+            WHERE 1=1{where_sql}
+            ORDER BY s.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            query_params,
+        ).fetchall()
+
+        signals = []
+        for row in rows:
+            d = dict(row)
+            # Parse tp JSON
+            try:
+                d["tp"] = json.loads(d["tp"]) if d.get("tp") else []
+            except (json.JSONDecodeError, TypeError):
+                d["tp"] = []
+            signals.append(d)
+
+        return {
+            "signals": signals,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+        }
+
+    def get_signal_lifecycle(self, fingerprint: str) -> dict | None:
+        """Get full lifecycle for a signal: signal + orders + trades + events + group.
+
+        Returns None if signal not found.
+        """
+        # Signal
+        sig_row = self._conn.execute(
+            "SELECT * FROM signals WHERE fingerprint = ? ORDER BY id DESC LIMIT 1",
+            (fingerprint,),
+        ).fetchone()
+        if not sig_row:
+            return None
+        signal = dict(sig_row)
+        try:
+            signal["tp"] = json.loads(signal["tp"]) if signal.get("tp") else []
+        except (json.JSONDecodeError, TypeError):
+            signal["tp"] = []
+
+        # Orders
+        order_rows = self._conn.execute(
+            "SELECT * FROM orders WHERE fingerprint = ? ORDER BY id",
+            (fingerprint,),
+        ).fetchall()
+        # Also check sub-fingerprints (e.g. fp:L0, fp:L1)
+        sub_order_rows = self._conn.execute(
+            "SELECT * FROM orders WHERE fingerprint LIKE ? AND fingerprint != ? ORDER BY id",
+            (f"{fingerprint}:%", fingerprint),
+        ).fetchall()
+        orders = [dict(r) for r in order_rows] + [dict(r) for r in sub_order_rows]
+
+        # Trades (join by fingerprint and sub-fingerprints)
+        trade_rows = self._conn.execute(
+            """SELECT * FROM trades
+               WHERE fingerprint = ? OR fingerprint LIKE ?
+               ORDER BY close_time""",
+            (fingerprint, f"{fingerprint}:%"),
+        ).fetchall()
+        trades = [dict(r) for r in trade_rows]
+
+        # Events
+        event_rows = self._conn.execute(
+            "SELECT * FROM events WHERE fingerprint = ? ORDER BY timestamp",
+            (fingerprint,),
+        ).fetchall()
+        events = []
+        for row in event_rows:
+            e = dict(row)
+            try:
+                e["details"] = json.loads(e["details"]) if e.get("details") else {}
+            except (json.JSONDecodeError, TypeError):
+                e["details"] = {}
+            events.append(e)
+
+        # Signal group (if exists)
+        group = None
+        try:
+            group_row = self._conn.execute(
+                "SELECT * FROM signal_groups WHERE fingerprint = ?",
+                (fingerprint,),
+            ).fetchone()
+            if group_row:
+                group = dict(group_row)
+                try:
+                    group["tickets"] = json.loads(group["tickets"])
+                except (json.JSONDecodeError, TypeError):
+                    group["tickets"] = []
+                try:
+                    raw_prices = json.loads(group["entry_prices"])
+                    group["entry_prices"] = {int(k): v for k, v in raw_prices.items()}
+                except (json.JSONDecodeError, TypeError):
+                    group["entry_prices"] = {}
+                try:
+                    group["signal_tp"] = json.loads(group["signal_tp"]) if group.get("signal_tp") else []
+                except (json.JSONDecodeError, TypeError):
+                    group["signal_tp"] = []
+        except sqlite3.OperationalError:
+            pass
+
+        return {
+            "signal": signal,
+            "orders": orders,
+            "trades": trades,
+            "events": events,
+            "group": group,
+        }
+
+    # ── Cascade & Granular Delete (Dashboard V2) ────────────────
+
+    def delete_signal_cascade(self, fingerprint: str) -> dict:
+        """Delete a signal and ALL related data (orders, trades, events, groups).
+
+        Returns counts of deleted rows per table.
+        """
+        fp_pattern = f"{fingerprint}:%"
+        counts = {}
+
+        for table in ["trades", "orders", "events"]:
+            cursor = self._execute_with_retry(
+                f"DELETE FROM {table} WHERE fingerprint = ? OR fingerprint LIKE ?",
+                (fingerprint, fp_pattern),
+                commit=False,
+            )
+            counts[table] = cursor.rowcount
+
+        # Signal groups
+        try:
+            cursor = self._execute_with_retry(
+                "DELETE FROM signal_groups WHERE fingerprint = ?",
+                (fingerprint,),
+                commit=False,
+            )
+            counts["signal_groups"] = cursor.rowcount
+        except sqlite3.OperationalError:
+            counts["signal_groups"] = 0
+
+        # Active signals
+        try:
+            cursor = self._execute_with_retry(
+                "DELETE FROM active_signals WHERE fingerprint = ?",
+                (fingerprint,),
+                commit=False,
+            )
+            counts["active_signals"] = cursor.rowcount
+        except sqlite3.OperationalError:
+            counts["active_signals"] = 0
+
+        # Signal itself
+        cursor = self._execute_with_retry(
+            "DELETE FROM signals WHERE fingerprint = ?",
+            (fingerprint,),
+            commit=False,
+        )
+        counts["signals"] = cursor.rowcount
+
+        self._conn.commit()
+        return counts
+
+    def delete_order(self, order_id: int) -> dict:
+        """Delete a single order by ID. Also deletes related trades by ticket.
+
+        Returns {orders: int, trades: int}.
+        """
+        # Get ticket before deleting
+        row = self._conn.execute(
+            "SELECT ticket FROM orders WHERE id = ?", (order_id,),
+        ).fetchone()
+
+        trades_deleted = 0
+        if row and row["ticket"]:
+            cursor = self._execute_with_retry(
+                "DELETE FROM trades WHERE ticket = ?",
+                (row["ticket"],),
+                commit=False,
+            )
+            trades_deleted = cursor.rowcount
+
+        cursor = self._execute_with_retry(
+            "DELETE FROM orders WHERE id = ?",
+            (order_id,),
+            commit=False,
+        )
+        self._conn.commit()
+        return {"orders": cursor.rowcount, "trades": trades_deleted}
+
+    def delete_trade(self, trade_id: int) -> int:
+        """Delete a single trade by ID. Returns rows deleted."""
+        cursor = self._execute_with_retry(
+            "DELETE FROM trades WHERE id = ?", (trade_id,),
+        )
+        return cursor.rowcount
+
+    _CLEARABLE_TABLES = {
+        "signals": "created_at",
+        "orders": "created_at",
+        "events": "timestamp",
+        "trades": "created_at",
+        "active_signals": "created_at",
+        "signal_groups": "created_at",
+        "tracker_state": None,
+    }
+
+    def clear_table(self, table: str) -> int:
+        """Clear all rows from a table. Returns count deleted.
+
+        Raises ValueError for invalid table names.
+        """
+        if table not in self._CLEARABLE_TABLES:
+            raise ValueError(f"Cannot clear table: {table}")
+        cursor = self._execute_with_retry(f"DELETE FROM {table}")
+        return cursor.rowcount
+
+    def clear_all_data(self) -> dict[str, int]:
+        """Clear all data tables (except schema_versions).
+
+        Returns {table: deleted_count}.
+        """
+        counts = {}
+        for table in self._CLEARABLE_TABLES:
+            try:
+                cursor = self._execute_with_retry(
+                    f"DELETE FROM {table}", commit=False,
+                )
+                counts[table] = cursor.rowcount
+            except sqlite3.OperationalError:
+                counts[table] = 0
+        self._conn.commit()
+        return counts
+
+    def get_table_counts(self) -> dict[str, int]:
+        """Get row counts for all data tables (for Settings display)."""
+        counts = {}
+        for table in list(self._CLEARABLE_TABLES) + ["schema_versions"]:
+            try:
+                row = self._conn.execute(
+                    f"SELECT COUNT(*) as cnt FROM {table}",
+                ).fetchone()
+                counts[table] = row["cnt"] if row else 0
+            except sqlite3.OperationalError:
+                counts[table] = 0
+        return counts
+

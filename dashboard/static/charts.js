@@ -68,13 +68,33 @@ function pnlTableClass(value) {
 
 // ── Chart.js Global Defaults ────────────────────────────────────
 
-Chart.defaults.color = '#8888aa';
-Chart.defaults.borderColor = 'rgba(100, 100, 200, 0.1)';
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = 'rgba(148, 163, 184, 0.06)';
 Chart.defaults.font.family = "'Inter', sans-serif";
 Chart.defaults.font.size = 12;
 Chart.defaults.plugins.legend.display = false;
-Chart.defaults.animation.duration = 800;
+Chart.defaults.animation.duration = 1000;
 Chart.defaults.animation.easing = 'easeInOutQuart';
+
+// Premium tooltip defaults
+const premiumTooltip = {
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    borderColor: 'rgba(148, 163, 184, 0.15)',
+    borderWidth: 1,
+    padding: { top: 10, bottom: 10, left: 14, right: 14 },
+    cornerRadius: 10,
+    titleFont: { family: "'Inter', sans-serif", size: 11, weight: '500' },
+    titleColor: '#64748b',
+    bodyFont: { family: "'JetBrains Mono', monospace", size: 13, weight: '600' },
+    bodySpacing: 6,
+    displayColors: true,
+    boxWidth: 8,
+    boxHeight: 8,
+    boxPadding: 4,
+    usePointStyle: true,
+    caretSize: 6,
+    caretPadding: 8,
+};
 
 // ── Chart Helpers ───────────────────────────────────────────────
 
@@ -92,12 +112,14 @@ function createPnLChart(canvasId, labels, data) {
         data: {
             labels,
             datasets: [{
+                label: 'Daily PnL',
                 data,
                 backgroundColor: bgColors,
                 borderColor: colors,
                 borderWidth: 1.5,
                 borderRadius: 4,
                 borderSkipped: false,
+                maxBarThickness: 36,
             }],
         },
         options: {
@@ -105,24 +127,21 @@ function createPnLChart(canvasId, labels, data) {
             maintainAspectRatio: false,
             plugins: {
                 tooltip: {
+                    ...premiumTooltip,
                     callbacks: {
-                        label: (ctx) => formatPnL(ctx.raw),
+                        label: (ctx) => ` PnL: ${formatPnL(ctx.raw)}`,
+                        labelTextColor: (ctx) => ctx.raw >= 0 ? '#22c55e' : '#ef4444',
                     },
-                    backgroundColor: 'rgba(15,15,26,0.95)',
-                    borderColor: 'rgba(100,100,200,0.3)',
-                    borderWidth: 1,
-                    padding: 10,
-                    cornerRadius: 8,
                 },
             },
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { maxRotation: 45, font: { size: 10 } },
+                    ticks: { maxRotation: 45, font: { size: 10 }, color: '#64748b' },
                 },
                 y: {
-                    grid: { color: 'rgba(100,100,200,0.06)' },
-                    ticks: { callback: (v) => `$${v}` },
+                    grid: { color: 'rgba(148,163,184,0.05)' },
+                    ticks: { callback: (v) => `$${v}`, font: { family: "'JetBrains Mono', monospace", size: 11 } },
                 },
             },
         },
@@ -140,11 +159,13 @@ function createChannelBarChart(canvasId, labels, data) {
         data: {
             labels,
             datasets: [{
+                label: 'Total PnL',
                 data,
                 backgroundColor: colors.map(c => c + '33'),
                 borderColor: colors,
                 borderWidth: 1.5,
                 borderRadius: 6,
+                maxBarThickness: 22,
             }],
         },
         options: {
@@ -153,21 +174,21 @@ function createChannelBarChart(canvasId, labels, data) {
             maintainAspectRatio: false,
             plugins: {
                 tooltip: {
-                    callbacks: { label: (ctx) => formatPnL(ctx.raw) },
-                    backgroundColor: 'rgba(15,15,26,0.95)',
-                    borderColor: 'rgba(100,100,200,0.3)',
-                    borderWidth: 1,
-                    padding: 10,
-                    cornerRadius: 8,
+                    ...premiumTooltip,
+                    callbacks: {
+                        label: (ctx) => ` PnL: ${formatPnL(ctx.raw)}`,
+                        labelTextColor: (ctx) => ctx.raw >= 0 ? '#22c55e' : '#ef4444',
+                    },
                 },
             },
             scales: {
                 x: {
-                    grid: { color: 'rgba(100,100,200,0.06)' },
-                    ticks: { callback: (v) => `$${v}` },
+                    grid: { color: 'rgba(148,163,184,0.05)' },
+                    ticks: { callback: (v) => `$${v}`, font: { family: "'JetBrains Mono', monospace", size: 11 } },
                 },
                 y: {
                     grid: { display: false },
+                    ticks: { color: '#94a3b8' },
                 },
             },
         },
@@ -197,38 +218,41 @@ function createEquityChart(canvasId, labels, data) {
         data: {
             labels,
             datasets: [{
+                label: 'Equity',
                 data,
                 borderColor: lineColor,
                 backgroundColor: gradient,
-                borderWidth: 2,
+                borderWidth: 2.5,
                 fill: true,
-                tension: 0.3,
+                tension: 0.35,
                 pointRadius: 0,
-                pointHoverRadius: 5,
-                pointHoverBackgroundColor: lineColor,
+                pointHoverRadius: 6,
+                pointHoverBackgroundColor: '#0a0e1a',
+                pointHoverBorderColor: lineColor,
+                pointHoverBorderWidth: 2.5,
             }],
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
             plugins: {
                 tooltip: {
-                    callbacks: { label: (ctx) => `Equity: ${formatPnL(ctx.raw)}` },
-                    backgroundColor: 'rgba(15,15,26,0.95)',
-                    borderColor: 'rgba(100,100,200,0.3)',
-                    borderWidth: 1,
-                    padding: 10,
-                    cornerRadius: 8,
+                    ...premiumTooltip,
+                    callbacks: {
+                        label: (ctx) => ` Equity: ${formatPnL(ctx.raw)}`,
+                        labelTextColor: (ctx) => ctx.raw >= 0 ? '#22c55e' : '#ef4444',
+                    },
                 },
             },
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { maxRotation: 45, font: { size: 10 }, maxTicksLimit: 12 },
+                    ticks: { maxRotation: 45, font: { size: 10 }, maxTicksLimit: 12, color: '#64748b' },
                 },
                 y: {
-                    grid: { color: 'rgba(100,100,200,0.06)' },
-                    ticks: { callback: (v) => `$${v}` },
+                    grid: { color: 'rgba(148,163,184,0.05)' },
+                    ticks: { callback: (v) => `$${v}`, font: { family: "'JetBrains Mono', monospace", size: 11 } },
                 },
             },
         },
@@ -250,11 +274,13 @@ function createSymbolChart(canvasId, labels, winRates) {
         data: {
             labels,
             datasets: [{
+                label: 'Win Rate',
                 data: winRates,
                 backgroundColor: colors.map(c => c + '33'),
                 borderColor: colors,
                 borderWidth: 1.5,
                 borderRadius: 6,
+                maxBarThickness: 22,
             }],
         },
         options: {
@@ -263,22 +289,26 @@ function createSymbolChart(canvasId, labels, winRates) {
             maintainAspectRatio: false,
             plugins: {
                 tooltip: {
-                    callbacks: { label: (ctx) => `Win Rate: ${ctx.raw.toFixed(1)}%` },
-                    backgroundColor: 'rgba(15,15,26,0.95)',
-                    borderColor: 'rgba(100,100,200,0.3)',
-                    borderWidth: 1,
-                    padding: 10,
-                    cornerRadius: 8,
+                    ...premiumTooltip,
+                    callbacks: {
+                        label: (ctx) => ` Win Rate: ${ctx.raw.toFixed(1)}%`,
+                        labelTextColor: (ctx) => {
+                            if (ctx.raw >= 60) return '#22c55e';
+                            if (ctx.raw >= 45) return '#f59e0b';
+                            return '#ef4444';
+                        },
+                    },
                 },
             },
             scales: {
                 x: {
-                    grid: { color: 'rgba(100,100,200,0.06)' },
-                    ticks: { callback: (v) => `${v}%` },
+                    grid: { color: 'rgba(148,163,184,0.05)' },
+                    ticks: { callback: (v) => `${v}%`, font: { family: "'JetBrains Mono', monospace", size: 11 } },
                     max: 100,
                 },
                 y: {
                     grid: { display: false },
+                    ticks: { color: '#94a3b8' },
                 },
             },
         },

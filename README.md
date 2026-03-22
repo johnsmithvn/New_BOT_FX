@@ -429,8 +429,29 @@ curl http://your-vps:8080/health | jq .status
 # Keyword: "healthy"
 ```
 
+---
+
+## 🚀 Launcher
+
+```bash
+python run.py              # Interactive menu (1-5)
+python run.py bot           # Trading bot only
+python run.py dash          # Dashboard V1 (port 8000)
+python run.py v2            # Dashboard V2 (port 5173)
+python run.py dash+bot      # V1 + bot
+python run.py v2+bot        # V2 + bot
+```
+
+> Dashboard chủ yếu đọc dữ liệu từ database. V2 hỗ trợ **DELETE** (xóa signals/orders/trades) cho mục đích test. Bot KHÔNG cần chạy.
+
+### Dashboard V1 — FastAPI + Jinja2
+Port 8000. 3 trang: Overview, Channels, Trade History. Read-only.
+
+### Dashboard V2 — React SPA
+Port 5173. 7 trang + advanced analytics + signal lifecycle. Xem [dashboard-v2/README.md](dashboard-v2/README.md) cho chi tiết.
+
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.14.1**
+Current: **v0.16.1**

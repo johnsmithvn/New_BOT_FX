@@ -1,7 +1,7 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P13 - Bot Hardening & Reliability`
+- Phase: `Dashboard V2 Enhancements`
 - Status: `complete`
 
 ## Execution Phases
@@ -132,6 +132,21 @@
   - Restart recovery: `_restore_groups_from_db()` loads active groups on startup
 - Status: `complete`
 
+### Dashboard V2 Enhancements (v0.16.0–v0.16.1)
+- Goal:
+  - Add signal lifecycle management, data management, and advanced analytics to Dashboard V2.
+- Major deliverables:
+  - **Signal Lifecycle page** (`Signals.jsx`) — expandable grouped view, detail modal, cascade delete
+  - **8 new API endpoints** — signals CRUD, data management (clear table/all)
+  - **ConfirmModal** — shared glassmorphism popup for destructive actions
+  - **DashboardDB write ops** — `_connect_rw()` for delete operations on read-only DB class
+  - **Win Rate Gauge** — radial bar chart on Overview
+  - **Signal Breakdown** — PLECTO-style table card (executed/rejected/failed counts)
+  - **PnL by Weekday** — bar chart (Mon–Fri)
+  - **Chart toggle** — Customize dropdown to show/hide any chart, persisted to localStorage
+  - CORS updated to allow DELETE method
+- Status: `complete`
+
 ## Phase Completion Rule
 - Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
 - On completion:
@@ -152,6 +167,9 @@
 - v0.12.0: web analytics dashboard (P11) — FastAPI + Jinja2 + Chart.js, 3 pages, 7 API endpoints
 - v0.13.0: dashboard enhancement (P12) — channel names, equity curve, symbol stats, CSV export, basic auth
 - v0.14.0: bot hardening (P13) — health check endpoint, runtime stats, watchdog+CB bridge
+- v0.15.0: Dashboard V2 — React SPA (6 pages, Recharts, TanStack Query, Framer Motion)
+- v0.16.0: Signal Lifecycle page — expandable table, detail modal, cascade delete, 8 API endpoints
+- v0.16.1: Overview enhancements — Win Rate Gauge, Signal Breakdown, PnL by Weekday, chart toggle
 
 
 

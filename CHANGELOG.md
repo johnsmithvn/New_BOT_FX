@@ -1,4 +1,98 @@
 # CHANGELOG
+## 0.16.2 - 2026-03-22
+
+### Fixed
+- **API routes**: Return proper HTTP 404/400 status codes instead of 200 with error body (`routes.py`)
+- **Sub-fingerprint SQL**: Paginated signals query now aggregates by base fingerprint (strips `:L0`, `:L1` suffixes) — multi-order signals no longer undercount orders/trades/PnL
+- **CSS `composes: card`**: Replaced invalid CSS Modules syntax with duplicated base styles in plain CSS (`components.css`)
+- **Missing `--bg-card` CSS var**: Added to design system — `SparkCard` no longer renders transparent background
+- **Unused imports**: Removed `PieChart`/`Pie` from `Overview.jsx`, `ChartCard` from `Trades.jsx`
+- **DELETE no-op returns 200**: Signal/order/trade delete now returns 404 when target not found
+- **Settings fake "Connected"**: Connection panel now pings `/api/overview` to check real API reachability (online/offline + auto-refresh 30s)
+- **Signal Breakdown incomplete counts**: Replaced client-side counting (max 100) with dedicated `/api/signal-status-counts` backend endpoint
+- **Analytics timezone parsing**: Weekly aggregation uses UTC date parsing to avoid timezone-related day/week shifts
+- **VITE_API_URL docs misleading**: Corrected default from `/api` to `http://localhost:8000` with note about double `/api/api/` trap
+
+### Changed
+- **Version consistency**: Synchronized version to `v0.16.1` across all locations:
+  - `App.jsx` footer, `Settings.jsx` About panel, `README.md` (root), `dashboard-v2/README.md`
+- **Dependency table**: Corrected `recharts` 2.x → 3.x, `@nivo/core` 0.88.x → 0.99.x, `lucide-react` 0.47x → 0.577+ in `dashboard-v2/README.md`
+- **Root README.md**: Corrected "read-only" claim — V2 supports DELETE operations for test data cleanup; pages 6 → 7
+
+### Added
+- **`/api/signal-status-counts`** backend endpoint + `useSignalStatusCounts` hook for accurate signal breakdown
+- **`.spin` CSS utility** — keyframe animation for Settings refresh button
+
+### Removed
+- **Dead template files**: Deleted `src/App.css` and `src/index.css` (leftover Vite scaffolding, not imported)
+- **Unused `signal` import** in `run.py`
+- **`useSignals({ per_page: 100 })` in Overview** — replaced by backend-counted signal status endpoint
+
+## 0.16.1 - 2026-03-22
+
+### Added
+- **Overview page enhancements** — 3 new PLECTO-inspired chart cards:
+  - **Win Rate Gauge** — radial bar chart with center percentage + W/L counts
+  - **Signal Breakdown** — table card showing executed/rejected/failed/received counts (like PLECTO MRR Breakdown)
+  - **PnL by Weekday** — bar chart showing cumulative PnL per trading day (Mon–Fri)
+- **Chart toggle** — "Customize" dropdown to show/hide any chart card, persisted to `localStorage`
+
+### Changed
+- `dashboard-v2/src/pages/Overview.jsx` — rebuilt with chart visibility system + 3 new charts
+- `dashboard-v2/src/components/Navbar.jsx` — changed Signals icon from `Workflow` to `GitBranch`
+
+
+## 0.16.0 - 2026-03-22
+
+### Added
+- **Signal Lifecycle page** — new "Signals" tab in Dashboard V2
+  - Expandable table grouping orders under their parent signal (fingerprint)
+  - Filters: channel, symbol, status, date range + pagination
+  - **SignalDetailModal** — full lifecycle popup showing:
+    - Raw signal text from Telegram
+    - Parsed result (symbol, side, entry, SL, TP)
+    - Timeline of all events (received → parsed → executed/rejected → reply → close)
+    - Orders table with status + delete per order
+    - Trade outcomes with PnL
+    - Signal group info
+  - **Cascade delete** — delete signal removes all related orders, trades, events, groups
+  - **Individual order delete** — remove single orders to clean test data
+  - **ConfirmModal** — shared popup component (glassmorphism, type-to-confirm for destructive ops)
+- **Backend API** — 8 new endpoints:
+  - `GET /api/signals` — paginated signal list with aggregated stats
+  - `GET /api/signals/{fp}` — full lifecycle detail
+  - `DELETE /api/signals/{fp}` — cascade delete
+  - `DELETE /api/orders/{id}` — single order delete
+  - `DELETE /api/trades/{id}` — single trade delete
+  - `GET /api/data/counts` — table row counts
+  - `DELETE /api/data/all` — clear all tables
+  - `DELETE /api/data/{table}` — clear specific table
+- **DashboardDB write ops** — added `_connect_rw()` for write operations on read-only DB class
+
+### Changed
+- `dashboard/db/queries.py` — added signal lifecycle queries + delete methods
+- `core/storage.py` — added lifecycle queries + cascade/granular delete methods
+- `dashboard/api/routes.py` — 8 new endpoints
+- `dashboard-v2/src/api/client.js` — added `method` support for DELETE + new API methods
+- `dashboard-v2/src/hooks/useApi.js` — `useSignals`, `useSignalDetail`, `useTableCounts`
+- `dashboard-v2/src/components/Navbar.jsx` — added Signals nav link
+- `dashboard-v2/src/App.jsx` — added `/signals` route
+
+
+## 0.15.0 - 2026-03-22
+
+### Added
+- **Dashboard V2** — React SPA with advanced analytics (`dashboard-v2/`)
+  - 6 pages: Overview, Analytics, Channels, Symbols, Trades, Settings
+  - Tech: React 19 + Vite 6 + Recharts + TanStack Query + Framer Motion
+  - Premium dark mode with glassmorphism, gradient accents, micro-animations
+  - Charts: equity curve, daily PnL bars, win/loss donut, PnL distribution histogram, drawdown, symbol radar, trading activity area, channel comparison
+  - Interactive channel cards with per-channel daily PnL drill-down
+  - Symbol performance table with inline win-rate progress bars
+  - Trade journal with multi-filter (channel, symbol, date, outcome) + pagination + CSV export
+  - Settings page with API key management and connection status
+  - Shares same FastAPI API backend as V1, no duplication
+  - Users choose which dashboard to run (V1 port 8000, V2 port 5173)
 
 ## 0.14.1 - 2026-03-22
 
