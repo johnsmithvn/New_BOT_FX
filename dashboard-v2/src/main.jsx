@@ -6,6 +6,7 @@ import App from './App';
 import './styles/global.css';
 import './styles/layout.css';
 import './styles/components.css';
+import './styles/charts.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

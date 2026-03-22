@@ -1,24 +1,24 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, ReferenceLine, LabelList } from 'recharts';
+import { PremiumTooltip } from './ChartPrimitives';
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  const val = payload[0].value;
+/** Custom label on top of bars */
+const renderBarLabel = (props) => {
+  const { x, y, width, value } = props;
+  if (value == null || value === 0) return null;
+  const formatted = Math.abs(value) >= 100 ? `${(value / 1).toFixed(0)}` : value.toFixed(1);
   return (
-    <div style={{
-      background: 'var(--bg-secondary)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-md)',
-      padding: '10px 14px',
-      fontSize: '0.8125rem',
-    }}>
-      <p style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>{label}</p>
-      <p style={{ color: val >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-        ${val?.toFixed(2)}
-      </p>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-        {payload[0].payload.trades} trades
-      </p>
-    </div>
+    <text
+      x={x + width / 2}
+      y={value >= 0 ? y - 6 : y + 14}
+      fill={value >= 0 ? '#22c55e' : '#ef4444'}
+      textAnchor="middle"
+      fontSize={9}
+      fontFamily="'JetBrains Mono', monospace"
+      fontWeight={600}
+      opacity={0.8}
+    >
+      ${formatted}
+    </text>
   );
 };
 
@@ -27,25 +27,30 @@ export default function DailyPnlBars({ data = [] }) {
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" vertical={false} />
+      <BarChart data={data} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" vertical={false} />
         <XAxis
           dataKey="date"
-          tick={{ fill: '#64748b', fontSize: 11 }}
-          axisLine={false}
+          tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'Inter', sans-serif" }}
+          axisLine={{ stroke: 'rgba(148,163,184,0.08)' }}
           tickLine={false}
           tickFormatter={(d) => d?.slice(5)}
         />
         <YAxis
-          tick={{ fill: '#64748b', fontSize: 11 }}
+          tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(v) => `$${v}`}
           width={60}
         />
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={
+          <PremiumTooltip
+            formatter={(v, name) => `$${v?.toFixed(2)}`}
+          />
+        } />
         <ReferenceLine y={0} stroke="rgba(148,163,184,0.15)" />
-        <Bar dataKey="net_pnl" radius={[4, 4, 0, 0]} animationDuration={600}>
+        <Bar dataKey="net_pnl" name="Net PnL" radius={[4, 4, 0, 0]} animationDuration={800} maxBarSize={40}>
+          <LabelList content={renderBarLabel} />
           {data.map((entry, i) => (
             <Cell
               key={i}

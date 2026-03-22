@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import ChartCard from '../components/ChartCard';
 import { useChannels, useChannelDailyPnl } from '../hooks/useApi';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LineChart, Line, LabelList } from 'recharts';
+import { PremiumTooltip } from '../charts/ChartPrimitives';
 
 function ChannelCard({ ch, isSelected, onClick }) {
   const pnl = ch.total_pnl || 0;
@@ -64,14 +65,12 @@ export default function Channels() {
           {channels && channels.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={channels} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={v => `$${v}`} />
-                <YAxis type="category" dataKey="channel_name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={120} />
-                <Tooltip
-                  formatter={(v) => [`$${v?.toFixed(2)}`, 'PnL']}
-                  contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}
-                />
-                <Bar dataKey="total_pnl" radius={[0, 4, 4, 0]} animationDuration={600}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="channel_name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={120} axisLine={false} tickLine={false} />
+                <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                <Bar dataKey="total_pnl" name="Total PnL" radius={[0, 4, 4, 0]} animationDuration={600} maxBarSize={22}>
+                  <LabelList dataKey="total_pnl" position="right" formatter={v => `$${v?.toFixed(1)}`} style={{ fill: '#94a3b8', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} />
                   {channels.map((ch, i) => (
                     <Cell key={i} fill={ch.total_pnl >= 0 ? '#22c55e' : '#ef4444'} fillOpacity={0.8} />
                   ))}
@@ -104,15 +103,12 @@ export default function Channels() {
           <ChartCard title={`Daily PnL — ${(channels || []).find(c => c.channel_id === selected)?.channel_name || selected}`}>
             {chDaily && chDaily.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chDaily} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" />
-                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={d => d?.slice(5)} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={v => `$${v}`} />
-                  <Tooltip
-                    formatter={(v) => [`$${v?.toFixed(2)}`, 'PnL']}
-                    contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}
-                  />
-                  <Line type="monotone" dataKey="pnl" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 3 }} />
+                <LineChart data={chDaily} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" />
+                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={d => d?.slice(5)} axisLine={{ stroke: 'rgba(148,163,184,0.08)' }} tickLine={false} />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
+                  <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                  <Line type="monotone" dataKey="pnl" name="PnL" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 3, stroke: 'var(--bg-primary)', strokeWidth: 2 }} activeDot={{ r: 5, stroke: '#3b82f6', fill: 'var(--bg-primary)', strokeWidth: 2 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (

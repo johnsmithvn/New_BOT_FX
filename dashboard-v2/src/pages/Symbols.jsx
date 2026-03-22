@@ -1,6 +1,7 @@
 import ChartCard from '../components/ChartCard';
 import { useSymbolStats } from '../hooks/useApi';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, LabelList } from 'recharts';
+import { PremiumTooltip } from '../charts/ChartPrimitives';
 
 function SymbolTable({ data }) {
   if (!data?.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No symbol data</p>;
@@ -63,14 +64,12 @@ function SymbolRadar({ data }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <RadarChart data={top5} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
-        <PolarGrid stroke="rgba(148,163,184,0.1)" />
-        <PolarAngleAxis dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-        <PolarRadiusAxis tick={{ fill: '#64748b', fontSize: 10 }} domain={[0, 100]} />
-        <Radar name="Win Rate" dataKey="winRate" stroke="#22c55e" fill="#22c55e" fillOpacity={0.2} />
-        <Radar name="Activity" dataKey="trades" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} />
-        <Tooltip
-          contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}
-        />
+        <PolarGrid stroke="rgba(148,163,184,0.08)" />
+        <PolarAngleAxis dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11, fontFamily: "'Inter', sans-serif" }} />
+        <PolarRadiusAxis tick={{ fill: '#64748b', fontSize: 10 }} domain={[0, 100]} axisLine={false} />
+        <Radar name="Win Rate" dataKey="winRate" stroke="#22c55e" fill="#22c55e" fillOpacity={0.2} strokeWidth={2} />
+        <Radar name="Activity" dataKey="trades" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} strokeWidth={2} />
+        <Tooltip content={<PremiumTooltip formatter={(v, name) => name === 'Win Rate' ? `${v}%` : `${v} trades`} />} />
       </RadarChart>
     </ResponsiveContainer>
   );
@@ -97,14 +96,12 @@ export default function Symbols() {
           {symbols && symbols.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={symbols} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.06)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={v => `$${v}`} />
-                <YAxis type="category" dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11 }} width={80} />
-                <Tooltip
-                  formatter={(v) => [`$${v?.toFixed(2)}`, 'PnL']}
-                  contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}
-                />
-                <Bar dataKey="total_pnl" radius={[0, 4, 4, 0]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
+                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11 }} width={80} axisLine={false} tickLine={false} />
+                <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                <Bar dataKey="total_pnl" name="PnL" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                  <LabelList dataKey="total_pnl" position="right" formatter={v => `$${v?.toFixed(1)}`} style={{ fill: '#94a3b8', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }} />
                   {symbols.map((s, i) => (
                     <Cell key={i} fill={s.total_pnl >= 0 ? '#22c55e' : '#ef4444'} fillOpacity={0.8} />
                   ))}
