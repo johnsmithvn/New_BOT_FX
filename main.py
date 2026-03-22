@@ -1272,6 +1272,12 @@ class Bot:
         success_results: list[str] = []
         skipped_tickets: list[str] = []
 
+        # Get per-channel reply_be_lock_pips config
+        be_lock_pips = 1.0  # default
+        if hasattr(self, "channel_mgr") and self.channel_mgr:
+            ch_rules = self.channel_mgr.get_channel_rules(chat_id)
+            be_lock_pips = ch_rules.get("reply_be_lock_pips", 1.0)
+
         for order in orders:
             ticket = order["ticket"]
             fp = order["fingerprint"]
@@ -1290,6 +1296,7 @@ class Bot:
                 ticket, action,
                 expected_symbol=symbol,
                 dry_run=dry_run,
+                reply_be_lock_pips=be_lock_pips,
             )
 
             if summary.startswith("⚠️"):
