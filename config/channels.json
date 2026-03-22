@@ -5,7 +5,8 @@
             "breakeven_trigger_pips": 0,
             "breakeven_lock_pips": 2,
             "trailing_stop_pips": 0,
-            "partial_close_percent": 0
+            "partial_close_percent": 0,
+            "secure_profit_action": "close_worst_be_rest"
         },
         "strategy": {
             "mode": "single",
@@ -14,7 +15,11 @@
             "reentry_step_pips": 0,
             "signal_ttl_minutes": 15,
             "volume_split": "equal",
-            "execute_all_immediately": false
+            "execute_all_immediately": false,
+            "min_sl_distance_pips": 0,
+            "default_sl_pips_from_zone": 0,
+            "reentry_tolerance_pips": 0,
+            "max_reentry_distance_pips": 0
         },
         "risk": {},
         "validation": {}
@@ -26,14 +31,20 @@
                 "breakeven_trigger_pips": 50,
                 "breakeven_lock_pips": 30,
                 "trailing_stop_pips": 40,
-                "partial_close_percent": 0
+                "partial_close_percent": 0,
+                "secure_profit_action": "close_worst_be_rest"
             },
             "strategy": {
                 "mode": "range",
                 "max_entries": 3,
-                "execute_all_immediately": true,
-                "signal_ttl_minutes": 15,
-                "volume_split": "equal"
+                "execute_all_immediately": false,
+                "signal_ttl_minutes": 20,
+                "volume_split": "per_entry",
+                "min_sl_distance_pips": 20,
+                "default_sl_pips_from_zone": 50,
+                "reentry_tolerance_pips": 5,
+                "max_reentry_distance_pips": 10,
+                "reentry_step_pips": 20
             }
         },
         "-1009876543210": {

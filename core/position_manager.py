@@ -1154,6 +1154,117 @@ class PositionManager:
                 remaining_orders=len(open_positions),
             )
 
+    # ── G4: Secure Profit Group Action ────────────────────────────
+
+    def secure_profit_group(
+        self,
+        fingerprint: str,
+        reply_executor=None,
+        dry_run: bool = False,
+    ) -> dict | None:
+        """Secure profit across a group when admin replies +pip (G4).
+
+        Logic:
+        - If >1 open order: close WORST entry, set BE on remaining.
+            SELL: worst = lowest entry (least profit).
+            BUY:  worst = highest entry (least profit).
+        - If 1 open order: just set BE on that order.
+        - If 0 open orders: return no_open_orders.
+
+        Returns dict with action result info.
+        """
+        group = self._groups.get(fingerprint)
+        if not group or group.status != GroupStatus.ACTIVE:
+            return {"status": "no_group", "group_fp": fingerprint}
+
+        if not reply_executor:
+            return None
+
+        try:
+            import MetaTrader5 as mt5
+        except ImportError:
+            return None
+
+        # Find open tickets
+        open_tickets: list[int] = []
+        for ticket in group.tickets:
+            positions = mt5.positions_get(ticket=ticket)
+            if positions and len(positions) > 0:
+                open_tickets.append(ticket)
+
+        if not open_tickets:
+            return {"status": "no_open_orders", "group_fp": fingerprint}
+
+        is_buy = group.side == Side.BUY or (
+            isinstance(group.side, str) and group.side.upper() == "BUY"
+        )
+
+        closed_ticket = None
+        be_tickets: list[int] = []
+
+        if len(open_tickets) > 1:
+            # Close WORST entry (least profitable)
+            if is_buy:
+                # BUY: worst = highest entry (bought expensive)
+                worst_ticket = max(
+                    open_tickets,
+                    key=lambda t: group.entry_prices.get(t, 0),
+                )
+            else:
+                # SELL: worst = lowest entry (sold cheap)
+                worst_ticket = min(
+                    open_tickets,
+                    key=lambda t: group.entry_prices.get(t, float("inf")),
+                )
+
+            # Close worst
+            from core.reply_action_parser import ReplyAction, ReplyActionType
+            close_action = ReplyAction(action=ReplyActionType.CLOSE)
+            summary = reply_executor.execute(
+                worst_ticket, close_action, dry_run=dry_run,
+            )
+            closed_ticket = worst_ticket
+
+            # Set BE on remaining
+            remaining = [t for t in open_tickets if t != worst_ticket]
+            be_action = ReplyAction(action=ReplyActionType.BREAKEVEN)
+            for ticket in remaining:
+                reply_executor.execute(ticket, be_action, dry_run=dry_run)
+                be_tickets.append(ticket)
+
+            log_event(
+                "secure_profit_multi",
+                fingerprint=fingerprint,
+                closed_ticket=closed_ticket,
+                closed_entry=group.entry_prices.get(closed_ticket),
+                be_tickets=be_tickets,
+            )
+
+        else:
+            # Only 1 order: just set BE
+            ticket = open_tickets[0]
+            from core.reply_action_parser import ReplyAction, ReplyActionType
+            be_action = ReplyAction(action=ReplyActionType.BREAKEVEN)
+            reply_executor.execute(ticket, be_action, dry_run=dry_run)
+            be_tickets.append(ticket)
+
+            log_event(
+                "secure_profit_single",
+                fingerprint=fingerprint,
+                be_ticket=ticket,
+            )
+
+        return {
+            "status": "secured",
+            "closed_ticket": closed_ticket,
+            "closed_entry": group.entry_prices.get(closed_ticket) if closed_ticket else None,
+            "be_tickets": be_tickets,
+            "remaining_count": len(be_tickets),
+            "total_count": len(open_tickets),
+            "group_fp": fingerprint,
+            "symbol": group.symbol,
+        }
+
     # ── P10.1: Edit/Delete Group Support ──────────────────────────
 
     def cancel_group_pending_orders(

@@ -24,6 +24,7 @@ class ReplyActionType(str, Enum):
     MOVE_SL = "move_sl"
     MOVE_TP = "move_tp"
     BREAKEVEN = "breakeven"
+    SECURE_PROFIT = "secure_profit"  # G3: +pip reply
 
 
 @dataclass
@@ -32,6 +33,7 @@ class ReplyAction:
     action: ReplyActionType
     price: float | None = None
     percent: int | None = None
+    pips: int | None = None  # G3: pip count for SECURE_PROFIT
     raw_text: str = ""
 
 
@@ -43,6 +45,7 @@ _CLOSE_PARTIAL = r"^close\s+(\d+)\s*%$"
 _MOVE_SL = r"^(?:sl|move\s+sl|stoploss|stop\s+loss)\s+([\d]+(?:\.[\d]+)?)$"
 _MOVE_TP = r"^(?:tp|move\s+tp|take\s+profit)\s+([\d]+(?:\.[\d]+)?)$"
 _BREAKEVEN = r"^(be|breakeven|break\s+even|sl\s+entry)$"
+_SECURE_PROFIT = r"^\+\s*(\d+)\s*(?:pip|pips|p)?$"  # G3: +30, +50 pip, +120 pips
 
 
 class ReplyActionParser:
@@ -73,6 +76,17 @@ class ReplyActionParser:
         match_text = cleaned_upper.upper()
         # Also try lowercase for Vietnamese
         match_lower = cleaned_upper.lower()
+
+        # G3: SECURE_PROFIT — "+30", "+50 pip" (before BREAKEVEN)
+        m = re.match(_SECURE_PROFIT, match_text, re.IGNORECASE)
+        if m:
+            pips = int(m.group(1))
+            if pips > 0:
+                return ReplyAction(
+                    action=ReplyActionType.SECURE_PROFIT,
+                    pips=pips,
+                    raw_text=cleaned,
+                )
 
         # BREAKEVEN (before CLOSE to avoid "be" matching something else)
         if re.match(_BREAKEVEN, match_text, re.IGNORECASE):

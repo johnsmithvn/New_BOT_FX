@@ -1,6 +1,20 @@
 # TASKS
 
 ## Current Phase
+- `Trading Logic Gaps` ✅ COMPLETE (v0.18.0)
+
+### v0.18.0 — Trading Logic Gaps (G1-G6)
+- [x] G1: Min SL Distance Guard — skip orders when price too close to SL (`pipeline.py`)
+- [x] G2: Default SL from Zone — auto-generate SL from entry zone bounds (`pipeline.py`)
+- [x] G3: Reply `+pip` Parser — parse `+30`, `+50 pip` as SECURE_PROFIT (`reply_action_parser.py`)
+- [x] G4: Secure Profit Group — close worst entry + BE remaining (`position_manager.py`, `main.py`)
+- [x] G5: Re-entry Tolerance — trigger within N pips of level (`range_monitor.py`, `main.py`)
+- [x] G6: Cancel Pending Plans on Reply — CLOSE/SECURE_PROFIT cancels plans (`signal_state_manager.py`, `main.py`)
+- [x] Update `channels.json` with 4 new config keys
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phases
 - `Signal Analysis Fixes` ✅ COMPLETE (v0.17.0)
 
 ### v0.17.0 — Signal Analysis Fixes (P0 + P1 + P2)

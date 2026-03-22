@@ -1,4 +1,33 @@
 # CHANGELOG
+## 0.18.0 - 2026-03-22
+
+### Added
+- **G1: Min SL Distance Guard** — skip placing orders if current price is within `min_sl_distance_pips` of SL. Applies to both initial multi-order execution and re-entry triggers. Config: `strategy.min_sl_distance_pips` (default: 0 = disabled). (`pipeline.py`)
+- **G2: Default SL from Zone** — auto-generate SL from entry zone bounds when signal has no explicit SL. SELL: `zone_high + N pips`, BUY: `zone_low - N pips`. Config: `strategy.default_sl_pips_from_zone` (default: 0 = disabled). (`pipeline.py`)
+- **G3: Reply `+pip` Parser** — parse `+30`, `+50 pip`, `+120 pips` replies as `SECURE_PROFIT` action. New `ReplyActionType.SECURE_PROFIT` and `pips` field on `ReplyAction`. (`reply_action_parser.py`)
+- **G4: Secure Profit Group Action** — when admin replies `+pip`, close worst entry in group (SELL: lowest entry = least profitable), set BE on remaining orders. Single order: just set BE. New `secure_profit_group()` method. Config: `rules.secure_profit_action` (default: `close_worst_be_rest`). (`position_manager.py`, `main.py`)
+- **G5: Re-entry Tolerance** — allow re-entry trigger within N pips of level, not just exact cross. Config: `strategy.reentry_tolerance_pips` (default: 0 = exact). (`range_monitor.py`, `main.py`)
+- **G6: Cancel Pending Plans on Reply** — when CLOSE, SECURE_PROFIT, or BREAKEVEN reply succeeds, cancel all pending re-entry plans AND unfilled LIMIT/STOP orders on MT5. New `cancel_all_pending()` method. (`signal_state_manager.py`, `main.py`, `position_manager.py`)
+- **G7: Max Re-entry Distance Guard** — skip re-entry if price has moved more than `max_reentry_distance_pips` past the plan level. Config: `strategy.max_reentry_distance_pips` (default: 0 = disabled). (`pipeline.py`)
+- **G8: Force MARKET for Re-entries** — P2/P3 re-entries triggered by RangeMonitor always execute as MARKET orders, bypassing `MARKET_TOLERANCE_POINTS` check that could incorrectly place a LIMIT. (`pipeline.py`)
+- **G9: Step-based P2/P3 Levels** — when `reentry_step_pips > 0`, P2/P3 levels calculated as P1 + N×step instead of spreading across zone. Config: `strategy.reentry_step_pips` (default: 0 = zone-spread). (`entry_strategy.py`)
+- **G10: Multi-trigger on Scan** — if price crosses multiple pending levels in one scan cycle, trigger ALL of them simultaneously instead of one-per-cycle. (`range_monitor.py`)
+- **G11: SL Breach → Cancel All** — if price crosses SL while plans are pending, cancel all pending plans for that signal. Prevents re-entries on invalidated signals. (`range_monitor.py`)
+
+### Changed
+- `channels.json` — 6 new config keys: `min_sl_distance_pips`, `default_sl_pips_from_zone`, `reentry_tolerance_pips`, `max_reentry_distance_pips`, `reentry_step_pips` (strategy), `secure_profit_action` (rules)
+- Noval channel: `reentry_step_pips: 2`, `max_reentry_distance_pips: 10`, `reentry_tolerance_pips: 5`
+
+### Files Modified
+- `core/pipeline.py` (G1, G2, G7, G8)
+- `core/reply_action_parser.py` (G3)
+- `core/position_manager.py` (G4)
+- `core/range_monitor.py` (G5, G10, G11)
+- `core/signal_state_manager.py` (G6)
+- `core/entry_strategy.py` (G9)
+- `main.py` (G4, G5, G6)
+- `config/channels.json`
+
 ## 0.17.0 - 2026-03-22
 
 ### Added

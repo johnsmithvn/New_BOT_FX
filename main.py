@@ -339,10 +339,19 @@ class Bot:
             position_mgr=self.position_mgr,
         )
 
+        # G5: Get max reentry tolerance across all channel configs
+        reentry_tolerance = 0.0
+        for chan_id in self.channel_mgr.list_channels():
+            strat = self.channel_mgr.get_strategy(chan_id)
+            tol = strat.get("reentry_tolerance_pips", 0.0)
+            if tol > reentry_tolerance:
+                reentry_tolerance = tol
+
         self.range_monitor = RangeMonitor(
             executor=self.executor,
             state_manager=self._state_mgr,
             on_reentry=self.signal_pipeline.handle_reentry,
+            reentry_tolerance_pips=reentry_tolerance,
         )
 
     # ── Alert Callbacks ──────────────────────────────────────────
@@ -1139,9 +1148,64 @@ class Bot:
         )
 
         # Step 4: Execute on each order
+        # ── G4: SECURE_PROFIT reply (+pip) — group-aware ─────────
+        if (
+            action.action == ReplyActionType.SECURE_PROFIT
+            and hasattr(self, "position_mgr")
+            and self.position_mgr
+        ):
+            first_fp = orders[0]["fingerprint"]
+            base_fp = first_fp.split(":L")[0] if ":L" in first_fp else first_fp
+
+            result = self.position_mgr.secure_profit_group(
+                base_fp,
+                reply_executor=self.reply_executor,
+                dry_run=dry_run,
+            )
+
+            if result and result.get("status") == "secured":
+                closed = result.get("closed_ticket")
+                be_tickets = result.get("be_tickets", [])
+                remaining = result.get("remaining_count", 0)
+                total = result.get("total_count", 0)
+
+                parts = []
+                if closed:
+                    entry = result.get("closed_entry", "?")
+                    parts.append(f"❌ Closed #{closed} (entry {entry})")
+                    if self.trade_tracker and not dry_run:
+                        self.trade_tracker.mark_reply_closed(closed)
+                parts.append(f"🔒 BE on {len(be_tickets)} orders: {be_tickets}")
+                parts.append(f"📊 {remaining}/{total} remaining")
+
+                # G6: Cancel pending plans + MT5 pending orders
+                cancelled = 0
+                if hasattr(self, "_state_mgr") and self._state_mgr:
+                    cancelled = self._state_mgr.cancel_all_pending(base_fp)
+                    if cancelled > 0:
+                        parts.append(f"🚫 Cancelled {cancelled} pending re-entries")
+                if hasattr(self, "position_mgr") and self.position_mgr:
+                    cr = self.position_mgr.cancel_group_pending_orders(
+                        base_fp, executor=self.executor,
+                    )
+                    mt5_c = cr.get("cancelled", [])
+                    if mt5_c:
+                        parts.append(f"🚫 {len(mt5_c)} pending MT5 orders cancelled")
+
+                msg = f"📋 **SECURE PROFIT** (+{action.pips}p)\n" + "\n".join(parts)
+                try:
+                    msg_id_int = int(message_id) if message_id else None
+                    if msg_id_int:
+                        self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
+                except (ValueError, TypeError):
+                    pass
+                self.alerter.send_alert_sync("reply_command", msg)
+                print(f"  [REPLY] secure_profit → {result.get('status')}")
+                return
+            elif result and result.get("status") == "no_open_orders":
+                pass  # Fall through to existing logic
+
         # ── P10f: Group-aware selective close ────────────────────
-        # If this is a CLOSE action and there's a group with selective
-        # strategy, route through PositionManager instead of closing all.
         if (
             action.action == ReplyActionType.CLOSE
             and hasattr(self, "position_mgr")
@@ -1170,11 +1234,27 @@ class Bot:
                     if self.trade_tracker and not dry_run:
                         self.trade_tracker.mark_reply_closed(ticket)
 
+                    # G6: Cancel pending plans + MT5 pending orders
+                    cancelled = 0
+                    if hasattr(self, "_state_mgr") and self._state_mgr:
+                        cancelled = self._state_mgr.cancel_all_pending(base_fp)
+                    if hasattr(self, "position_mgr") and self.position_mgr:
+                        cr = self.position_mgr.cancel_group_pending_orders(
+                            base_fp, executor=self.executor,
+                        )
+                        mt5_c = cr.get("cancelled", [])
+                    else:
+                        mt5_c = []
+
                     msg = (
                         f"📋 **CLOSE** (selective: {group.reply_close_strategy})\n"
                         f"✅ Closed #{ticket} (entry {entry_price})\n"
                         f"Remaining: {remaining}/{total} orders"
                     )
+                    if cancelled > 0:
+                        msg += f"\n🚫 Cancelled {cancelled} pending re-entries"
+                    if mt5_c:
+                        msg += f"\n🚫 {len(mt5_c)} pending MT5 orders cancelled"
                     try:
                         msg_id_int = int(message_id) if message_id else None
                         if msg_id_int:
@@ -1236,6 +1316,33 @@ class Bot:
                 },
                 channel_id=chat_id,
             )
+
+        # G6: Cancel pending plans + unfilled MT5 orders on close/+pip/be
+        _cancel_actions = (
+            ReplyActionType.CLOSE,
+            ReplyActionType.SECURE_PROFIT,
+            ReplyActionType.BREAKEVEN,
+        )
+        if action.action in _cancel_actions and (success_results or action.action == ReplyActionType.BREAKEVEN):
+            first_fp = orders[0]["fingerprint"]
+            base_fp = first_fp.split(":L")[0] if ":L" in first_fp else first_fp
+
+            # Cancel pending plans in RangeMonitor
+            if hasattr(self, "_state_mgr") and self._state_mgr:
+                cancelled_plans = self._state_mgr.cancel_all_pending(base_fp)
+                if cancelled_plans > 0:
+                    success_results.append(f"🚫 {cancelled_plans} pending re-entries cancelled")
+
+            # Cancel unfilled LIMIT/STOP orders on MT5
+            if hasattr(self, "position_mgr") and self.position_mgr:
+                cancel_result = self.position_mgr.cancel_group_pending_orders(
+                    base_fp, executor=self.executor,
+                )
+                mt5_cancelled = cancel_result.get("cancelled", [])
+                if mt5_cancelled:
+                    success_results.append(
+                        f"🚫 {len(mt5_cancelled)} pending MT5 orders cancelled: {mt5_cancelled}"
+                    )
 
         # Step 5: Aggregated reply
         parts: list[str] = []

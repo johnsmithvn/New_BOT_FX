@@ -208,6 +208,36 @@ class SignalStateManager:
 
         return expired_count
 
+    def cancel_all_pending(self, base_fp: str) -> int:
+        """Cancel all pending plans for a signal (G6).
+
+        Called when admin replies with close/secure_profit to stop
+        RangeMonitor from placing more orders.
+
+        Returns count of cancelled plans.
+        """
+        state = self._active.get(base_fp)
+        if not state:
+            return 0
+
+        cancelled = 0
+        for plan in state.entry_plans:
+            if plan.status == "pending":
+                plan.status = "cancelled"
+                cancelled += 1
+
+        if cancelled > 0:
+            self._update_lifecycle(state)
+            self._persist_plans(state)
+            log_event(
+                "signal_state_plans_cancelled",
+                fingerprint=base_fp,
+                cancelled_count=cancelled,
+                reason="reply_action",
+            )
+
+        return cancelled
+
     def remove(self, base_fp: str) -> None:
         """Remove signal from tracking explicitly."""
         self._active.pop(base_fp, None)
