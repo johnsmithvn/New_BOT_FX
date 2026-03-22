@@ -1,4 +1,26 @@
 # CHANGELOG
+## 0.16.7 - 2026-03-22
+
+### Fixed
+- **CRITICAL**: `MARKET_TOLERANCE_POINTS` default documented as `30.0` in 4 locations — actual code default is `5.0` (`config/settings.py`)
+- Version references stuck at `v0.16.1` in `PROJECT.md`, `README.md`, `DASHBOARD_FEATURES.md`
+- Version stuck at `v0.16.2` in `App.jsx` footer
+- Version stuck at `v0.9.0` in `FLOW_AND_SETUP_GUIDE.md` and `LOGIC_SIGNAL_PARSER.md`
+- `FLOW_AND_SETUP_GUIDE.md` stale `main.py (1401 dòng)` LOC count
+- `P10_FEATURE_SPEC.md` target version `v1.0.0` → `v0.10.0` (shipped)
+
+### Added
+- `ARCHITECTURE.md`: `/api/signal-status-counts` endpoint (v0.16.2), helper extraction note, unit test note
+- `PROJECT.md`: `tests/` and `run.py` in repository structure
+- `PLAN.md`: v0.16.2–v0.16.6 Done entries
+- `DASHBOARD_FEATURES.md`: `/api/signal-status-counts` endpoint
+- `OBSERVABILITY.md`: 10 P10 group management events
+- `DEPLOY.md`: `run.py` unified launcher mention
+- `ROADMAP.md`: R9 (Analytics Dashboard & Health Check) and R10 (Test Infrastructure) milestones
+
+### Changed
+- 14 files updated, 21 issues resolved (1 critical, 15 major, 5 minor)
+
 ## 0.16.6 - 2026-03-22
 
 ### Fixed

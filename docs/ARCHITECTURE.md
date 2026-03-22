@@ -336,7 +336,7 @@ Reply message (reply_to = signal_msg_id)
 - Duplicate signal within TTL -> ignore and log dedupe event.
 
 
-## Dashboard V2 — React SPA (v0.15.0–v0.16.1)
+## Dashboard V2 — React SPA (v0.15.0–v0.16.6)
 
 ### Frontend Architecture
 - **Tech**: React 19 + Vite 6 + Recharts + TanStack Query + Framer Motion
@@ -359,6 +359,8 @@ Reply message (reply_to = signal_msg_id)
 - **Chart Toggle** (v0.16.1): `useChartVisibility()` hook — localStorage-persisted visibility map for 9 chart cards on Overview. "Customize" dropdown UI.
 - **Signal Lifecycle** (v0.16.0): Signals grouped by fingerprint, expandable child orders, `SignalDetailModal` with raw text → parsed → orders → trades timeline.
 - **ConfirmModal** (v0.16.0): Shared glassmorphism confirmation popup with type-to-confirm for destructive actions.
+- **Helper extraction** (v0.16.6): Page-specific data transforms extracted to `Overview.helpers.js` and `Analytics.helpers.js` for testability.
+- **Unit tests** (v0.16.3–v0.16.5): 130 Vitest (dashboard-v2) + 249 pytest (bot) tests.
 
 ### Backend — Dashboard API (`dashboard/`)
 - **`dashboard.py`**: FastAPI app, CORS (GET + DELETE), serves both V1 (Jinja2) and V2 (API).
@@ -376,6 +378,7 @@ Reply message (reply_to = signal_msg_id)
 | `GET` | `/api/data/counts` | Row counts per table |
 | `DELETE` | `/api/data/all` | Clear all data tables |
 | `DELETE` | `/api/data/{table}` | Clear specific table |
+| `GET` | `/api/signal-status-counts` | Signal status breakdown counts (v0.16.2) |
 
 ### Data Flow
 ```

@@ -1,6 +1,6 @@
 # P10 — Smart Signal Group Management: Feature Spec
 
-> **Target version**: v1.0.0
+> **Target version**: v0.10.0 (shipped)
 > **Previous**: v0.9.0 (P9 — Channel-Driven Strategy)
 > **Created**: 2026-03-21
 

@@ -170,6 +170,11 @@
 - v0.15.0: Dashboard V2 — React SPA (6 pages, Recharts, TanStack Query, Framer Motion)
 - v0.16.0: Signal Lifecycle page — expandable table, detail modal, cascade delete, 8 API endpoints
 - v0.16.1: Overview enhancements — Win Rate Gauge, Signal Breakdown, PnL by Weekday, chart toggle
+- v0.16.2: Bug fixes — API 404 status codes, sub-fingerprint SQL, CSS fixes, `/api/signal-status-counts` endpoint
+- v0.16.3: Dashboard V2 unit tests — 130 Vitest tests across 11 files
+- v0.16.4: Bot system test case documentation — 254 test cases across 25 modules
+- v0.16.5: Bot system unit tests — 249 pytest tests across 17 files
+- v0.16.6: Code review fixes — helper extraction (`Overview.helpers.js`, `Analytics.helpers.js`), test alignment
 
 
 

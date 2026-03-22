@@ -42,6 +42,7 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 | `GET /api/data/counts` | Đếm rows per table (v0.16.0) | `{signals: N, orders: N, ...}` |
 | `DELETE /api/data/all` | Xóa toàn bộ data (v0.16.0) | `{cleared: [...tables]}` |
 | `DELETE /api/data/{table}` | Xóa 1 bảng (v0.16.0) | `{cleared: table_name}` |
+| `GET /api/signal-status-counts` | Signal status counts (v0.16.2) | `{executed: N, rejected: N, failed: N, received: N}` |
 
 ---
 
@@ -365,7 +366,7 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 |-----|---------|
 | **Connection Status** | Hiện trạng kết nối API (● Live = xanh, ● Offline = đỏ) |
 | **API Key** | Nhập/thay đổi dashboard API key (bảo mật, gửi qua header `X-API-Key`) |
-| **About** | Thông tin version (v0.16.1), tech stack |
+| **About** | Thông tin version (v0.16.6), tech stack |
 
 ---
 

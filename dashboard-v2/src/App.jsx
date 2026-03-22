@@ -27,7 +27,7 @@ export default function App() {
         </AnimatePresence>
         <footer className="footer">
           <span>Forex Bot Dashboard V2</span>
-          <span>v0.16.2</span>
+          <span>v0.16.6</span>
         </footer>
       </div>
     </BrowserRouter>

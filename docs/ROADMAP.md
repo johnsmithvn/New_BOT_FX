@@ -81,3 +81,20 @@ Expected outcomes:
   - DB persistence (signal_groups table) for restart recovery.
   - STOP order filter: MARKET/LIMIT fallback when STOP not allowed.
 
+## Milestone R9 - Analytics Dashboard & Health Check ✅
+- Goal:
+  - Provide web-based trade analytics and bot health monitoring.
+- Expected outcomes:
+  - Dashboard V1: FastAPI + Jinja2 (3 pages, 7 API endpoints).
+  - Dashboard V2: React SPA (7 pages, Recharts, TanStack Query, Framer Motion).
+  - Health check endpoint (`/health` on port 8080).
+  - Signal lifecycle page with cascade delete.
+  - Unified launcher (`run.py`) for bot + dashboard combos.
+
+## Milestone R10 - Test Infrastructure ✅
+- Goal:
+  - Establish comprehensive test coverage for the codebase.
+- Expected outcomes:
+  - 249 Python unit tests (pytest) across 17 files.
+  - 130 JavaScript unit tests (Vitest) across 11 files.
+  - Test case documentation (254 test cases across 25 modules).

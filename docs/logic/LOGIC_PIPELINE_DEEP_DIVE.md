@@ -956,7 +956,7 @@ success = result.retcode in (10008, 10009)
 | `MAX_SPREAD_PIPS` | 5.0 | `signal_validator.py` | Tăng → chấp nhận spread rộng hơn (⚠️ hiện tại bị comment out) |
 | `MAX_OPEN_TRADES` | 5 | `signal_validator.py` | Tăng → đồng thời nhiều lệnh hơn |
 | `SIGNAL_AGE_TTL_SECONDS` | 60 | `signal_validator.py`, `storage.py` | Tăng → chấp nhận signal cũ hơn + dedupe window rộng hơn |
-| `MARKET_TOLERANCE_POINTS` | 30.0 | `order_builder.py` | Tăng → nhiều MARKET order hơn, ít LIMIT/STOP hơn |
+| `MARKET_TOLERANCE_POINTS` | 5.0 | `order_builder.py` | Tăng → nhiều MARKET order hơn, ít LIMIT/STOP hơn |
 | `DEVIATION_POINTS` | 20 | `order_builder.py` | Base slippage tolerance (trước dynamic) |
 | `DYNAMIC_DEVIATION_MULTIPLIER` | 0.0 | `order_builder.py` | >0 → deviation = max(base, spread×multiplier). 0=disabled |
 | `PENDING_ORDER_TTL_MINUTES` | 15 | `order_lifecycle_manager.py` | Tăng → lệnh pending sống lâu hơn |

@@ -1,6 +1,21 @@
 # TASKS
 
 ## Current Phase
+- `Documentation Audit & Fix` ✅ COMPLETE (v0.16.7)
+
+### v0.16.7 — Documentation Audit (21 fixes across 14 files)
+- [x] Fix `MARKET_TOLERANCE_POINTS` default `30.0` → `5.0` (4 locations)
+- [x] Update version `v0.16.1` → `v0.16.6` in PROJECT.md, README.md, DASHBOARD_FEATURES.md, FLOW_AND_SETUP_GUIDE.md, App.jsx, LOGIC_SIGNAL_PARSER.md, ARCHITECTURE.md
+- [x] Add missing `/api/signal-status-counts` to ARCHITECTURE.md + DASHBOARD_FEATURES.md
+- [x] Add missing `tests/`, `run.py` to PROJECT.md structure
+- [x] Add v0.16.2–v0.16.6 entries to PLAN.md Done list
+- [x] Fix P10_FEATURE_SPEC.md target version `v1.0.0` → `v0.10.0`
+- [x] Add P10 group events to OBSERVABILITY.md
+- [x] Add `run.py` launcher mention to DEPLOY.md
+- [x] Add R9 (Dashboard) + R10 (Tests) milestones to ROADMAP.md
+- [x] Add helper extraction + unit test notes to ARCHITECTURE.md
+
+## Previous Phases
 - `Codex + Copilot Review Fixes` ✅ COMPLETE (v0.16.6)
 
 ### v0.16.6 — Code Review Fixes (Codex P1 + P2, Copilot #2-#6)
