@@ -213,8 +213,14 @@ class ReplyCommandExecutor:
 
         if pos.type == 0:  # BUY
             new_sl = entry + lock_distance
+            # Guard: only move SL up, never down (keep better SL)
+            if pos.sl > 0 and new_sl <= pos.sl:
+                return f"ℹ️ SL already at {pos.sl} (better than BE {new_sl})"
         else:  # SELL
             new_sl = entry - lock_distance
+            # Guard: only move SL down, never up (keep better SL)
+            if pos.sl > 0 and new_sl >= pos.sl:
+                return f"ℹ️ SL already at {pos.sl} (better than BE {new_sl})"
 
         # Round to symbol digits
         sym_info = mt5.symbol_info(pos.symbol)

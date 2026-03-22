@@ -16,6 +16,9 @@
 - **G12a: `per_entry` Volume Split** — new `volume_split` mode where each plan gets the full `FIXED_LOT_SIZE` instead of splitting total. Use case: `FIXED_LOT=0.01`, 3 entries → each 0.01. (`entry_strategy.py`)
 - **G12b: Reply BE Lock Pips** — reply "be" now sets SL = entry ± N pip (profitable side) instead of exact entry. Config per channel: `rules.reply_be_lock_pips` (default: 1 pip). (`reply_command_executor.py`, `main.py`)
 
+### Fixed
+- **G12b: Reply BE guard** — reply "be" no longer overwrites a better SL. If auto BE already set SL to lock $3, reply "be" (lock $1) will keep the better SL and return info message. (`reply_command_executor.py`)
+
 ### Changed
 - `channels.json` — 8 new config keys:
   - **strategy**: `min_sl_distance_pips`, `default_sl_pips_from_zone`, `reentry_tolerance_pips`, `max_reentry_distance_pips`, `reentry_step_pips`
