@@ -34,11 +34,12 @@ function renderChannelCard(ch) {
     const losses = ch.losses || 0;
     const winRate = total > 0 ? (wins / total * 100).toFixed(1) : 0;
     const avg = parseFloat(ch.avg_pnl || 0);
+    const name = ch.channel_name || ch.channel_id || 'Unknown';
 
     return `
     <div class="channel-card">
         <div class="channel-header">
-            <div class="channel-name">${ch.channel_id || 'Unknown'}</div>
+            <div class="channel-name" title="${ch.channel_id}">${name}</div>
             <div class="channel-pnl ${pnlClass(pnl)}">${formatPnL(pnl)}</div>
         </div>
         <div class="channel-stats">
@@ -89,7 +90,7 @@ async function loadChannelCards() {
         grid.innerHTML = data.map(renderChannelCard).join('');
 
         // Comparison chart
-        const labels = data.map(c => c.channel_id || 'Unknown');
+        const labels = data.map(c => c.channel_name || c.channel_id || 'Unknown');
         const values = data.map(c => parseFloat(c.total_pnl || 0));
 
         if (compareChart) compareChart.destroy();

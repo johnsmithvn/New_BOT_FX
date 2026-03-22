@@ -174,6 +174,117 @@ function createChannelBarChart(canvasId, labels, data) {
     });
 }
 
+function createEquityChart(canvasId, labels, data) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    const lastVal = data.length > 0 ? data[data.length - 1] : 0;
+    const lineColor = lastVal >= 0 ? '#00e676' : '#ff5252';
+
+    // Gradient fill
+    const chartCtx = ctx.getContext('2d');
+    const gradient = chartCtx.createLinearGradient(0, 0, 0, 300);
+    if (lastVal >= 0) {
+        gradient.addColorStop(0, 'rgba(0, 230, 118, 0.3)');
+        gradient.addColorStop(1, 'rgba(0, 230, 118, 0.01)');
+    } else {
+        gradient.addColorStop(0, 'rgba(255, 82, 82, 0.3)');
+        gradient.addColorStop(1, 'rgba(255, 82, 82, 0.01)');
+    }
+
+    return new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                data,
+                borderColor: lineColor,
+                backgroundColor: gradient,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: lineColor,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: { label: (ctx) => `Equity: ${formatPnL(ctx.raw)}` },
+                    backgroundColor: 'rgba(15,15,26,0.95)',
+                    borderColor: 'rgba(100,100,200,0.3)',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 8,
+                },
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxRotation: 45, font: { size: 10 }, maxTicksLimit: 12 },
+                },
+                y: {
+                    grid: { color: 'rgba(100,100,200,0.06)' },
+                    ticks: { callback: (v) => `$${v}` },
+                },
+            },
+        },
+    });
+}
+
+function createSymbolChart(canvasId, labels, winRates) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+
+    const colors = winRates.map(wr => {
+        if (wr >= 60) return '#00e676';
+        if (wr >= 45) return '#ffab40';
+        return '#ff5252';
+    });
+
+    return new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                data: winRates,
+                backgroundColor: colors.map(c => c + '33'),
+                borderColor: colors,
+                borderWidth: 1.5,
+                borderRadius: 6,
+            }],
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: { label: (ctx) => `Win Rate: ${ctx.raw.toFixed(1)}%` },
+                    backgroundColor: 'rgba(15,15,26,0.95)',
+                    borderColor: 'rgba(100,100,200,0.3)',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 8,
+                },
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(100,100,200,0.06)' },
+                    ticks: { callback: (v) => `${v}%` },
+                    max: 100,
+                },
+                y: {
+                    grid: { display: false },
+                },
+            },
+        },
+    });
+}
+
 // ── Status Indicator ────────────────────────────────────────────
 
 function setStatus(connected) {

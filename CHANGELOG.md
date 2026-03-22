@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 0.13.0 - 2026-03-22
+
+### Added
+- **P12: Dashboard Enhancement**
+  - Channel name mapping — channel IDs now show human-readable names from `channels.json`
+  - Equity curve chart — cumulative PnL over time (line chart with gradient fill)
+  - Win rate by symbol chart — horizontal bar with color coding (green ≥60%, orange ≥45%, red <45%)
+  - CSV export — download all trades as CSV with channel names, filterable by date/channel
+  - Basic HTTP auth — `DASHBOARD_PASSWORD` env var protects page access
+  - 3 new API endpoints: `/api/equity-curve`, `/api/symbol-stats`, `/api/export/csv`
+  - `/api/channel-list` now returns `{id, name}` objects
+
+### Changed
+- All API responses now include `channel_name` field alongside `channel_id`
+- Dashboard version bumped to 0.13.0
+
 ## 0.12.0 - 2026-03-21
 
 ### Added

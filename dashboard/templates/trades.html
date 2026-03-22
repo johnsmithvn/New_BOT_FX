@@ -34,6 +34,7 @@
         </select>
     </div>
     <button class="filter-btn" onclick="applyFilters()">Search</button>
+    <button class="filter-btn" style="background:var(--blue)" onclick="exportCSV()">📥 CSV</button>
 </div>
 
 <!-- Summary Bar -->
@@ -112,6 +113,19 @@ function applyFilters() {
     loadTrades();
 }
 
+function exportCSV() {
+    const params = new URLSearchParams();
+    const from = document.getElementById('filter-from').value;
+    const to = document.getElementById('filter-to').value;
+    const channel = document.getElementById('filter-channel').value;
+
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (channel) params.set('channel', channel);
+
+    window.open(`/api/export/csv?${params.toString()}`, '_blank');
+}
+
 async function loadTrades() {
     const tbody = document.getElementById('trade-tbody');
     tbody.innerHTML = '<tr><td colspan="10" class="loading"><div class="loading-spinner"></div> Loading...</td></tr>';
@@ -144,12 +158,11 @@ async function loadTrades() {
                 <td>${parseFloat(t.close_volume).toFixed(2)}</td>
                 <td class="${pnlTableClass(t.pnl)}">${formatPnL(t.pnl)}</td>
                 <td>${formatPnL(t.commission || 0)}</td>
-                <td>${t.channel_id || '--'}</td>
+                <td title="${t.channel_id}">${t.channel_name || t.channel_id || '--'}</td>
                 <td>${t.close_reason || '--'}</td>
             </tr>
         `).join('');
 
-        // Pagination
         renderPagination(data.total, data.page, data.per_page);
         updateLastRefresh();
     } catch (err) {
@@ -162,27 +175,19 @@ function renderPagination(total, page, perPage) {
     const totalPages = Math.ceil(total / perPage);
     const el = document.getElementById('pagination');
 
-    if (totalPages <= 1) {
-        el.innerHTML = '';
-        return;
-    }
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
 
-    let html = '';
-    html += `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})">← Prev</button>`;
-
+    let html = `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})">← Prev</button>`;
     const start = Math.max(1, page - 2);
     const end = Math.min(totalPages, page + 2);
 
     if (start > 1) html += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
     if (start > 2) html += `<span style="color:var(--text-secondary);padding:6px">...</span>`;
-
     for (let i = start; i <= end; i++) {
         html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
     }
-
     if (end < totalPages - 1) html += `<span style="color:var(--text-secondary);padding:6px">...</span>`;
     if (end < totalPages) html += `<button class="page-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
-
     html += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} onclick="goToPage(${page + 1})">Next →</button>`;
 
     el.innerHTML = html;
@@ -200,8 +205,8 @@ async function loadFilterOptions() {
         const select = document.getElementById('filter-channel');
         channels.forEach(ch => {
             const opt = document.createElement('option');
-            opt.value = ch;
-            opt.textContent = ch;
+            opt.value = ch.id;
+            opt.textContent = ch.name || ch.id;
             select.appendChild(opt);
         });
     } catch (err) {
@@ -209,7 +214,6 @@ async function loadFilterOptions() {
     }
 }
 
-// Initial load
 loadFilterOptions();
 loadTrades();
 </script>

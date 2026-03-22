@@ -382,4 +382,4 @@ python -m dashboard.dashboard
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.12.0**
+Current: **v0.13.0**

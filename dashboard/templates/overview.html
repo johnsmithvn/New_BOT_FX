@@ -29,6 +29,21 @@
     </div>
 </div>
 
+<!-- Equity Curve -->
+<div class="chart-container">
+    <div class="chart-header">
+        <span class="chart-title">Equity Curve</span>
+        <div class="chart-period">
+            <button class="period-btn" onclick="loadEquity(30)">30D</button>
+            <button class="period-btn" onclick="loadEquity(90)">90D</button>
+            <button class="period-btn active" onclick="loadEquity(365)">1Y</button>
+        </div>
+    </div>
+    <div class="chart-canvas">
+        <canvas id="equity-chart"></canvas>
+    </div>
+</div>
+
 <!-- Daily PnL Chart -->
 <div class="chart-container">
     <div class="chart-header">
@@ -44,7 +59,7 @@
     </div>
 </div>
 
-<!-- Split Panels -->
+<!-- Split Panels: Channels + Symbol Stats -->
 <div class="split-panels">
     <!-- Top Channels -->
     <div class="panel">
@@ -54,6 +69,17 @@
         </div>
     </div>
 
+    <!-- Win Rate by Symbol -->
+    <div class="panel">
+        <div class="panel-title">Win Rate by Symbol</div>
+        <div class="chart-canvas" style="height:250px;">
+            <canvas id="symbol-chart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Split Panels: Recent Trades + Active Positions -->
+<div class="split-panels">
     <!-- Recent Trades -->
     <div class="panel">
         <div class="panel-title">Recent Trades</div>
@@ -75,32 +101,27 @@
             </table>
         </div>
     </div>
-</div>
 
-<!-- Active Positions -->
-<div class="chart-container">
-    <div class="chart-header">
-        <span class="chart-title">Active Positions</span>
-    </div>
-    <div class="table-container">
-        <table class="data-table" id="active-table">
-            <thead>
-                <tr>
-                    <th>Symbol</th>
-                    <th>Side</th>
-                    <th>Orders</th>
-                    <th>Entries</th>
-                    <th>SL</th>
-                    <th>Channel</th>
-                    <th>Opened</th>
-                </tr>
-            </thead>
-            <tbody id="active-tbody">
-                <tr><td colspan="7" class="loading">
-                    <div class="loading-spinner"></div> Loading...
-                </td></tr>
-            </tbody>
-        </table>
+    <!-- Active Positions -->
+    <div class="panel">
+        <div class="panel-title">Active Positions</div>
+        <div class="table-container">
+            <table class="data-table" id="active-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Side</th>
+                        <th>Orders</th>
+                        <th>Channel</th>
+                    </tr>
+                </thead>
+                <tbody id="active-tbody">
+                    <tr><td colspan="4" class="loading">
+                        <div class="loading-spinner"></div> Loading...
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -109,13 +130,14 @@
 <script>
 let pnlChart = null;
 let channelsChart = null;
+let equityChart = null;
+let symbolChart = null;
 
 async function loadOverview() {
     try {
         const data = await API.get('/overview');
         setStatus(true);
 
-        // Stat cards
         const pnlEl = document.getElementById('stat-pnl');
         pnlEl.textContent = formatPnL(data.net_pnl);
         pnlEl.className = 'stat-value ' + pnlClass(data.net_pnl);
@@ -140,9 +162,29 @@ async function loadOverview() {
     }
 }
 
+async function loadEquity(days = 365) {
+    document.querySelectorAll('.chart-container:nth-child(2) .period-btn').forEach(btn => {
+        btn.classList.toggle('active',
+            (days === 30 && btn.textContent === '30D') ||
+            (days === 90 && btn.textContent === '90D') ||
+            (days === 365 && btn.textContent === '1Y')
+        );
+    });
+
+    try {
+        const data = await API.get(`/equity-curve?days=${days}`);
+        const labels = data.map(d => formatDate(d.date));
+        const values = data.map(d => parseFloat(d.cumulative_pnl || 0));
+
+        if (equityChart) equityChart.destroy();
+        equityChart = createEquityChart('equity-chart', labels, values);
+    } catch (err) {
+        console.error('Failed to load equity curve', err);
+    }
+}
+
 async function loadPnL(days = 30) {
-    // Update active button
-    document.querySelectorAll('.period-btn').forEach(btn => {
+    document.querySelectorAll('.chart-container:nth-child(3) .period-btn').forEach(btn => {
         btn.classList.toggle('active', btn.textContent === `${days}D`);
     });
 
@@ -161,13 +203,26 @@ async function loadPnL(days = 30) {
 async function loadChannels() {
     try {
         const data = await API.get('/channels');
-        const labels = data.slice(0, 8).map(c => c.channel_id || 'Unknown');
+        const labels = data.slice(0, 8).map(c => c.channel_name || c.channel_id || 'Unknown');
         const values = data.slice(0, 8).map(c => parseFloat(c.total_pnl || 0));
 
         if (channelsChart) channelsChart.destroy();
         channelsChart = createChannelBarChart('channels-chart', labels, values);
     } catch (err) {
         console.error('Failed to load channels', err);
+    }
+}
+
+async function loadSymbolStats() {
+    try {
+        const data = await API.get('/symbol-stats');
+        const labels = data.slice(0, 10).map(s => s.symbol);
+        const winRates = data.slice(0, 10).map(s => parseFloat(s.win_rate || 0));
+
+        if (symbolChart) symbolChart.destroy();
+        symbolChart = createSymbolChart('symbol-chart', labels, winRates);
+    } catch (err) {
+        console.error('Failed to load symbol stats', err);
     }
 }
 
@@ -200,7 +255,7 @@ async function loadActivePositions() {
         const tbody = document.getElementById('active-tbody');
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No active positions</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No active positions</td></tr>';
             return;
         }
 
@@ -209,10 +264,7 @@ async function loadActivePositions() {
                 <td><strong>${g.symbol}</strong></td>
                 <td><span class="badge ${(g.side||'').toLowerCase()}">${g.side}</span></td>
                 <td>${(g.tickets || []).length}</td>
-                <td>${Object.values(g.entry_prices || {}).map(p => p.toFixed(5)).join(', ') || '--'}</td>
-                <td>${g.current_group_sl ? parseFloat(g.current_group_sl).toFixed(5) : '--'}</td>
-                <td>${g.channel_id || '--'}</td>
-                <td>${formatDateTime(g.created_at)}</td>
+                <td>${g.channel_name || g.channel_id || '--'}</td>
             </tr>
         `).join('');
     } catch (err) {
@@ -223,8 +275,10 @@ async function loadActivePositions() {
 async function refreshAll() {
     await Promise.all([
         loadOverview(),
+        loadEquity(365),
         loadPnL(30),
         loadChannels(),
+        loadSymbolStats(),
         loadRecentTrades(),
         loadActivePositions(),
     ]);

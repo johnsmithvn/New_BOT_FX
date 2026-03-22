@@ -1,7 +1,7 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P11 - Web Analytics Dashboard`
+- Phase: `P12 - Dashboard Enhancement`
 - Status: `complete`
 
 ## Execution Phases
@@ -150,18 +150,10 @@
 - v0.10.1: codebase audit cleanup (dead code, swallowed exceptions, outdated docs)
 - v0.11.0: edit & delete message handling (P10.1) — group-aware cancel, MessageDeleted listener
 - v0.12.0: web analytics dashboard (P11) — FastAPI + Jinja2 + Chart.js, 3 pages, 7 API endpoints
+- v0.13.0: dashboard enhancement (P12) — channel names, equity curve, symbol stats, CSV export, basic auth
+
 
 ### Upcoming
-
-#### P12 — Dashboard Enhancement
-- **Why**: UX improvements cho dashboard MVP
-- **Scope**: ~300 LOC, low risk
-- **Deliverables**:
-  - Channel name mapping (channel ID → human-readable name từ `channels.json`)
-  - Equity curve chart (cumulative PnL theo thời gian)
-  - Win rate by symbol chart
-  - Export trades to CSV
-  - Basic auth (DASHBOARD_PASSWORD env var)
 
 #### P13 — Bot Hardening & Reliability
 - **Why**: Production stability — giảm downtime, xử lý edge cases
