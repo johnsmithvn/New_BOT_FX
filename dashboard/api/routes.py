@@ -291,10 +291,10 @@ def api_delete_trade(
     db: DashboardDB = Depends(get_db),
 ) -> dict:
     """Delete a single trade."""
-    count = db.delete_trade_by_id(trade_id)
-    if count.get("trades", 0) == 0:
+    deleted = db.delete_trade_by_id(trade_id)
+    if deleted == 0:
         raise HTTPException(status_code=404, detail="Trade not found")
-    return {"ok": True, "deleted": count}
+    return {"ok": True, "deleted": {"trades": deleted}}
 
 
 @router.get("/signal-status-counts")

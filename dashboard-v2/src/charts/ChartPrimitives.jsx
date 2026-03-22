@@ -3,10 +3,14 @@
  * Glassy dark design with color-coded values and data labels.
  */
 
-export function PremiumTooltip({ active, payload, label, formatter, showTotal }) {
+export function PremiumTooltip({ active, payload, label, formatter, showTotal, totalKeys }) {
   if (!active || !payload?.length) return null;
 
-  const total = showTotal ? payload.reduce((sum, p) => sum + (p.value || 0), 0) : null;
+  const total = showTotal
+    ? payload
+        .filter(p => !totalKeys?.length || totalKeys.includes(p.dataKey || p.name))
+        .reduce((sum, p) => sum + (typeof p.value === 'number' ? p.value : 0), 0)
+    : null;
 
   return (
     <div className="chart-tooltip">
