@@ -1,6 +1,39 @@
 # TASKS
 
 ## Current Phase
+- `Bot System Unit Tests` ✅ COMPLETE (v0.16.5)
+
+### v0.16.5 — Bot System Unit Tests (Python)
+- [x] Install pytest, create `pytest.ini` + `conftest.py`
+- [x] `tests/signal_parser/test_cleaner.py` — 13 tests
+- [x] `tests/signal_parser/test_side_detector.py` — 12 tests
+- [x] `tests/signal_parser/test_symbol_detector.py` — 13 tests
+- [x] `tests/signal_parser/test_entry_detector.py` — 18 tests
+- [x] `tests/signal_parser/test_sl_detector.py` — 10 tests
+- [x] `tests/signal_parser/test_tp_detector.py` — 14 tests
+- [x] `tests/signal_parser/test_parser.py` — 17 tests
+- [x] `tests/test_signal_validator.py` — 24 tests
+- [x] `tests/test_risk_manager.py` — 12 tests
+- [x] `tests/test_circuit_breaker.py` — 11 tests
+- [x] `tests/test_command_parser.py` — 17 tests
+- [x] `tests/test_reply_action_parser.py` — 25 tests
+- [x] `tests/test_models.py` — 17 tests
+- [x] `tests/test_entry_strategy.py` — 24 tests
+- [x] `tests/test_channel_manager.py` — 11 tests
+- [x] `tests/test_exposure_guard.py` — 8 tests
+- [x] **Total: 249 tests passed, 0 failures**
+
+## Previous Phases
+- `Bot System Test Case Documentation` ✅ COMPLETE (v0.16.4)
+
+### v0.16.4 — Bot System Test Cases
+- [x] Analyze all 27 core Python modules
+- [x] Analyze 7 signal_parser submodules
+- [x] Write `tests/TEST_CASES.md` — 254 test cases across 25 sections
+- [x] Update docs/TASKS.md
+- [x] Update CHANGELOG.md
+
+## Previous Phase
 - `Dashboard V2 Unit Tests` ✅ COMPLETE (v0.16.3)
 
 ### v0.16.3 — Dashboard V2 Unit Tests

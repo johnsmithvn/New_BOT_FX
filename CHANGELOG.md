@@ -1,4 +1,29 @@
 # CHANGELOG
+## 0.16.5 - 2026-03-22
+
+### Added
+- **Bot system unit tests** — 249 pytest tests across 17 files
+  - `tests/signal_parser/` — 7 files (97 tests): cleaner, side_detector, symbol_detector, entry_detector, sl_detector, tp_detector, parser orchestration
+  - `tests/test_signal_validator.py` — 24 tests (all 8 validation rules)
+  - `tests/test_risk_manager.py` — 12 tests (fixed lot, risk-percent, clamping)
+  - `tests/test_circuit_breaker.py` — 11 tests (state machine, cooldown, callbacks)
+  - `tests/test_command_parser.py` — 17 tests (all 5 command types)
+  - `tests/test_reply_action_parser.py` — 25 tests (all 5 action types)
+  - `tests/test_models.py` — 17 tests (enums, dataclasses, fingerprint)
+  - `tests/test_entry_strategy.py` — 24 tests (single/range/scale_in, volume splits)
+  - `tests/test_channel_manager.py` — 11 tests (load, rules, strategy, reload)
+  - `tests/test_exposure_guard.py` — 8 tests (same-symbol, correlated limits)
+- `pytest.ini` — test runner configuration
+- `tests/conftest.py` — shared test fixtures
+
+## 0.16.4 - 2026-03-22
+
+### Added
+- **Bot system test case documentation** — `tests/TEST_CASES.md`
+  - 254 test cases across 25 module sections
+  - Full coverage of: signal_parser (66), signal_validator (19), risk_manager + order_builder (29), entry_strategy (17), safety guards (22), command/reply parsers (26), config/models (20), storage (13), execution (10), background tasks (20), infrastructure (12)
+  - Each test case includes: input, expected output, and purpose
+
 ## 0.16.3 - 2026-03-22
 
 ### Added
