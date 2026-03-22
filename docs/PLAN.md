@@ -1,7 +1,7 @@
 # PLAN
 
 ## Current Phase
-- Phase: `Dashboard V2 Enhancements`
+- Phase: `Trading Logic Gaps`
 - Status: `complete`
 
 ## Execution Phases
@@ -147,6 +147,27 @@
   - CORS updated to allow DELETE method
 - Status: `complete`
 
+### Trading Logic Gaps (v0.18.0–v0.19.0)
+- Goal:
+  - Close logic gaps in order execution, re-entry strategy, and position management.
+  - Harden range-mode multi-order workflow with safety guards.
+- Major deliverables:
+  - **G1**: Min SL distance guard — reject orders too close to SL (`pipeline.py`)
+  - **G2**: Default SL from zone — auto-generate SL from entry zone bounds (`pipeline.py`)
+  - **G3**: Reply `+pip` parser — parse `+30`, `+50 pip` as SECURE_PROFIT (`reply_action_parser.py`)
+  - **G4**: Secure profit group — close worst entry + BE remaining (`position_manager.py`)
+  - **G5**: Re-entry tolerance — trigger within N pips of level (`range_monitor.py`)
+  - **G6**: Cancel pending plans on reply — CLOSE/SECURE_PROFIT cancels plans (`signal_state_manager.py`)
+  - **G7**: Max re-entry distance guard — skip if price > N pips past level (`pipeline.py`)
+  - **G8**: Force MARKET for re-entries — P2/P3 bypass MARKET_TOLERANCE_POINTS (`pipeline.py`)
+  - **G9**: Step-based P2/P3 levels — configurable step from P1 (`entry_strategy.py`)
+  - **G10**: Multi-trigger — REVERTED, individual cross detection retained (`range_monitor.py`)
+  - **G11**: SL breach cancel — cancel all pending when SL hit (`range_monitor.py`)
+  - **G12a**: `per_entry` volume split — each plan gets full lot size (`entry_strategy.py`)
+  - **G12b**: Reply BE lock pips — configurable BE offset per channel (`reply_command_executor.py`)
+  - 8 new config keys in `channels.json` (rules + strategy sections)
+- Status: `complete`
+
 ## Phase Completion Rule
 - Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
 - On completion:
@@ -175,6 +196,10 @@
 - v0.16.4: Bot system test case documentation — 254 test cases across 25 modules
 - v0.16.5: Bot system unit tests — 249 pytest tests across 17 files
 - v0.16.6: Code review fixes — helper extraction (`Overview.helpers.js`, `Analytics.helpers.js`), test alignment
+- v0.16.7: Documentation audit — 21 fixes across 14 files
+- v0.17.0: Signal analysis fixes — fingerprint dedup, "Now" keyword MARKET, `execute_all_immediately`
+- v0.18.0: Trading logic gaps G1-G6 — SL guard, default SL, +pip parser, secure profit, re-entry tolerance, cancel pending
+- v0.19.0: Trading logic gaps G7-G12 — max re-entry distance, force MARKET, step levels, SL breach cancel, per_entry split, reply BE lock
 
 
 

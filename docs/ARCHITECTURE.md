@@ -139,10 +139,11 @@ SELL:
 - `get_orders_by_message()` — P9: direct join via `source_message_id` on orders table (supports sub-fingerprints).
 - **P10 group persistence**: `store_group()`, `get_active_groups()`, `update_group_sl()`, `update_group_tickets()`, `complete_group_db()`.
 
-### `core/entry_strategy.py` (v0.9.0)
+### `core/entry_strategy.py` (v0.9.0, updated v0.19.0)
 - Generate multi-entry plans from signal + strategy config + live tick.
 - Strategy modes: `single` (1:1), `range` (N orders across range), `scale_in` (stepped re-entries).
-- Volume split algorithms: `equal`, `pyramid`, `risk_based` (weighted by SL distance).
+- **G9**: When `reentry_step_pips > 0`, P2/P3 levels = P1 + N×step (instead of zone-spread).
+- Volume split algorithms: `equal`, `pyramid`, `risk_based`, **`per_entry`** (G12a: each plan gets full lot size).
 - Pure logic only — no execution, no state, no side effects.
 
 ### `core/signal_state_manager.py` (v0.9.0)
@@ -151,16 +152,18 @@ SELL:
 - Query pending re-entry levels for RangeMonitor.
 - Only tracks range/scale_in signals — single mode is fire-and-forget.
 
-### `core/pipeline.py` (v0.9.0)
+### `core/pipeline.py` (v0.9.0, updated v0.19.0)
 - **SOLE orchestrator** for all order execution.
 - `execute_signal_plans()`: replaces steps 7-9 for multi-order support.
-- `handle_reentry()`: callback from RangeMonitor with full risk guard gauntlet.
+- `handle_reentry()`: callback from RangeMonitor with full risk guard gauntlet:
+  - Circuit breaker → Daily guard → Exposure guard → **G1: min_sl_distance** → **G7: max_reentry_distance** → Calculate volume → **G8: Force MARKET** → Execute.
 - Delegates to EntryStrategy for plan generation, OrderBuilder for request building.
 - Responsibility: Strategy generates, Monitor emits, **Pipeline decides**.
 
-### `core/range_monitor.py` (v0.9.0)
+### `core/range_monitor.py` (v0.9.0, updated v0.19.0)
 - Background asyncio price monitor for re-entry triggers.
-- Price-cross detection: triggers only when price **crosses through** a level.
+- Price-cross detection: triggers only when price **crosses through** a level (individually per plan).
+- **G11**: SL breach detection — if price crosses SL, cancel ALL pending plans for that signal via `cancel_all_pending()`.
 - 30-second debounce per level to prevent spam.
 - Symbol-grouped tick requests for efficiency.
 - Emits events to Pipeline via callback — never executes orders directly.
@@ -260,11 +263,14 @@ pending_order_ttl = 15 minutes (setup on config file do not fixed number)
 - Validation: price required for SL/TP, percent 1-100 for partial close.
 - Built-in patterns: close/exit/đóng, SL/TP {price}, BE/breakeven, close N%.
 
-### `core/reply_command_executor.py` (v0.8.0)
+### `core/reply_command_executor.py` (v0.8.0, updated v0.19.0)
 - Execute reply actions on **specific** MT5 position tickets (unlike CommandExecutor which is global).
 - Position existence check before execute.
 - Symbol consistency guard: verify position matches expected symbol.
 - Supports: close, close partial (percent), move SL, move TP, breakeven.
+- **G12b**: Breakeven sets SL = entry ± `reply_be_lock_pips` (BUY: +, SELL: -) instead of exact entry.
+  - Config per channel: `rules.reply_be_lock_pips` (default: 1 pip).
+  - Lock pips passed per-call from channel config for multi-channel support.
 
 ### Reply-Based Signal Management Flow (v0.8.0, enhanced v0.10.0)
 ```

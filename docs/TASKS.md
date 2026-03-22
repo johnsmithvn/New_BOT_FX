@@ -1,18 +1,35 @@
 # TASKS
 
 ## Current Phase
-- `Trading Logic Gaps` ✅ COMPLETE (v0.18.0)
+- `Trading Logic Gaps` ✅ COMPLETE (v0.19.0)
 
-### v0.18.0 — Trading Logic Gaps (G1-G6)
+### v0.19.0 — Trading Logic Gaps (G1-G12)
+
+#### G1-G6 (from v0.18.0)
 - [x] G1: Min SL Distance Guard — skip orders when price too close to SL (`pipeline.py`)
 - [x] G2: Default SL from Zone — auto-generate SL from entry zone bounds (`pipeline.py`)
 - [x] G3: Reply `+pip` Parser — parse `+30`, `+50 pip` as SECURE_PROFIT (`reply_action_parser.py`)
 - [x] G4: Secure Profit Group — close worst entry + BE remaining (`position_manager.py`, `main.py`)
 - [x] G5: Re-entry Tolerance — trigger within N pips of level (`range_monitor.py`, `main.py`)
 - [x] G6: Cancel Pending Plans on Reply — CLOSE/SECURE_PROFIT cancels plans (`signal_state_manager.py`, `main.py`)
-- [x] Update `channels.json` with 4 new config keys
+
+#### G7-G11 (new)
+- [x] G7: Max Re-entry Distance Guard — skip re-entry if price > `max_reentry_distance_pips` past level (`pipeline.py`)
+- [x] G8: Force MARKET for Re-entries — P2/P3 always MARKET, bypass `MARKET_TOLERANCE_POINTS` (`pipeline.py`)
+- [x] G9: Step-based P2/P3 Levels — `reentry_step_pips > 0` → P2 = P1 + N×step (`entry_strategy.py`)
+- [x] G10: ~~Multi-trigger on Scan~~ — **REVERTED**, each plan triggers individually via cross detection (`range_monitor.py`)
+- [x] G11: SL Breach → Cancel All — if price crosses SL, cancel all pending plans for signal (`range_monitor.py`)
+
+#### G12 (additional improvements)
+- [x] G12a: `per_entry` volume split — each plan gets full `FIXED_LOT_SIZE` instead of splitting total (`entry_strategy.py`)
+- [x] G12b: Reply BE Lock Pips — reply "be" sets SL = entry ± N pip instead of exact entry (`reply_command_executor.py`, `main.py`)
+
+#### Config & Docs
+- [x] Update `channels.json` — 8 new config keys across rules + strategy
 - [x] Update CHANGELOG
 - [x] Update TASKS.md
+- [x] Update PLAN.md
+- [x] Update ARCHITECTURE.md
 
 ## Previous Phases
 - `Signal Analysis Fixes` ✅ COMPLETE (v0.17.0)

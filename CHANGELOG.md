@@ -1,5 +1,5 @@
 # CHANGELOG
-## 0.18.0 - 2026-03-22
+## 0.19.0 - 2026-03-22
 
 ### Added
 - **G1: Min SL Distance Guard** — skip placing orders if current price is within `min_sl_distance_pips` of SL. Applies to both initial multi-order execution and re-entry triggers. Config: `strategy.min_sl_distance_pips` (default: 0 = disabled). (`pipeline.py`)
@@ -11,21 +11,27 @@
 - **G7: Max Re-entry Distance Guard** — skip re-entry if price has moved more than `max_reentry_distance_pips` past the plan level. Config: `strategy.max_reentry_distance_pips` (default: 0 = disabled). (`pipeline.py`)
 - **G8: Force MARKET for Re-entries** — P2/P3 re-entries triggered by RangeMonitor always execute as MARKET orders, bypassing `MARKET_TOLERANCE_POINTS` check that could incorrectly place a LIMIT. (`pipeline.py`)
 - **G9: Step-based P2/P3 Levels** — when `reentry_step_pips > 0`, P2/P3 levels calculated as P1 + N×step instead of spreading across zone. Config: `strategy.reentry_step_pips` (default: 0 = zone-spread). (`entry_strategy.py`)
-- **G10: Multi-trigger on Scan** — if price crosses multiple pending levels in one scan cycle, trigger ALL of them simultaneously instead of one-per-cycle. (`range_monitor.py`)
+- **G10: Multi-trigger** — ~~trigger all crossed levels simultaneously~~ **REVERTED**: each plan triggers individually via cross detection. (`range_monitor.py`)
 - **G11: SL Breach → Cancel All** — if price crosses SL while plans are pending, cancel all pending plans for that signal. Prevents re-entries on invalidated signals. (`range_monitor.py`)
+- **G12a: `per_entry` Volume Split** — new `volume_split` mode where each plan gets the full `FIXED_LOT_SIZE` instead of splitting total. Use case: `FIXED_LOT=0.01`, 3 entries → each 0.01. (`entry_strategy.py`)
+- **G12b: Reply BE Lock Pips** — reply "be" now sets SL = entry ± N pip (profitable side) instead of exact entry. Config per channel: `rules.reply_be_lock_pips` (default: 1 pip). (`reply_command_executor.py`, `main.py`)
 
 ### Changed
-- `channels.json` — 6 new config keys: `min_sl_distance_pips`, `default_sl_pips_from_zone`, `reentry_tolerance_pips`, `max_reentry_distance_pips`, `reentry_step_pips` (strategy), `secure_profit_action` (rules)
-- Noval channel: `reentry_step_pips: 2`, `max_reentry_distance_pips: 10`, `reentry_tolerance_pips: 5`
+- `channels.json` — 8 new config keys:
+  - **strategy**: `min_sl_distance_pips`, `default_sl_pips_from_zone`, `reentry_tolerance_pips`, `max_reentry_distance_pips`, `reentry_step_pips`
+  - **rules**: `secure_profit_action`, `reply_be_lock_pips`
+  - **volume_split**: added `per_entry` mode option
+- Noval channel: `reentry_step_pips: 2`, `max_reentry_distance_pips: 10`, `reentry_tolerance_pips: 5`, `volume_split: per_entry`, `reply_be_lock_pips: 1`
 
 ### Files Modified
 - `core/pipeline.py` (G1, G2, G7, G8)
 - `core/reply_action_parser.py` (G3)
 - `core/position_manager.py` (G4)
-- `core/range_monitor.py` (G5, G10, G11)
+- `core/range_monitor.py` (G5, G11)
 - `core/signal_state_manager.py` (G6)
-- `core/entry_strategy.py` (G9)
-- `main.py` (G4, G5, G6)
+- `core/entry_strategy.py` (G9, G12a)
+- `core/reply_command_executor.py` (G12b)
+- `main.py` (G4, G5, G6, G12b)
 - `config/channels.json`
 
 ## 0.17.0 - 2026-03-22
