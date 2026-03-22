@@ -1,4 +1,23 @@
 # CHANGELOG
+## 0.16.3 - 2026-03-22
+
+### Added
+- **Dashboard V2 unit test suite** — 130 tests across 11 test files
+  - Test framework: Vitest + React Testing Library + jsdom
+  - `test/utils/format.test.js` — all 5 format utilities (29 cases)
+  - `test/api/client.test.js` — fetchApi, URL construction, API key, DELETE methods (12 cases)
+  - `test/hooks/useApi.test.jsx` — all 17 React Query hooks (20 cases)
+  - `test/charts/ChartPrimitives.test.jsx` — PremiumTooltip, BarLabel, PieLabel (17 cases)
+  - `test/components/*.test.jsx` — ChartCard, ConfirmModal, Navbar, SparkCard, StatCard (30 cases)
+  - `test/pages/*.test.js` — Overview + Analytics data transforms (22 cases)
+- `vitest.config.js` — Vitest configuration with jsdom environment
+- `test/setup.js` — global test setup (jest-dom matchers, localStorage mock)
+- `npm test` and `npm run test:watch` scripts
+
+### Changed
+- `docs/RULES.md` — added §12 Frontend Unit Test Guidelines
+- `dashboard-v2/package.json` — added vitest, @testing-library/react, @testing-library/jest-dom, jsdom devDependencies
+
 ## 0.16.2 - 2026-03-22
 
 ### Fixed

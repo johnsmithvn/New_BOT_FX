@@ -1,6 +1,24 @@
 # TASKS
 
 ## Current Phase
+- `Dashboard V2 Unit Tests` ✅ COMPLETE (v0.16.3)
+
+### v0.16.3 — Dashboard V2 Unit Tests
+- [x] Test framework setup — Vitest + React Testing Library + jsdom
+- [x] `test/utils/format.test.js` — 5 functions, 29 test cases
+- [x] `test/api/client.test.js` — fetchApi, URL construction, API key, DELETE, 12 test cases
+- [x] `test/hooks/useApi.test.jsx` — 17 hooks, 20 test cases
+- [x] `test/charts/ChartPrimitives.test.jsx` — PremiumTooltip, BarLabel, PieLabel, 17 test cases
+- [x] `test/components/ChartCard.test.jsx` — 5 test cases
+- [x] `test/components/ConfirmModal.test.jsx` — 7 test cases
+- [x] `test/components/Navbar.test.jsx` — 4 test cases
+- [x] `test/components/SparkCard.test.jsx` — 8 test cases
+- [x] `test/components/StatCard.test.jsx` — 6 test cases
+- [x] `test/pages/Overview.helpers.test.js` — 10 test cases (weekday, merge, monthly)
+- [x] `test/pages/Analytics.helpers.test.js` — 12 test cases (weekly, histogram, drawdown, cumulative)
+- [x] `docs/RULES.md` updated with test guidelines
+
+## Previous Phase
 - `Dashboard V2 Enhancements` ✅ COMPLETE (v0.16.1)
 
 ### v0.16.1 — Overview Enhancements
