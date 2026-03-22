@@ -341,7 +341,7 @@ class Bot:
 
         # G5: Get max reentry tolerance across all channel configs
         reentry_tolerance = 0.0
-        for chan_id in self.channel_mgr.list_channels():
+        for chan_id in self.channel_mgr._channels:
             strat = self.channel_mgr.get_strategy(chan_id)
             tol = strat.get("reentry_tolerance_pips", 0.0)
             if tol > reentry_tolerance:
