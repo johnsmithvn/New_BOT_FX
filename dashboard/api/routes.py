@@ -12,7 +12,7 @@ import io
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from dashboard.db.queries import DashboardDB
@@ -252,7 +252,7 @@ def api_signal_detail(
     """Get full lifecycle for a signal."""
     data = db.get_signal_lifecycle(fingerprint)
     if not data:
-        return {"error": "Signal not found"}
+        raise HTTPException(status_code=404, detail="Signal not found")
     # Inject channel name
     if data.get("signal"):
         data["signal"]["channel_name"] = _resolve_name(
@@ -317,5 +317,5 @@ def api_clear_table(
         count = db.clear_table(table)
         return {"ok": True, "table": table, "deleted": count}
     except ValueError as e:
-        return {"ok": False, "error": str(e)}
+        raise HTTPException(status_code=400, detail=str(e))
 

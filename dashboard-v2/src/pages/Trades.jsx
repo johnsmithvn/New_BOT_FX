@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { Download, ChevronLeft, ChevronRight } from 'lucide-react';
-import ChartCard from '../components/ChartCard';
 import { useTrades, useChannelList, useSymbols } from '../hooks/useApi';
 import { api } from '../api/client';
 import { fmtCcy, buildChannelMap, resolveChannelName } from '../utils/format';

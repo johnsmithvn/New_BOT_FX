@@ -89,11 +89,11 @@ React SPA (port 5173)
 |---------|---------|---------|
 | `react` | 19.x | UI framework |
 | `react-router-dom` | 7.x | Client-side routing |
-| `recharts` | 2.x | Charts (bar, line, area, pie, radar, composed) |
+| `recharts` | 3.x | Charts (bar, line, area, pie, radar, composed) |
 | `@tanstack/react-query` | 5.x | Server state management, auto-refetch |
 | `framer-motion` | 12.x | Page transitions, animations |
-| `lucide-react` | 0.47x | Icon library |
-| `@nivo/core` | 0.88.x | Advanced charts (heatmap, treemap) |
+| `lucide-react` | 0.577+ | Icon library |
+| `@nivo/core` | 0.99.x | Advanced charts (heatmap, treemap) |
 
 ---
 

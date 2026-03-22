@@ -453,19 +453,29 @@ class DashboardDB:
                        COALESCE(t_stats.total_pnl, 0.0) as total_pnl
                 FROM signals s
                 LEFT JOIN (
-                    SELECT fingerprint,
-                           COUNT(*) as order_count,
-                           SUM(success) as success_count
+                    SELECT
+                        CASE
+                            WHEN instr(fingerprint, ':') > 0
+                                THEN substr(fingerprint, 1, instr(fingerprint, ':') - 1)
+                            ELSE fingerprint
+                        END AS base_fp,
+                        COUNT(*) as order_count,
+                        SUM(success) as success_count
                     FROM orders
-                    GROUP BY fingerprint
-                ) o_stats ON s.fingerprint = o_stats.fingerprint
+                    GROUP BY base_fp
+                ) o_stats ON o_stats.base_fp = s.fingerprint
                 LEFT JOIN (
-                    SELECT fingerprint,
-                           COUNT(*) as trade_count,
-                           SUM(pnl) as total_pnl
+                    SELECT
+                        CASE
+                            WHEN instr(fingerprint, ':') > 0
+                                THEN substr(fingerprint, 1, instr(fingerprint, ':') - 1)
+                            ELSE fingerprint
+                        END AS base_fp,
+                        COUNT(*) as trade_count,
+                        SUM(pnl) as total_pnl
                     FROM trades
-                    GROUP BY fingerprint
-                ) t_stats ON s.fingerprint = t_stats.fingerprint
+                    GROUP BY base_fp
+                ) t_stats ON t_stats.base_fp = s.fingerprint
                 WHERE 1=1{where}
                 ORDER BY s.id DESC
                 LIMIT ? OFFSET ?

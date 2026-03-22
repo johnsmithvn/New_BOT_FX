@@ -1,4 +1,18 @@
 # CHANGELOG
+## 0.16.2 - 2026-03-22
+
+### Fixed
+- **API routes**: Return proper HTTP 404/400 status codes instead of 200 with error body (`routes.py`)
+- **Sub-fingerprint SQL**: Paginated signals query now aggregates by base fingerprint (strips `:L0`, `:L1` suffixes) — multi-order signals no longer undercount orders/trades/PnL
+- **CSS `composes: card`**: Replaced invalid CSS Modules syntax with duplicated base styles in plain CSS (`components.css`)
+- **Missing `--bg-card` CSS var**: Added to design system — `SparkCard` no longer renders transparent background
+- **Unused imports**: Removed `PieChart`/`Pie` from `Overview.jsx`, `ChartCard` from `Trades.jsx`
+
+### Changed
+- **Version consistency**: Synchronized version to `v0.16.1` across all locations:
+  - `App.jsx` footer, `Settings.jsx` About panel, `README.md` (root), `dashboard-v2/README.md`
+- **Dependency table**: Corrected `recharts` 2.x → 3.x, `@nivo/core` 0.88.x → 0.99.x, `lucide-react` 0.47x → 0.577+ in `dashboard-v2/README.md`
+- **Root README.md**: Corrected "read-only" claim — V2 supports DELETE operations for test data cleanup; pages 6 → 7
 
 ## 0.16.1 - 2026-03-22
 

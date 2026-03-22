@@ -64,7 +64,7 @@ export default function Settings() {
           </div>
           <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <p><strong>Dashboard V2</strong> — React SPA</p>
-            <p>Version: 0.15.0</p>
+            <p>Version: 0.16.1</p>
             <p>Tech: React + Vite + Recharts + TanStack Query</p>
             <p>Auto-refresh: 30 seconds</p>
           </div>

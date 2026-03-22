@@ -9,7 +9,7 @@ import { useOverview, useDailyPnl, useEquityCurve, useChannels, useActive, useSi
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, CartesianGrid, LabelList, Legend,
-  PieChart, Pie, RadialBarChart, RadialBar,
+  RadialBarChart, RadialBar,
 } from 'recharts';
 import { PremiumTooltip } from '../charts/ChartPrimitives';
 import { fmtCcy, tickCcy, tooltipCcy } from '../utils/format';

@@ -442,16 +442,16 @@ python run.py dash+bot      # V1 + bot
 python run.py v2+bot        # V2 + bot
 ```
 
-> Dashboard chỉ đọc database — bot KHÔNG cần chạy. Nhưng không có bot thì data sẽ không cập nhật.
+> Dashboard chủ yếu đọc dữ liệu từ database. V2 hỗ trợ **DELETE** (xóa signals/orders/trades) cho mục đích test. Bot KHÔNG cần chạy.
 
 ### Dashboard V1 — FastAPI + Jinja2
-Port 8000. 3 trang: Overview, Channels, Trade History.
+Port 8000. 3 trang: Overview, Channels, Trade History. Read-only.
 
 ### Dashboard V2 — React SPA
-Port 5173. 6 trang + advanced analytics. Xem [dashboard-v2/README.md](dashboard-v2/README.md) cho chi tiết.
+Port 5173. 7 trang + advanced analytics + signal lifecycle. Xem [dashboard-v2/README.md](dashboard-v2/README.md) cho chi tiết.
 
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.15.0**
+Current: **v0.16.1**

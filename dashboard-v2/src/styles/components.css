@@ -38,11 +38,23 @@
 /* ── Chart Card ───────────────────────────────────────────────── */
 
 .chart-card {
-  composes: card;
+  background: var(--gradient-glass);
+  background-color: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: 1.25rem;
+  transition: border-color var(--transition-normal),
+              box-shadow var(--transition-normal),
+              transform var(--transition-normal);
   min-height: 320px;
   display: flex;
   flex-direction: column;
+}
+.chart-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-card);
 }
 .chart-card .chart-body {
   flex: 1;
