@@ -13,7 +13,8 @@
             "reentry_enabled": false,
             "reentry_step_pips": 0,
             "signal_ttl_minutes": 15,
-            "volume_split": "equal"
+            "volume_split": "equal",
+            "execute_all_immediately": false
         },
         "risk": {},
         "validation": {}
@@ -26,6 +27,13 @@
                 "breakeven_lock_pips": 30,
                 "trailing_stop_pips": 40,
                 "partial_close_percent": 0
+            },
+            "strategy": {
+                "mode": "range",
+                "max_entries": 3,
+                "execute_all_immediately": true,
+                "signal_ttl_minutes": 15,
+                "volume_split": "equal"
             }
         },
         "-1009876543210": {

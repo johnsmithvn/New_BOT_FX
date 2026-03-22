@@ -505,8 +505,11 @@ class SignalPipeline:
         results: list[dict[str, Any]] = []
         deferred_plans: list[EntryPlan] = []
 
+        # P2: Option to execute all plans immediately (e.g. place all LIMITs at once)
+        execute_all = strategy_config.get("execute_all_immediately", False)
+
         for plan, vol in zip(plans, volumes):
-            if plan.order_kind == OrderKind.MARKET or plan.level_id == 0:
+            if execute_all or plan.order_kind == OrderKind.MARKET or plan.level_id == 0:
                 # Execute immediately
                 result = self._execute_one_plan(
                     signal, plan, vol, bid, ask, point,

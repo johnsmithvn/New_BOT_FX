@@ -1,6 +1,17 @@
 # TASKS
 
 ## Current Phase
+- `Signal Analysis Fixes` ✅ COMPLETE (v0.17.0)
+
+### v0.17.0 — Signal Analysis Fixes (P0 + P1 + P2)
+- [x] P0: Fingerprint dedup — add `source_message_id` to hash (`parser.py`)
+- [x] P1: "Now" keyword → force MARKET when price in zone (`entry_detector.py`, `order_builder.py`, `models.py`)
+- [x] P2: `execute_all_immediately` option for range mode (`pipeline.py`)
+- [x] Update `channels.json` with new config keys
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phases
 - `Documentation Audit & Fix` ✅ COMPLETE (v0.16.7)
 
 ### v0.16.7 — Documentation Audit (21 fixes across 14 files)

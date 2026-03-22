@@ -1,4 +1,23 @@
 # CHANGELOG
+## 0.17.0 - 2026-03-22
+
+### Added
+- **P1: "Now" keyword → force MARKET** — when signal contains "Now" keyword and current price is within entry zone, places MARKET order immediately instead of LIMIT/STOP. New `is_now` field on `ParsedSignal` model. (`entry_detector.py`, `order_builder.py`, `models.py`)
+- **P2: `execute_all_immediately`** — new strategy config option. When `true`, all entry plans in range mode are placed as orders immediately (LIMIT/STOP) instead of deferring to RangeMonitor. Default: `false`. (`pipeline.py`, `channels.json`)
+
+### Changed
+- **P0: Fingerprint includes `source_message_id`** — identical signals from different Telegram messages now generate different fingerprints, preventing false duplicate rejection. **Breaking change**: fingerprints from v0.16.x are not compatible. (`parser.py`)
+- `entry_detector.detect()` now returns 4-tuple `(entry, entry_range, is_market, is_now)` — callers must update accordingly
+- Noval channel config example updated with `strategy` section showing range mode + `execute_all_immediately`
+
+### Files Modified
+- `core/signal_parser/parser.py`
+- `core/signal_parser/entry_detector.py`
+- `core/order_builder.py`
+- `core/models.py`
+- `core/pipeline.py`
+- `config/channels.json`
+
 ## 0.16.7 - 2026-03-22
 
 ### Fixed
