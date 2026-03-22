@@ -1,6 +1,72 @@
 # TASKS
 
 ## Current Phase
+- `Codex + Copilot Review Fixes` ✅ COMPLETE (v0.16.6)
+
+### v0.16.6 — Code Review Fixes (Codex P1 + P2, Copilot #2-#6)
+- [x] P1: Add `signalStatusCounts` to `api/client.js`
+- [x] P2: Extract `Overview.helpers.js` + `Analytics.helpers.js`
+- [x] P2: Wire JSX components to import helpers
+- [x] P2: Update tests to import from production helpers
+- [x] Copilot #2: Remove unused `ValidationResult` import
+- [x] Copilot #3: Fix permissive TP test assertion
+- [x] Copilot #4: Fix word boundary test + comment
+- [x] Copilot #5: Simplify client.test.js import
+- [x] Copilot #6: Fix misleading test title
+- [x] **Verified: 249 Python + 130 JS tests pass**
+
+## Previous Phases
+- `Bot System Unit Tests` ✅ COMPLETE (v0.16.5)
+
+### v0.16.5 — Bot System Unit Tests (Python)
+- [x] Install pytest, create `pytest.ini` + `conftest.py`
+- [x] `tests/signal_parser/test_cleaner.py` — 13 tests
+- [x] `tests/signal_parser/test_side_detector.py` — 12 tests
+- [x] `tests/signal_parser/test_symbol_detector.py` — 13 tests
+- [x] `tests/signal_parser/test_entry_detector.py` — 18 tests
+- [x] `tests/signal_parser/test_sl_detector.py` — 10 tests
+- [x] `tests/signal_parser/test_tp_detector.py` — 14 tests
+- [x] `tests/signal_parser/test_parser.py` — 17 tests
+- [x] `tests/test_signal_validator.py` — 24 tests
+- [x] `tests/test_risk_manager.py` — 12 tests
+- [x] `tests/test_circuit_breaker.py` — 11 tests
+- [x] `tests/test_command_parser.py` — 17 tests
+- [x] `tests/test_reply_action_parser.py` — 25 tests
+- [x] `tests/test_models.py` — 17 tests
+- [x] `tests/test_entry_strategy.py` — 24 tests
+- [x] `tests/test_channel_manager.py` — 11 tests
+- [x] `tests/test_exposure_guard.py` — 8 tests
+- [x] **Total: 249 tests passed, 0 failures**
+
+## Previous Phases
+- `Bot System Test Case Documentation` ✅ COMPLETE (v0.16.4)
+
+### v0.16.4 — Bot System Test Cases
+- [x] Analyze all 27 core Python modules
+- [x] Analyze 7 signal_parser submodules
+- [x] Write `tests/TEST_CASES.md` — 254 test cases across 25 sections
+- [x] Update docs/TASKS.md
+- [x] Update CHANGELOG.md
+
+## Previous Phase
+- `Dashboard V2 Unit Tests` ✅ COMPLETE (v0.16.3)
+
+### v0.16.3 — Dashboard V2 Unit Tests
+- [x] Test framework setup — Vitest + React Testing Library + jsdom
+- [x] `test/utils/format.test.js` — 5 functions, 29 test cases
+- [x] `test/api/client.test.js` — fetchApi, URL construction, API key, DELETE, 12 test cases
+- [x] `test/hooks/useApi.test.jsx` — 17 hooks, 20 test cases
+- [x] `test/charts/ChartPrimitives.test.jsx` — PremiumTooltip, BarLabel, PieLabel, 17 test cases
+- [x] `test/components/ChartCard.test.jsx` — 5 test cases
+- [x] `test/components/ConfirmModal.test.jsx` — 7 test cases
+- [x] `test/components/Navbar.test.jsx` — 4 test cases
+- [x] `test/components/SparkCard.test.jsx` — 8 test cases
+- [x] `test/components/StatCard.test.jsx` — 6 test cases
+- [x] `test/pages/Overview.helpers.test.js` — 10 test cases (weekday, merge, monthly)
+- [x] `test/pages/Analytics.helpers.test.js` — 12 test cases (weekly, histogram, drawdown, cumulative)
+- [x] `docs/RULES.md` updated with test guidelines
+
+## Previous Phase
 - `Dashboard V2 Enhancements` ✅ COMPLETE (v0.16.1)
 
 ### v0.16.1 — Overview Enhancements

@@ -1,4 +1,63 @@
 # CHANGELOG
+## 0.16.6 - 2026-03-22
+
+### Fixed
+- **P1** `signalStatusCounts` method added to `dashboard-v2/src/api/client.js` — previously missing, causing runtime undefined error
+- **P2** Extracted inline transforms from `Overview.jsx` → `Overview.helpers.js` and `Analytics.jsx` → `Analytics.helpers.js` — tests now import production code (single source of truth)
+- Removed unused `ValidationResult` import in `test_signal_validator.py`
+- Fixed permissive TP assertion in `test_tp_detector.py` (now exact value)
+- Added word boundary test for `detect("BUYING GOLD")` in `test_side_detector.py`
+- Simplified `client.test.js` to static import (removed unnecessary dynamic import)
+- Fixed misleading test title in `format.test.js` for `resolveChannelName`
+
+### Added
+- `dashboard-v2/src/pages/Overview.helpers.js` — extracted page transforms
+- `dashboard-v2/src/pages/Analytics.helpers.js` — extracted page transforms
+
+## 0.16.5 - 2026-03-22
+
+### Added
+- **Bot system unit tests** — 249 pytest tests across 17 files
+  - `tests/signal_parser/` — 7 files (97 tests): cleaner, side_detector, symbol_detector, entry_detector, sl_detector, tp_detector, parser orchestration
+  - `tests/test_signal_validator.py` — 24 tests (all 8 validation rules)
+  - `tests/test_risk_manager.py` — 12 tests (fixed lot, risk-percent, clamping)
+  - `tests/test_circuit_breaker.py` — 11 tests (state machine, cooldown, callbacks)
+  - `tests/test_command_parser.py` — 17 tests (all 5 command types)
+  - `tests/test_reply_action_parser.py` — 25 tests (all 5 action types)
+  - `tests/test_models.py` — 17 tests (enums, dataclasses, fingerprint)
+  - `tests/test_entry_strategy.py` — 24 tests (single/range/scale_in, volume splits)
+  - `tests/test_channel_manager.py` — 11 tests (load, rules, strategy, reload)
+  - `tests/test_exposure_guard.py` — 8 tests (same-symbol, correlated limits)
+- `pytest.ini` — test runner configuration
+- `tests/conftest.py` — shared test fixtures
+
+## 0.16.4 - 2026-03-22
+
+### Added
+- **Bot system test case documentation** — `tests/TEST_CASES.md`
+  - 254 test cases across 25 module sections
+  - Full coverage of: signal_parser (66), signal_validator (19), risk_manager + order_builder (29), entry_strategy (17), safety guards (22), command/reply parsers (26), config/models (20), storage (13), execution (10), background tasks (20), infrastructure (12)
+  - Each test case includes: input, expected output, and purpose
+
+## 0.16.3 - 2026-03-22
+
+### Added
+- **Dashboard V2 unit test suite** — 130 tests across 11 test files
+  - Test framework: Vitest + React Testing Library + jsdom
+  - `test/utils/format.test.js` — all 5 format utilities (29 cases)
+  - `test/api/client.test.js` — fetchApi, URL construction, API key, DELETE methods (12 cases)
+  - `test/hooks/useApi.test.jsx` — all 17 React Query hooks (20 cases)
+  - `test/charts/ChartPrimitives.test.jsx` — PremiumTooltip, BarLabel, PieLabel (17 cases)
+  - `test/components/*.test.jsx` — ChartCard, ConfirmModal, Navbar, SparkCard, StatCard (30 cases)
+  - `test/pages/*.test.js` — Overview + Analytics data transforms (22 cases)
+- `vitest.config.js` — Vitest configuration with jsdom environment
+- `test/setup.js` — global test setup (jest-dom matchers, localStorage mock)
+- `npm test` and `npm run test:watch` scripts
+
+### Changed
+- `docs/RULES.md` — added §12 Frontend Unit Test Guidelines
+- `dashboard-v2/package.json` — added vitest, @testing-library/react, @testing-library/jest-dom, jsdom devDependencies
+
 ## 0.16.2 - 2026-03-22
 
 ### Fixed

@@ -409,3 +409,41 @@ These rules exist to ensure the AI agent:
 # README Requirement
 
 The repository MUST contain a README.md explaining how to run the project from a clean machine.
+
+---
+
+# 12. Frontend Unit Test Guidelines
+
+Dashboard V2 (`dashboard-v2/`) uses **Vitest** + **React Testing Library** + **jsdom** for unit testing.
+
+## Structure
+
+```
+dashboard-v2/
+  test/
+    setup.js            — global setup (jest-dom, localStorage mock)
+    utils/              — pure function tests
+    api/                — API client tests
+    hooks/              — React Query hook tests
+    charts/             — chart component tests
+    components/         — UI component tests
+    pages/              — page-level data transform tests
+```
+
+## Conventions
+
+* Test files: `<module>.test.js` or `<module>.test.jsx`
+* Config: `dashboard-v2/vitest.config.js`
+* Run: `npm test` (single run), `npm run test:watch` (watch mode)
+* Pure functions **first** — format utils, data transforms, URL builders
+* Mock external dependencies: `fetch`, `localStorage`, `framer-motion`, `recharts`
+* Use `@testing-library/react` `render` / `renderHook` for component/hook tests
+* Assert behavior, **not** implementation details
+* No snapshot tests
+
+## Rules
+
+* New utility functions MUST include corresponding tests
+* New React Query hooks MUST include hook tests
+* New data transformation logic in pages SHOULD be extracted and tested
+* Tests MUST NOT make real network requests
