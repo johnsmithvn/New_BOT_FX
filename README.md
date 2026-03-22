@@ -433,4 +433,4 @@ curl http://your-vps:8080/health | jq .status
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.14.0**
+Current: **v0.14.1**

@@ -111,8 +111,8 @@ class TradeTracker:
         """Main poll loop — runs until cancelled."""
         while True:
             try:
-                await asyncio.sleep(self._poll_seconds)
                 await self._poll_deals()
+                await asyncio.sleep(self._poll_seconds)
             except asyncio.CancelledError:
                 break
             except Exception as exc:
@@ -182,8 +182,12 @@ class TradeTracker:
         fingerprint = order.get("fingerprint", "")
         channel_id = order.get("channel_id", "")
 
+        # Strip sub-fingerprint for multi-order (e.g. "fp:L0" → "fp")
+        # Signals table only stores the base fingerprint
+        base_fp = fingerprint.split(":L")[0] if ":L" in fingerprint else fingerprint
+
         # Get reply info from signals table
-        reply_info = self._storage.get_signal_reply_info(fingerprint)
+        reply_info = self._storage.get_signal_reply_info(base_fp)
         source_chat_id = ""
         source_message_id = ""
         if reply_info:

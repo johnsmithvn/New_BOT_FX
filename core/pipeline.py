@@ -436,6 +436,28 @@ class SignalPipeline:
             result["ticket"] = exec_result.ticket
             result["retcode"] = exec_result.retcode
 
+            # Persist order to DB (fixes R1: single-mode was missing store_order)
+            self._storage.store_order(
+                ticket=exec_result.ticket,
+                fingerprint=signal.fingerprint,
+                order_kind=decision.order_kind.value,
+                price=request.get("price"),
+                sl=signal.sl,
+                tp=signal.tp[0] if signal.tp else None,
+                retcode=exec_result.retcode,
+                success=exec_result.success,
+                channel_id=signal.source_chat_id,
+                source_chat_id=signal.source_chat_id,
+                source_message_id=signal.source_message_id,
+                symbol=signal.symbol,
+            )
+
+            # Register ticket for position tracking
+            if exec_result.success and exec_result.ticket and self._position_mgr:
+                self._position_mgr.register_ticket(
+                    exec_result.ticket, signal.source_chat_id,
+                )
+
         return [result]
 
     # ── Multi-order mode (range / scale_in) ──────────────────────

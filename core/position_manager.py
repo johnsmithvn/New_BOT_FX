@@ -92,8 +92,14 @@ class PositionManager:
         self._TRAILING_ALERT_MIN_PIPS = 5.0  # only alert if SL moved >= 5 pips
 
         # P10g: Restore groups from DB on startup
-        self._restore_groups_from_db()
+        # NOTE: Do NOT call _restore_groups_from_db() here — MT5 is not yet
+        # initialized at component init time. Call restore_groups() explicitly
+        # from Bot.run() AFTER executor.init_mt5().
         self._last_trailing_sl: dict[int, float] = {}  # ticket -> last alerted SL
+
+    def restore_groups(self) -> None:
+        """Restore groups from DB. MUST be called after MT5 init."""
+        self._restore_groups_from_db()
 
     def _restore_groups_from_db(self) -> None:
         """Restore active groups from DB after bot restart.

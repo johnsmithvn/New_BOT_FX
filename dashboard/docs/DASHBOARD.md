@@ -123,7 +123,7 @@ dashboard/
 | GET | `/api/trades` | `channel, symbol, from, to, outcome, page, per_page` | `{trades: [...], total, page, total_pnl, avg_pnl}` |
 | GET | `/api/active` | — | `[{fingerprint, symbol, side, tickets, entry_prices, ...}]` |
 | GET | `/api/symbols` | — | `["XAUUSD", "EURUSD", ...]` |
-| GET | `/api/channel-list` | — | `["-100123456", ...]` |
+| GET | `/api/channel-list` | — | `[{id, name}]` |
 
 ---
 

@@ -38,9 +38,10 @@ class DashboardDB:
         try:
             cursor = conn.execute(sql, params)
             return [dict(row) for row in cursor.fetchall()]
-        except sqlite3.OperationalError:
-            # Table may not exist yet (migrations not applied)
-            return []
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                return []
+            raise
         finally:
             conn.close()
 

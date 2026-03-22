@@ -26,3 +26,6 @@ build/
 
 # SQLite
 *.db
+
+# Channel config (user-specific, use channels.example.json)
+config/channels.json

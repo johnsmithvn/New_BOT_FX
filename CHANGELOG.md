@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.14.1 - 2026-03-22
+
+### Fixed
+- **R3**: `self.position_manager` → `self.position_mgr` — 13 references in main.py caused AttributeError (edit/delete/reply all broken)
+- **R2**: orders table missing `symbol` column — added V5 migration, fixed reply-command query crash
+- **R1**: single-mode execution now persists to orders table — fixes TradeTracker matching and PnL replies
+- **R4**: `_restore_groups_from_db()` deferred to after `init_mt5()` — prevents stale group cleanup on restart
+- **R5**: TradeTracker strips sub-fingerprint (`:L0`) before signal lookup — fixes PnL replies for multi-order trades
+- **R9**: TradeTracker polls immediately on startup instead of waiting `poll_seconds`
+- **R7**: Dashboard `_query()` only suppresses "no such table" errors (was swallowing all OperationalError)
+- **R6**: Dashboard footer version updated to v0.14.0 (was hardcoded v0.12.0)
+- **R10**: DASHBOARD.md API reference corrected for `/api/channel-list` response format
+- **R8**: Added `config/channels.json` to `.gitignore`
+
 ## 0.14.0 - 2026-03-22
 
 ### Added

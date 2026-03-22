@@ -1,6 +1,21 @@
 # TASKS
 
 ## Current Phase
+- `PR Review Bug Fixes` ✅ COMPLETE (v0.14.1)
+
+### PR Review Fixes
+- [x] R3: `position_manager` → `position_mgr` typo (13 refs, main.py)
+- [x] R2: V5 migration — add `symbol` column to orders table (storage.py)
+- [x] R1: Single-mode `store_order()` + `register_ticket()` (pipeline.py)
+- [x] R4: Defer `_restore_groups_from_db()` to after MT5 init (position_manager.py + main.py)
+- [x] R5: Strip sub-fingerprint before signal lookup (trade_tracker.py)
+- [x] R6: Footer version v0.12.0 → v0.14.0 (base.html)
+- [x] R7: Narrow OperationalError catch (queries.py)
+- [x] R8: Add channels.json to .gitignore
+- [x] R9: Poll immediately on TradeTracker start (trade_tracker.py)
+- [x] R10: Fix DASHBOARD.md channel-list response format
+
+## Previous Phase
 - `P10 - Smart Signal Group Management` ✅ COMPLETE
 
 ### P10 Phase 1: Models + Routing (P10a)

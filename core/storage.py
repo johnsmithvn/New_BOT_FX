@@ -195,6 +195,10 @@ _MIGRATIONS: dict[int, str] = {
         CREATE INDEX IF NOT EXISTS idx_signal_groups_channel
             ON signal_groups(channel_id);
     """,
+    5: """
+        -- V5: Add symbol column to orders (fixes reply-command lookup)
+        ALTER TABLE orders ADD COLUMN symbol TEXT;
+    """,
 }
 
 
@@ -354,6 +358,7 @@ class Storage:
         channel_id: str = "",
         source_chat_id: str = "",
         source_message_id: str = "",
+        symbol: str = "",
     ) -> int:
         """Persist an order execution record.
 
@@ -361,18 +366,19 @@ class Storage:
             channel_id: Source channel identifier (denormalized).
             source_chat_id: Telegram chat ID for reply threading.
             source_message_id: Telegram message ID for reply threading.
+            symbol: Trading symbol (e.g. XAUUSD).
         """
         cursor = self._execute_with_retry(
             """
             INSERT INTO orders
                 (ticket, fingerprint, order_kind, price, sl, tp,
                  retcode, success, channel_id, source_chat_id,
-                 source_message_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 source_message_id, symbol)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ticket, fingerprint, order_kind, price, sl, tp,
              retcode, int(success), channel_id, source_chat_id,
-             source_message_id),
+             source_message_id, symbol),
         )
         return cursor.lastrowid
 

@@ -898,7 +898,7 @@ class Bot:
 
         # Step 2: Check group for filled orders (P10.1)
         has_filled = False
-        group = self.position_manager.get_group(original_fp) if self.position_manager else None
+        group = self.position_mgr.get_group(original_fp) if self.position_mgr else None
         if group:
             try:
                 import MetaTrader5 as mt5
@@ -933,8 +933,8 @@ class Bot:
 
         if decision.action == UpdateAction.CANCEL_GROUP_PENDING:
             # P10.1: Cancel pending orders in group, keep filled running
-            if self.position_manager and not self.settings.runtime.dry_run:
-                cancel_result = self.position_manager.cancel_group_pending_orders(
+            if self.position_mgr and not self.settings.runtime.dry_run:
+                cancel_result = self.position_mgr.cancel_group_pending_orders(
                     original_fp,
                     executor=self.executor,
                 )
@@ -952,9 +952,9 @@ class Bot:
 
         if decision.action == UpdateAction.CANCEL_ORDER:
             # Legacy: cancel via lifecycle manager (no group or no filled)
-            if group and self.position_manager and not self.settings.runtime.dry_run:
+            if group and self.position_mgr and not self.settings.runtime.dry_run:
                 # Use group-aware cancel for all pending
-                self.position_manager.cancel_group_pending_orders(
+                self.position_mgr.cancel_group_pending_orders(
                     original_fp,
                     executor=self.executor,
                 )
@@ -1019,9 +1019,9 @@ class Bot:
                 continue
 
             # Try group-aware cancel first
-            group = self.position_manager.get_group(fp) if self.position_manager else None
+            group = self.position_mgr.get_group(fp) if self.position_mgr else None
             if group:
-                cancel_result = self.position_manager.cancel_group_pending_orders(
+                cancel_result = self.position_mgr.cancel_group_pending_orders(
                     fp,
                     executor=self.executor,
                 )
@@ -1144,18 +1144,18 @@ class Bot:
         # strategy, route through PositionManager instead of closing all.
         if (
             action.action == ReplyActionType.CLOSE
-            and hasattr(self, "position_manager")
-            and self.position_manager
+            and hasattr(self, "position_mgr")
+            and self.position_mgr
         ):
             # Try to find group by first order's fingerprint
             first_fp = orders[0]["fingerprint"]
             # Strip level suffix to get base fingerprint
             base_fp = first_fp.split(":L")[0] if ":L" in first_fp else first_fp
-            group = self.position_manager.get_group(base_fp)
+            group = self.position_mgr.get_group(base_fp)
 
             if group and group.reply_close_strategy != "all":
                 # Selective close: close ONE order based on strategy
-                result = self.position_manager.close_selective_entry(
+                result = self.position_mgr.close_selective_entry(
                     base_fp,
                     reply_executor=self.reply_executor,
                     dry_run=dry_run,
@@ -1420,6 +1420,10 @@ class Bot:
             if not self.executor.init_mt5():
                 print("[FATAL] MT5 initialization failed. Check .env credentials.")
                 return
+
+            # R4 fix: Restore position groups AFTER MT5 is initialized
+            if self.position_mgr:
+                self.position_mgr.restore_groups()
         else:
             print("[DRY RUN] MT5 execution disabled — simulating orders.")
 
