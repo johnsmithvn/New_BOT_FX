@@ -431,26 +431,24 @@ curl http://your-vps:8080/health | jq .status
 
 ---
 
-## 📊 Dashboard
+## 🚀 Launcher
 
-Two dashboard versions are available. Both read the same SQLite database **read-only**.
-
-### V1 — FastAPI + Jinja2 (Original)
 ```bash
-python -m dashboard.dashboard
-# Opens on http://localhost:8000
+python run.py              # Interactive menu (1-5)
+python run.py bot           # Trading bot only
+python run.py dash          # Dashboard V1 (port 8000)
+python run.py v2            # Dashboard V2 (port 5173)
+python run.py dash+bot      # V1 + bot
+python run.py v2+bot        # V2 + bot
 ```
 
-### V2 — React SPA (Advanced)
-```bash
-cd dashboard-v2
-npm install      # first time only
-npm run dev      # dev server on http://localhost:5173
-```
+> Dashboard chỉ đọc database — bot KHÔNG cần chạy. Nhưng không có bot thì data sẽ không cập nhật.
 
-V2 features: equity curve, PnL distribution, drawdown chart, symbol radar, interactive channel drill-down, trade journal with multi-filter + pagination + CSV export, glassmorphism dark theme.
+### Dashboard V1 — FastAPI + Jinja2
+Port 8000. 3 trang: Overview, Channels, Trade History.
 
-Both dashboards use the same API backend. V2 in dev mode proxies `/api/*` to V1 automatically.
+### Dashboard V2 — React SPA
+Port 5173. 6 trang + advanced analytics. Xem [dashboard-v2/README.md](dashboard-v2/README.md) cho chi tiết.
 
 ## Version History
 

@@ -1,9 +1,7 @@
 import { useState, useMemo } from 'react';
-import { DollarSign, TrendingUp, BarChart3, Activity } from 'lucide-react';
-import StatCard from '../components/StatCard';
 import ChartCard from '../components/ChartCard';
+import SparkCard from '../components/SparkCard';
 import EquityCurve from '../charts/EquityCurve';
-import DailyPnlBars from '../charts/DailyPnlBars';
 import WinLossDonut from '../charts/WinLossDonut';
 import { useOverview, useDailyPnl, useEquityCurve, useChannels, useActive } from '../hooks/useApi';
 import {
@@ -15,13 +13,12 @@ import { PremiumTooltip } from '../charts/ChartPrimitives';
 function fmt(n, prefix = '$') {
   if (n == null) return `${prefix}0.00`;
   const abs = Math.abs(n);
-  const str = abs >= 1000 ? `${(abs / 1000).toFixed(1)}k` : abs.toFixed(2);
+  const str = abs >= 1000 ? `${(abs / 1000).toFixed(1)}K` : abs.toFixed(2);
   return `${n < 0 ? '-' : ''}${prefix}${str}`;
 }
 
 /** Combo Chart: Daily PnL bars + cumulative line overlay */
 function ComboPnlChart({ dailyData = [], equityData = [] }) {
-  // Merge daily PnL with cumulative equity by date
   const merged = useMemo(() => {
     const eqMap = {};
     (equityData || []).forEach(d => { eqMap[d.date] = d.cumulative_pnl; });
@@ -64,7 +61,7 @@ function ComboPnlChart({ dailyData = [], equityData = [] }) {
           tickFormatter={(v) => `$${v}`}
           width={55}
         />
-        <Tooltip content={
+        <Tooltip cursor={false} content={
           <PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />
         } />
         <Legend
@@ -92,6 +89,68 @@ function ComboPnlChart({ dailyData = [], equityData = [] }) {
   );
 }
 
+/** Monthly Wins vs Losses grouped bar chart (cashflow style) */
+function MonthlyWinLossGrouped({ data = [] }) {
+  const monthly = useMemo(() => {
+    if (!data.length) return [];
+    const months = {};
+    data.forEach(d => {
+      const month = d.date?.slice(0, 7); // "2026-03"
+      if (!month) return;
+      if (!months[month]) months[month] = { month, wins: 0, losses: 0 };
+      const pnl = d.net_pnl || 0;
+      if (pnl >= 0) months[month].wins += pnl;
+      else months[month].losses += Math.abs(pnl);
+    });
+    return Object.values(months).slice(-6);
+  }, [data]);
+
+  if (!monthly.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No data</p>;
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={monthly} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" vertical={false} />
+        <XAxis
+          dataKey="month"
+          tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }}
+          axisLine={false} tickLine={false}
+          tickFormatter={m => {
+            const idx = parseInt(m?.slice(5), 10) - 1;
+            return monthNames[idx] || m;
+          }}
+        />
+        <YAxis
+          tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
+          axisLine={false} tickLine={false}
+          tickFormatter={v => `$${v}`}
+          width={55}
+        />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+        <Legend wrapperStyle={{ fontSize: '0.6875rem' }} iconType="circle" iconSize={8} />
+        <Bar dataKey="wins" name="Wins $" fill="#22c55e" fillOpacity={0.85} radius={[4, 4, 0, 0]} maxBarSize={28}>
+          <LabelList
+            dataKey="wins"
+            position="top"
+            formatter={v => v > 0 ? `$${v.toFixed(0)}` : ''}
+            style={{ fill: '#22c55e', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}
+          />
+        </Bar>
+        <Bar dataKey="losses" name="Losses $" fill="#ef4444" fillOpacity={0.75} radius={[4, 4, 0, 0]} maxBarSize={28}>
+          <LabelList
+            dataKey="losses"
+            position="top"
+            formatter={v => v > 0 ? `$${v.toFixed(0)}` : ''}
+            style={{ fill: '#ef4444', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}
+          />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 /** Top Channels — horizontal bars with labels */
 function TopChannelsBars({ channels = [] }) {
   if (!channels.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No channel data</p>;
@@ -104,7 +163,7 @@ function TopChannelsBars({ channels = [] }) {
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
         <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
         <YAxis type="category" dataKey="channel_name" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
-        <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
         <Bar dataKey="total_pnl" name="Total PnL" radius={[0, 4, 4, 0]} animationDuration={800} maxBarSize={22}>
           <LabelList
             dataKey="total_pnl"
@@ -131,6 +190,18 @@ export default function Overview() {
 
   const ov = overview || {};
 
+  // Prepare sparkline data from daily PnL
+  const pnlSpark = useMemo(() =>
+    (dailyPnl || []).slice(-14).map(d => ({ value: d.net_pnl || 0 }))
+  , [dailyPnl]);
+
+  const equitySpark = useMemo(() =>
+    (equity || []).slice(-14).map(d => ({ value: d.cumulative_pnl || 0 }))
+  , [equity]);
+
+  // Compute commission from overview
+  const commRate = ov.total_trades > 0 ? (ov.total_commission || 0) / ov.total_trades : 0;
+
   return (
     <div className="page-content">
       <div className="page-header">
@@ -138,34 +209,41 @@ export default function Overview() {
         <p>Real-time trading performance at a glance</p>
       </div>
 
-      {/* ── Stat Cards ──────────────────────────────────────────── */}
+      {/* ── SparkCards (cashflow style: big number + sparkline) ──── */}
       <div className="grid-stats">
-        <StatCard
-          icon={DollarSign}
-          label="Net PnL"
+        <SparkCard
+          title="Net PnL"
           value={ovLoading ? '...' : fmt(ov.net_pnl)}
+          subtitle={ovLoading ? '' : `Gross: ${fmt(ov.total_pnl)} | Comm: ${fmt(ov.total_commission)}`}
           color={ov.net_pnl >= 0 ? 'green' : 'red'}
+          sparkData={pnlSpark}
+          sparkType="bar"
           delay={0}
         />
-        <StatCard
-          icon={TrendingUp}
-          label="Win Rate"
+        <SparkCard
+          title="Win Rate"
           value={ovLoading ? '...' : `${ov.win_rate || 0}%`}
+          subtitle={`${ov.wins || 0}W / ${ov.losses || 0}L`}
           color="blue"
+          sparkData={equitySpark}
+          sparkType="area"
           delay={1}
         />
-        <StatCard
-          icon={BarChart3}
-          label="Total Trades"
+        <SparkCard
+          title="Total Trades"
           value={ovLoading ? '...' : String(ov.total_trades || 0)}
+          subtitle={`Avg: ${fmt(ov.avg_pnl)}`}
           color="purple"
+          sparkData={pnlSpark}
+          sparkType="line"
           delay={2}
         />
-        <StatCard
-          icon={Activity}
-          label="Active Positions"
+        <SparkCard
+          title="Active Positions"
           value={ovLoading ? '...' : String(ov.active_groups || 0)}
+          subtitle={`${ov.total_signals || 0} total signals`}
           color="amber"
+          sparkData={[]}
           delay={3}
         />
       </div>
@@ -201,18 +279,21 @@ export default function Overview() {
         </ChartCard>
       </div>
 
-      {/* ── Win/Loss Donut + Top Channels ───────────────────────── */}
+      {/* ── Monthly Wins vs Losses (grouped bars, cashflow style) + Donut ── */}
       <div className="grid-main">
-        <ChartCard title="Top Channels" loading={chLoading}>
-          <TopChannelsBars channels={channels} />
+        <ChartCard title="Monthly Performance — Wins vs Losses" loading={dpLoading}>
+          <MonthlyWinLossGrouped data={dailyPnl} />
         </ChartCard>
         <ChartCard title="Win / Loss Ratio" loading={ovLoading}>
           <WinLossDonut wins={ov.wins || 0} losses={ov.losses || 0} />
         </ChartCard>
       </div>
 
-      {/* ── Active Positions ────────────────────────────────────── */}
-      <div className="full-width">
+      {/* ── Top Channels + Active Positions ──────────────────────── */}
+      <div className="grid-main">
+        <ChartCard title="Top Channels" loading={chLoading}>
+          <TopChannelsBars channels={channels} />
+        </ChartCard>
         <ChartCard title="Active Positions" loading={false}>
           {active && active.length > 0 ? (
             <div style={{ overflow: 'auto', maxHeight: 260 }}>

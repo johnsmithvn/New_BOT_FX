@@ -69,7 +69,7 @@ function SymbolRadar({ data }) {
         <PolarRadiusAxis tick={{ fill: '#64748b', fontSize: 10 }} domain={[0, 100]} axisLine={false} />
         <Radar name="Win Rate" dataKey="winRate" stroke="#22c55e" fill="#22c55e" fillOpacity={0.2} strokeWidth={2} />
         <Radar name="Activity" dataKey="trades" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} strokeWidth={2} />
-        <Tooltip content={<PremiumTooltip formatter={(v, name) => name === 'Win Rate' ? `${v}%` : `${v} trades`} />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v, name) => name === 'Win Rate' ? `${v}%` : `${v} trades`} />} />
       </RadarChart>
     </ResponsiveContainer>
   );
@@ -99,7 +99,7 @@ export default function Symbols() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11 }} width={80} axisLine={false} tickLine={false} />
-                <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
                 <Bar dataKey="total_pnl" name="PnL" radius={[0, 4, 4, 0]} maxBarSize={22}>
                   <LabelList dataKey="total_pnl" position="right" formatter={v => `$${v?.toFixed(1)}`} style={{ fill: '#94a3b8', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }} />
                   {symbols.map((s, i) => (

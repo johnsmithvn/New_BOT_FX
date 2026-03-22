@@ -107,3 +107,21 @@
 .nivo-heatmap {
   border-radius: var(--radius-md);
 }
+
+/* ── Fix: Hide the Recharts default cursor (gray hover background) */
+.recharts-tooltip-cursor {
+  fill: rgba(148, 163, 184, 0.04) !important;
+  stroke: none !important;
+}
+
+/* ── Fix: Chart body fills the card ─────────────────────────── */
+.chart-body {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+}
+
+.chart-body > .recharts-responsive-container,
+.chart-body > div > .recharts-responsive-container {
+  min-height: 240px;
+}

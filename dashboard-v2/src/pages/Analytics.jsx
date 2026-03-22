@@ -38,7 +38,7 @@ function WinLossStackedBars({ data = [] }) {
         <XAxis dataKey="week" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={d => d?.slice(5)} />
         <YAxis yAxisId="stack" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} width={55} axisLine={false} tickLine={false} />
         <YAxis yAxisId="line" orientation="right" tick={{ fill: '#f59e0b', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} width={50} axisLine={false} tickLine={false} hide />
-        <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} showTotal />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} showTotal />} />
         <Legend wrapperStyle={{ fontSize: '0.6875rem' }} iconType="circle" iconSize={8} />
         <Bar yAxisId="stack" dataKey="wins" name="Wins" fill="#22c55e" fillOpacity={0.8} stackId="a" radius={[0, 0, 0, 0]} maxBarSize={28} />
         <Bar yAxisId="stack" dataKey="losses" name="Losses" fill="#ef4444" fillOpacity={0.7} stackId="a" radius={[3, 3, 0, 0]} maxBarSize={28} />
@@ -69,7 +69,7 @@ function PnlDistributionChart({ data = [] }) {
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" vertical={false} />
         <XAxis dataKey="bucket" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} />
         <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} axisLine={false} tickLine={false} />
-        <Tooltip content={
+        <Tooltip cursor={false} content={
           <PremiumTooltip formatter={(v, name) => name === 'count' || name === 'Days' ? `${v} days` : v} />
         } />
         <ReferenceLine x={0} stroke="rgba(148,163,184,0.3)" />
@@ -110,7 +110,7 @@ function DrawdownChart({ data = [] }) {
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" />
         <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={d => d?.slice(5)} />
         <YAxis tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `${v}%`} width={50} axisLine={false} tickLine={false} />
-        <Tooltip content={<PremiumTooltip formatter={(v) => `${v?.toFixed(2)}%`} />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `${v?.toFixed(2)}%`} />} />
         <ReferenceLine y={0} stroke="rgba(148,163,184,0.2)" />
         {maxDD < 0 && <ReferenceLine y={maxDD} stroke="#ef4444" strokeDasharray="2 4" strokeOpacity={0.4} label={{ value: `Max ${maxDD.toFixed(1)}%`, fill: '#ef4444', fontSize: 10, position: 'left' }} />}
         <Area type="monotone" dataKey="drawdown" name="Drawdown" stroke="#ef4444" fill="url(#ddGrad)" strokeWidth={1.5} />
@@ -136,7 +136,7 @@ function SymbolWinLossCompare({ data = [] }) {
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
         <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11 }} width={70} axisLine={false} tickLine={false} />
-        <Tooltip content={<PremiumTooltip formatter={(v) => `${Math.abs(v)} trades`} />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `${Math.abs(v)} trades`} />} />
         <Legend wrapperStyle={{ fontSize: '0.6875rem' }} iconType="circle" iconSize={8} />
         <ReferenceLine x={0} stroke="rgba(148,163,184,0.15)" />
         <Bar dataKey="wins" name="Wins" fill="#22c55e" fillOpacity={0.85} radius={[0, 3, 3, 0]} maxBarSize={18}>
@@ -173,7 +173,7 @@ function TradingActivity({ data = [] }) {
         <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={d => d?.slice(5)} />
         <YAxis yAxisId="bar" tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} axisLine={false} tickLine={false} />
         <YAxis yAxisId="line" orientation="right" tick={{ fill: '#06b6d4', fontSize: 10 }} axisLine={false} tickLine={false} hide />
-        <Tooltip content={<PremiumTooltip formatter={(v, name) => name === 'Cumulative' ? `${v} total` : `${v} trades` } />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v, name) => name === 'Cumulative' ? `${v} total` : `${v} trades` } />} />
         <Legend wrapperStyle={{ fontSize: '0.6875rem' }} iconType="circle" iconSize={8} />
         <Bar yAxisId="bar" dataKey="trades" name="Daily" fill="#3b82f6" fillOpacity={0.7} radius={[3, 3, 0, 0]} maxBarSize={20} />
         <Line yAxisId="line" type="monotone" dataKey="cumTrades" name="Cumulative" stroke="#06b6d4" strokeWidth={2} dot={false} />

@@ -43,7 +43,7 @@ export default function DailyPnlBars({ data = [] }) {
           tickFormatter={(v) => `$${v}`}
           width={60}
         />
-        <Tooltip content={
+        <Tooltip cursor={false} content={
           <PremiumTooltip
             formatter={(v, name) => `$${v?.toFixed(2)}`}
           />

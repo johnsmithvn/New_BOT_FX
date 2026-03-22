@@ -40,7 +40,7 @@ export default function EquityCurve({ data = [] }) {
           tickFormatter={(v) => `$${v}`}
           width={60}
         />
-        <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
         <ReferenceLine y={0} stroke="rgba(148,163,184,0.12)" strokeDasharray="4 4" />
         {maxVal > 0 && <ReferenceLine y={maxVal} stroke="#22c55e" strokeDasharray="2 4" strokeOpacity={0.3} label={{ value: `Peak $${maxVal.toFixed(0)}`, fill: '#22c55e', fontSize: 10, position: 'right' }} />}
         <Area

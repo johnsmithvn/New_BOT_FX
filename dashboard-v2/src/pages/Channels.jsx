@@ -68,7 +68,7 @@ export default function Channels() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="channel_name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={120} axisLine={false} tickLine={false} />
-                <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
                 <Bar dataKey="total_pnl" name="Total PnL" radius={[0, 4, 4, 0]} animationDuration={600} maxBarSize={22}>
                   <LabelList dataKey="total_pnl" position="right" formatter={v => `$${v?.toFixed(1)}`} style={{ fill: '#94a3b8', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} />
                   {channels.map((ch, i) => (
@@ -107,7 +107,7 @@ export default function Channels() {
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" />
                   <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={d => d?.slice(5)} axisLine={{ stroke: 'rgba(148,163,184,0.08)' }} tickLine={false} />
                   <YAxis tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
-                  <Tooltip content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                  <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
                   <Line type="monotone" dataKey="pnl" name="PnL" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 3, stroke: 'var(--bg-primary)', strokeWidth: 2 }} activeDot={{ r: 5, stroke: '#3b82f6', fill: 'var(--bg-primary)', strokeWidth: 2 }} />
                 </LineChart>
               </ResponsiveContainer>
