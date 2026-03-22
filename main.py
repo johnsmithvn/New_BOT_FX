@@ -229,6 +229,7 @@ class Bot:
         self.listener.set_pipeline_callback(self._process_signal)
         self.listener.set_edit_callback(self._process_edit)
         self.listener.set_reply_callback(self._process_reply)
+        self.listener.set_delete_callback(self._process_delete)
 
         # Lifecycle Manager — check interval from config
         self.lifecycle_mgr = OrderLifecycleManager(
@@ -853,11 +854,12 @@ class Bot:
 
         Flow:
         1. Look up original fingerprint by (chat_id, message_id).
-        2. Delegate to MessageUpdateHandler for decision.
-        3. Act on decision:
+        2. Check group status for filled orders (P10.1).
+        3. Delegate to MessageUpdateHandler for decision.
+        4. Act on decision:
            - IGNORE: log only.
-           - CANCEL_ORDER: cancel pending order via lifecycle_mgr.
-           - NEW_SIGNAL: re-submit edited text through pipeline.
+           - CANCEL_GROUP_PENDING: cancel pending orders in group only.
+           - CANCEL_ORDER: cancel pending order via lifecycle_mgr + re-process.
         """
         log_event("edit_received", source_chat_id=chat_id, source_message_id=message_id)
 
@@ -872,12 +874,27 @@ class Bot:
             )
             return
 
-        # Step 2: Delegate to handler
+        # Step 2: Check group for filled orders (P10.1)
+        has_filled = False
+        group = self.position_manager.get_group(original_fp) if self.position_manager else None
+        if group:
+            try:
+                import MetaTrader5 as mt5
+                for ticket in group.tickets:
+                    positions = mt5.positions_get(ticket=ticket)
+                    if positions and len(positions) > 0:
+                        has_filled = True
+                        break
+            except ImportError:
+                pass
+
+        # Step 3: Delegate to handler
         decision = self.update_handler.handle_edit(
             edited_text=raw_text,
             source_chat_id=chat_id,
             source_message_id=message_id,
             original_fingerprint=original_fp,
+            has_filled_orders=has_filled,
         )
 
         log_event(
@@ -885,21 +902,48 @@ class Bot:
             action=decision.action.value,
             reason=decision.reason,
             original_fingerprint=original_fp,
+            has_filled_orders=has_filled,
         )
 
-        # Step 3: Act on decision
+        # Step 4: Act on decision
         if decision.action == UpdateAction.IGNORE:
             return
 
+        if decision.action == UpdateAction.CANCEL_GROUP_PENDING:
+            # P10.1: Cancel pending orders in group, keep filled running
+            if self.position_manager and not self.settings.runtime.dry_run:
+                cancel_result = self.position_manager.cancel_group_pending_orders(
+                    original_fp,
+                    executor=self.executor,
+                )
+                self.storage.store_event(
+                    fingerprint=original_fp,
+                    event_type="edit_group_pending_cancelled",
+                    details={
+                        "reason": decision.reason,
+                        "cancelled": cancel_result["cancelled"],
+                        "filled_kept": cancel_result["filled_kept"],
+                    },
+                    channel_id=chat_id,
+                )
+            return
+
         if decision.action == UpdateAction.CANCEL_ORDER:
-            # Attempt to cancel pending order via lifecycle manager
-            if self.lifecycle_mgr and not self.settings.runtime.dry_run:
+            # Legacy: cancel via lifecycle manager (no group or no filled)
+            if group and self.position_manager and not self.settings.runtime.dry_run:
+                # Use group-aware cancel for all pending
+                self.position_manager.cancel_group_pending_orders(
+                    original_fp,
+                    executor=self.executor,
+                )
+            elif self.lifecycle_mgr and not self.settings.runtime.dry_run:
                 cancelled = self.lifecycle_mgr.cancel_by_fingerprint(original_fp)
                 log_event(
                     "edit_cancel_attempted",
                     fingerprint=original_fp,
                     cancelled=cancelled,
                 )
+
             self.storage.store_event(
                 fingerprint=original_fp,
                 event_type="edit_order_cancelled",
@@ -915,6 +959,69 @@ class Bot:
                     new_fingerprint=decision.new_signal.fingerprint,
                 )
                 self._do_process_signal(raw_text, chat_id, message_id)
+
+    # ── Delete Handler (P10.1) ────────────────────────────────────
+
+    def _process_delete(
+        self,
+        chat_id: str,
+        message_ids: list[str],
+    ) -> None:
+        """Handle deleted signal messages.
+
+        For each deleted message:
+        1. Look up fingerprint by (chat_id, message_id).
+        2. If group exists → cancel pending orders only.
+        3. If no group → cancel via lifecycle_mgr.
+        4. Log event.
+        """
+        for message_id in message_ids:
+            fp = self.storage.get_fingerprint_by_message(chat_id, message_id)
+            if not fp:
+                continue
+
+            log_event(
+                "delete_signal_detected",
+                fingerprint=fp,
+                source_chat_id=chat_id,
+                source_message_id=message_id,
+            )
+
+            if self.settings.runtime.dry_run:
+                self.storage.store_event(
+                    fingerprint=fp,
+                    event_type="delete_signal_dry_run",
+                    details={"message_id": message_id},
+                    channel_id=chat_id,
+                )
+                continue
+
+            # Try group-aware cancel first
+            group = self.position_manager.get_group(fp) if self.position_manager else None
+            if group:
+                cancel_result = self.position_manager.cancel_group_pending_orders(
+                    fp,
+                    executor=self.executor,
+                )
+                self.storage.store_event(
+                    fingerprint=fp,
+                    event_type="delete_group_pending_cancelled",
+                    details={
+                        "cancelled": cancel_result["cancelled"],
+                        "filled_kept": cancel_result["filled_kept"],
+                        "group_completed": cancel_result["group_completed"],
+                    },
+                    channel_id=chat_id,
+                )
+            elif self.lifecycle_mgr:
+                # Legacy fallback: cancel single pending order by fingerprint
+                cancelled = self.lifecycle_mgr.cancel_by_fingerprint(fp)
+                self.storage.store_event(
+                    fingerprint=fp,
+                    event_type="delete_order_cancelled",
+                    details={"cancelled": cancelled},
+                    channel_id=chat_id,
+                )
 
     # ── Reply Handler ─────────────────────────────────────────────
 

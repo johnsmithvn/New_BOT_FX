@@ -29,6 +29,10 @@ EditCallback = Callable[[str, str, str], Awaitable[None] | None]
 # Receives: raw_text, chat_id, message_id, reply_to_msg_id
 ReplyCallback = Callable[[str, str, str, str], Awaitable[None] | None]
 
+# Type alias for delete callback.
+# Receives: chat_id, message_ids
+DeleteCallback = Callable[[str, list[str]], Awaitable[None] | None]
+
 
 class TelegramListener:
     """Telethon-based Telegram listener.
@@ -60,6 +64,7 @@ class TelegramListener:
         self._pipeline_cb: PipelineCallback | None = None
         self._edit_cb: EditCallback | None = None
         self._reply_cb: ReplyCallback | None = None
+        self._delete_cb: DeleteCallback | None = None
         self._reset_task: asyncio.Task | None = None
         self._running = False
 
@@ -74,6 +79,10 @@ class TelegramListener:
     def set_reply_callback(self, callback: ReplyCallback) -> None:
         """Set the callback for reply messages."""
         self._reply_cb = callback
+
+    def set_delete_callback(self, callback: DeleteCallback) -> None:
+        """Set the callback for deleted messages."""
+        self._delete_cb = callback
 
     @property
     def client(self) -> TelegramClient | None:
@@ -141,6 +150,11 @@ class TelegramListener:
         @self._client.on(events.MessageEdited(chats=chat_entities or None))
         async def on_message_edited(event: events.MessageEdited.Event) -> None:
             await self._handle_edited_message(event)
+
+        # Register message deleted handler (P10.1)
+        @self._client.on(events.MessageDeleted())
+        async def on_message_deleted(event: events.MessageDeleted.Event) -> None:
+            await self._handle_deleted_message(event)
 
         log_event(
             "telegram_listener_started",
@@ -266,6 +280,47 @@ class TelegramListener:
                     "edit_callback_error",
                     symbol="",
                     source_message_id=message_id,
+                    error=str(exc),
+                )
+
+    async def _handle_deleted_message(
+        self, event: events.MessageDeleted.Event
+    ) -> None:
+        """Process deleted message(s).
+
+        Telethon provides only chat_id + deleted_ids (no message text).
+        Forward to delete callback for fingerprint lookup + cancel.
+        """
+        chat_id = str(event.chat_id) if event.chat_id else ""
+        deleted_ids = [str(mid) for mid in (event.deleted_ids or [])]
+
+        if not deleted_ids:
+            return
+
+        # Filter: only process if chat_id is in our source chats
+        # Note: event.chat_id may be None for private chats
+        if chat_id and self._source_chats:
+            source_ids = [str(c) for c in self._source_chats]
+            if chat_id not in source_ids:
+                return
+
+        log_event(
+            "message_deleted",
+            symbol="",
+            source_chat_id=chat_id,
+            deleted_count=len(deleted_ids),
+        )
+
+        if self._delete_cb:
+            try:
+                result = self._delete_cb(chat_id, deleted_ids)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as exc:
+                log_event(
+                    "delete_callback_error",
+                    symbol="",
+                    source_chat_id=chat_id,
                     error=str(exc),
                 )
 

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Forex Trading Bot Analytics Dashboard">
+    <title>{% block title %}Forex Bot Dashboard{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="brand-icon">📊</span>
+            <span class="brand-text">Forex Bot</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="nav-link {% block nav_overview %}{% endblock %}" id="nav-overview">
+                <span class="nav-icon">🏠</span> Overview
+            </a>
+            <a href="/channels" class="nav-link {% block nav_channels %}{% endblock %}" id="nav-channels">
+                <span class="nav-icon">📡</span> Channels
+            </a>
+            <a href="/trades" class="nav-link {% block nav_trades %}{% endblock %}" id="nav-trades">
+                <span class="nav-icon">📋</span> Trades
+            </a>
+        </div>
+        <div class="nav-status">
+            <span class="status-dot" id="status-dot"></span>
+            <span class="status-text" id="status-text">Connecting...</span>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <span>Forex Bot Dashboard v0.12.0</span>
+        <span id="last-update">Last update: --</span>
+    </footer>
+
+    <script src="/static/charts.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

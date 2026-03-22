@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Overview — Forex Bot Dashboard{% endblock %}
+{% block nav_overview %}active{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Dashboard Overview</h1>
+
+<!-- Stat Cards -->
+<div class="stats-grid" id="stats-grid">
+    <div class="stat-card green">
+        <div class="stat-label">Net P&L</div>
+        <div class="stat-value" id="stat-pnl">--</div>
+        <div class="stat-sub" id="stat-pnl-sub">Loading...</div>
+    </div>
+    <div class="stat-card blue">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value" id="stat-winrate">--</div>
+        <div class="stat-sub" id="stat-winrate-sub"></div>
+    </div>
+    <div class="stat-card purple">
+        <div class="stat-label">Total Trades</div>
+        <div class="stat-value" id="stat-trades">--</div>
+        <div class="stat-sub" id="stat-trades-sub"></div>
+    </div>
+    <div class="stat-card orange">
+        <div class="stat-label">Active Groups</div>
+        <div class="stat-value" id="stat-active">--</div>
+        <div class="stat-sub" id="stat-active-sub"></div>
+    </div>
+</div>
+
+<!-- Daily PnL Chart -->
+<div class="chart-container">
+    <div class="chart-header">
+        <span class="chart-title">Daily P&L</span>
+        <div class="chart-period">
+            <button class="period-btn" onclick="loadPnL(7)">7D</button>
+            <button class="period-btn active" onclick="loadPnL(30)">30D</button>
+            <button class="period-btn" onclick="loadPnL(90)">90D</button>
+        </div>
+    </div>
+    <div class="chart-canvas">
+        <canvas id="pnl-chart"></canvas>
+    </div>
+</div>
+
+<!-- Split Panels -->
+<div class="split-panels">
+    <!-- Top Channels -->
+    <div class="panel">
+        <div class="panel-title">Top Channels by P&L</div>
+        <div class="chart-canvas" style="height:250px;">
+            <canvas id="channels-chart"></canvas>
+        </div>
+    </div>
+
+    <!-- Recent Trades -->
+    <div class="panel">
+        <div class="panel-title">Recent Trades</div>
+        <div class="table-container">
+            <table class="data-table" id="recent-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Symbol</th>
+                        <th>Side</th>
+                        <th>P&L</th>
+                    </tr>
+                </thead>
+                <tbody id="recent-tbody">
+                    <tr><td colspan="4" class="loading">
+                        <div class="loading-spinner"></div> Loading...
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Active Positions -->
+<div class="chart-container">
+    <div class="chart-header">
+        <span class="chart-title">Active Positions</span>
+    </div>
+    <div class="table-container">
+        <table class="data-table" id="active-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Orders</th>
+                    <th>Entries</th>
+                    <th>SL</th>
+                    <th>Channel</th>
+                    <th>Opened</th>
+                </tr>
+            </thead>
+            <tbody id="active-tbody">
+                <tr><td colspan="7" class="loading">
+                    <div class="loading-spinner"></div> Loading...
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let pnlChart = null;
+let channelsChart = null;
+
+async function loadOverview() {
+    try {
+        const data = await API.get('/overview');
+        setStatus(true);
+
+        // Stat cards
+        const pnlEl = document.getElementById('stat-pnl');
+        pnlEl.textContent = formatPnL(data.net_pnl);
+        pnlEl.className = 'stat-value ' + pnlClass(data.net_pnl);
+        document.getElementById('stat-pnl-sub').textContent =
+            `Gross: ${formatPnL(data.total_pnl)} | Comm: ${formatPnL(data.total_commission)}`;
+
+        document.getElementById('stat-winrate').textContent = formatPercent(data.win_rate);
+        document.getElementById('stat-winrate-sub').textContent =
+            `${data.wins || 0}W / ${data.losses || 0}L`;
+
+        document.getElementById('stat-trades').textContent = data.total_trades || 0;
+        document.getElementById('stat-trades-sub').textContent =
+            `Avg: ${formatPnL(data.avg_pnl)}`;
+
+        document.getElementById('stat-active').textContent = data.active_groups || 0;
+        document.getElementById('stat-active-sub').textContent =
+            `${data.total_signals || 0} total signals`;
+
+        updateLastRefresh();
+    } catch (err) {
+        setStatus(false);
+    }
+}
+
+async function loadPnL(days = 30) {
+    // Update active button
+    document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === `${days}D`);
+    });
+
+    try {
+        const data = await API.get(`/daily-pnl?days=${days}`);
+        const labels = data.map(d => formatDate(d.date));
+        const values = data.map(d => parseFloat(d.net_pnl || d.pnl || 0));
+
+        if (pnlChart) pnlChart.destroy();
+        pnlChart = createPnLChart('pnl-chart', labels, values);
+    } catch (err) {
+        console.error('Failed to load PnL', err);
+    }
+}
+
+async function loadChannels() {
+    try {
+        const data = await API.get('/channels');
+        const labels = data.slice(0, 8).map(c => c.channel_id || 'Unknown');
+        const values = data.slice(0, 8).map(c => parseFloat(c.total_pnl || 0));
+
+        if (channelsChart) channelsChart.destroy();
+        channelsChart = createChannelBarChart('channels-chart', labels, values);
+    } catch (err) {
+        console.error('Failed to load channels', err);
+    }
+}
+
+async function loadRecentTrades() {
+    try {
+        const data = await API.get('/trades?per_page=8');
+        const tbody = document.getElementById('recent-tbody');
+
+        if (!data.trades || data.trades.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No trades yet</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.trades.map(t => `
+            <tr>
+                <td>${formatDateTime(t.close_time)}</td>
+                <td>${t.symbol || '--'}</td>
+                <td><span class="badge ${(t.side||'').toLowerCase()}">${t.side || '--'}</span></td>
+                <td class="${pnlTableClass(t.pnl)}">${formatPnL(t.pnl)}</td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error('Failed to load recent trades', err);
+    }
+}
+
+async function loadActivePositions() {
+    try {
+        const data = await API.get('/active');
+        const tbody = document.getElementById('active-tbody');
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No active positions</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(g => `
+            <tr>
+                <td><strong>${g.symbol}</strong></td>
+                <td><span class="badge ${(g.side||'').toLowerCase()}">${g.side}</span></td>
+                <td>${(g.tickets || []).length}</td>
+                <td>${Object.values(g.entry_prices || {}).map(p => p.toFixed(5)).join(', ') || '--'}</td>
+                <td>${g.current_group_sl ? parseFloat(g.current_group_sl).toFixed(5) : '--'}</td>
+                <td>${g.channel_id || '--'}</td>
+                <td>${formatDateTime(g.created_at)}</td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error('Failed to load active positions', err);
+    }
+}
+
+async function refreshAll() {
+    await Promise.all([
+        loadOverview(),
+        loadPnL(30),
+        loadChannels(),
+        loadRecentTrades(),
+        loadActivePositions(),
+    ]);
+}
+
+startAutoRefresh(refreshAll, 30000);
+</script>
+{% endblock %}

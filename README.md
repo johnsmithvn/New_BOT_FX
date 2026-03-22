@@ -335,8 +335,51 @@ Edit `config/channels.json`:
 - Breakeven, trailing stop, and partial close rules per channel
 - See `config/channels.example.json` for all available options
 
+## 📊 Analytics Dashboard
+
+Separate web dashboard for visualizing trade performance, PnL, and channel analytics.
+
+### Quick Start
+
+```bash
+# Install dashboard dependencies
+pip install fastapi uvicorn jinja2
+
+# Run from project root
+python -m dashboard.dashboard
+```
+
+Open `http://localhost:8000`
+
+### Pages
+
+| Page | URL | Content |
+|------|-----|---------|
+| **Overview** | `/` | PnL cards, daily PnL chart, top channels, recent trades, active positions |
+| **Channels** | `/channels` | Per-channel cards (PnL, win rate, avg), comparison chart |
+| **Trades** | `/trades` | Filterable table (date, symbol, channel, outcome), pagination |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DASHBOARD_DB_PATH` | `data/bot.db` | Path to SQLite database |
+| `DASHBOARD_API_KEY` | _(empty)_ | API key for `/api/*` endpoints |
+| `DASHBOARD_PORT` | `8000` | Server port |
+| `DASHBOARD_HOST` | `0.0.0.0` | Bind address |
+
+### Deploy on VPS
+
+```bash
+DASHBOARD_DB_PATH=/path/to/data/bot.db \
+DASHBOARD_API_KEY=your_secret_key \
+python -m dashboard.dashboard
+```
+
+> 📖 Full documentation: [dashboard/docs/DASHBOARD.md](dashboard/docs/DASHBOARD.md)
+
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.10.0**
+Current: **v0.12.0**

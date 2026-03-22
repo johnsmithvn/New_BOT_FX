@@ -1,8 +1,8 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P10.1 - Edit & Delete Message Handling`
-- Status: `planned`
+- Phase: `P11 - Web Analytics Dashboard`
+- Status: `complete`
 
 ## Execution Phases
 
@@ -148,31 +148,43 @@
 - v0.9.0: channel-driven strategy architecture (P9)
 - v0.10.0: smart signal group management (P10) + restart recovery
 - v0.10.1: codebase audit cleanup (dead code, swallowed exceptions, outdated docs)
+- v0.11.0: edit & delete message handling (P10.1) — group-aware cancel, MessageDeleted listener
+- v0.12.0: web analytics dashboard (P11) — FastAPI + Jinja2 + Chart.js, 3 pages, 7 API endpoints
 
 ### Upcoming
 
-#### P10.1 — Edit & Delete Message Handling (Production Safety)
-- **Why**: Production cần — hiện tại edit message chạy lại pipeline từ đầu, delete message không được lắng nghe. Khi có group, cần quyết định: cancel cả group hay chỉ pending orders?
+#### P12 — Dashboard Enhancement
+- **Why**: UX improvements cho dashboard MVP
+- **Scope**: ~300 LOC, low risk
+- **Deliverables**:
+  - Channel name mapping (channel ID → human-readable name từ `channels.json`)
+  - Equity curve chart (cumulative PnL theo thời gian)
+  - Win rate by symbol chart
+  - Export trades to CSV
+  - Basic auth (DASHBOARD_PASSWORD env var)
+
+#### P13 — Bot Hardening & Reliability
+- **Why**: Production stability — giảm downtime, xử lý edge cases
 - **Scope**: ~200 LOC, medium risk
 - **Deliverables**:
-  - Làm rõ edit flow: khi signal đã tạo group → skip re-parse hay cancel group?
-  - Thêm `MessageDeleted` listener → auto cancel tất cả orders trong group
-  - Update `message_update_handler.py` cho group-aware logic
-  - Guard: nếu group có orders đã fill → chỉ cancel pending, không đóng filled
+  - Circuit breaker cho MT5 connection (reconnect logic)
+  - Retry on order failure with backoff
+  - Health check endpoint (uptime, last signal, MT5 status)
+  - Structured logging improvements
 
-#### P11 — Web Analytics Dashboard
-- **Why**: Cần trực quan hóa PnL, win/loss, per-channel performance
-- **Scope**: New feature lớn, ~1500+ LOC
-- **Deliverables**:
-  - FastAPI backend — API endpoints cho trade data, group stats, channel metrics
-  - Frontend (Next.js hoặc pure HTML) — charts, filters, date range
-  - DB view/aggregation queries trên existing tables
-
-#### P12 — Multi-Account Support
+#### P14 — Multi-Account Support
 - **Why**: Chạy nhiều account broker từ 1 bot instance
-- **Scope**: Architecture change, cần careful planning
-- **Deliverables**: TODO — cần spec sau khi P11 xong
+- **Scope**: Architecture change lớn, ~800+ LOC, high risk
+- **Deliverables**:
+  - Account config trong settings (list of MT5 accounts)
+  - Per-account TradeExecutor instances
+  - Per-account risk sizing
+  - Dashboard: per-account filtering
 
 ### Deferred
 - Parser overrides per detector (no concrete need yet)
+- WebSocket live updates for dashboard (polling 30s đủ dùng)
+- Dockerize dashboard
+- Mobile PWA
+- Migrate SQLite → PostgreSQL
 

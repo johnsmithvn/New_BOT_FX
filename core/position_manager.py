@@ -1148,6 +1148,101 @@ class PositionManager:
                 remaining_orders=len(open_positions),
             )
 
+    # ── P10.1: Edit/Delete Group Support ──────────────────────────
+
+    def cancel_group_pending_orders(
+        self,
+        fingerprint: str,
+        executor=None,
+    ) -> dict:
+        """Cancel all PENDING orders in a group. Leave filled positions.
+
+        Used when signal is edited or deleted — cancel unfilled orders
+        only, keep filled (running) positions untouched.
+
+        Args:
+            fingerprint: Group fingerprint
+            executor: TradeExecutor instance for cancel_order()
+
+        Returns:
+            {
+                "found": bool,
+                "cancelled": [ticket, ...],
+                "filled_kept": [ticket, ...],
+                "group_completed": bool,
+            }
+        """
+        result: dict = {
+            "found": False,
+            "cancelled": [],
+            "filled_kept": [],
+            "group_completed": False,
+        }
+
+        group = self._groups.get(fingerprint)
+        if not group or group.status != GroupStatus.ACTIVE:
+            return result
+
+        result["found"] = True
+
+        try:
+            import MetaTrader5 as mt5
+        except ImportError:
+            return result
+
+        for ticket in list(group.tickets):
+            # Check if ticket is a pending order (not yet filled)
+            orders = mt5.orders_get(ticket=ticket)
+            if orders and len(orders) > 0:
+                # Pending order — cancel it
+                if executor:
+                    executor.cancel_order(
+                        ticket=ticket,
+                        fingerprint=fingerprint,
+                    )
+                result["cancelled"].append(ticket)
+
+                # Remove from group tracking
+                group.tickets.remove(ticket)
+                group.entry_prices.pop(ticket, None)
+                self._ticket_to_group.pop(ticket, None)
+            else:
+                # Check if it's a filled position (still open)
+                positions = mt5.positions_get(ticket=ticket)
+                if positions and len(positions) > 0:
+                    result["filled_kept"].append(ticket)
+                else:
+                    # Already closed — remove from tracking
+                    group.tickets.remove(ticket)
+                    group.entry_prices.pop(ticket, None)
+                    self._ticket_to_group.pop(ticket, None)
+
+        # If no tickets remain, complete the group
+        if not group.tickets:
+            self._complete_group(group)
+            result["group_completed"] = True
+
+        # Update DB
+        if self._storage and group.tickets:
+            try:
+                self._storage.update_group_tickets(
+                    fingerprint,
+                    group.tickets,
+                    group.entry_prices,
+                )
+            except Exception:
+                pass
+
+        log_event(
+            "group_pending_cancelled",
+            fingerprint=fingerprint,
+            cancelled=result["cancelled"],
+            filled_kept=result["filled_kept"],
+            group_completed=result["group_completed"],
+        )
+
+        return result
+
     # ── P10: Group Query Methods ─────────────────────────────────
 
     def get_group(self, fingerprint: str) -> OrderGroup | None:

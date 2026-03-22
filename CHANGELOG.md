@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 0.12.0 - 2026-03-21
+
+### Added
+- **P11: Web Analytics Dashboard** — separate FastAPI process for trade analytics
+  - `dashboard/db/queries.py`: Read-only SQL aggregation (overview, daily PnL, channel stats, paginated trades, active groups)
+  - `dashboard/api/routes.py`: 7 REST API endpoints with FastAPI dependency injection
+  - `dashboard/dashboard.py`: FastAPI app with CORS, API key middleware, Jinja2 templates
+  - `dashboard/templates/`: 3 pages — Overview (stat cards, charts), Channels (cards, comparison), Trades (filters, pagination)
+  - `dashboard/static/`: Dark theme CSS (glassmorphism, responsive), Chart.js utilities, auto-refresh 30s
+- New dependencies: `fastapi`, `uvicorn`, `jinja2`
+
+## 0.11.0 - 2026-03-21
+
+### Added
+- **P10.1: MessageDeleted listener** — `telegram_listener.py` now listens for `events.MessageDeleted`, forwarding to `_process_delete()` which cancels pending orders from deleted signals
+- **P10.1: `cancel_group_pending_orders()`** — new PositionManager method to cancel all unfilled pending orders in a group while keeping filled positions running
+- **P10.1: `CANCEL_GROUP_PENDING` action** — new UpdateAction in `MessageUpdateHandler` for signals with mixed state (some filled, some pending)
+
+### Changed
+- **`message_update_handler.py`** — `handle_edit()` now accepts `has_filled_orders` param; uses MT5 position check instead of blind CANCEL_ORDER; removed stale TODO
+- **`main.py`** `_process_edit()` — group-aware: checks PositionManager for filled orders before deciding action; routes to `cancel_group_pending_orders()` for groups
+- **`telegram_listener.py`** — added `DeleteCallback` type, `set_delete_callback()`, and `events.MessageDeleted` handler registration
+
 ## 0.10.1 - 2026-03-21
 
 ### Fixed

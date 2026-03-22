@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Channels — Forex Bot Dashboard{% endblock %}
+{% block nav_channels %}active{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Channel Performance</h1>
+
+<!-- Channel Cards -->
+<div class="channel-grid" id="channel-grid">
+    <div class="loading">
+        <div class="loading-spinner"></div> Loading channels...
+    </div>
+</div>
+
+<!-- Channel Comparison Chart -->
+<div class="chart-container">
+    <div class="chart-header">
+        <span class="chart-title">P&L by Channel</span>
+    </div>
+    <div class="chart-canvas" style="height:350px;">
+        <canvas id="channel-compare-chart"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let compareChart = null;
+
+function renderChannelCard(ch) {
+    const pnl = parseFloat(ch.total_pnl || 0);
+    const total = ch.total_trades || 0;
+    const wins = ch.wins || 0;
+    const losses = ch.losses || 0;
+    const winRate = total > 0 ? (wins / total * 100).toFixed(1) : 0;
+    const avg = parseFloat(ch.avg_pnl || 0);
+
+    return `
+    <div class="channel-card">
+        <div class="channel-header">
+            <div class="channel-name">${ch.channel_id || 'Unknown'}</div>
+            <div class="channel-pnl ${pnlClass(pnl)}">${formatPnL(pnl)}</div>
+        </div>
+        <div class="channel-stats">
+            <div>
+                <div class="channel-stat-label">Trades</div>
+                <div class="channel-stat-value">${total}</div>
+            </div>
+            <div>
+                <div class="channel-stat-label">Win Rate</div>
+                <div class="channel-stat-value">${winRate}%</div>
+            </div>
+            <div>
+                <div class="channel-stat-label">Wins / Losses</div>
+                <div class="channel-stat-value">
+                    <span style="color:var(--green)">${wins}</span>
+                    /
+                    <span style="color:var(--red)">${losses}</span>
+                </div>
+            </div>
+            <div>
+                <div class="channel-stat-label">Avg P&L</div>
+                <div class="channel-stat-value ${pnlClass(avg)}">${formatPnL(avg)}</div>
+            </div>
+        </div>
+        <div class="win-loss-bar">
+            <div class="win-loss-fill" style="width:${winRate}%"></div>
+        </div>
+    </div>
+    `;
+}
+
+async function loadChannelCards() {
+    try {
+        const data = await API.get('/channels');
+        const grid = document.getElementById('channel-grid');
+        setStatus(true);
+
+        if (!data || data.length === 0) {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📡</div>
+                    <p>No channel data yet</p>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = data.map(renderChannelCard).join('');
+
+        // Comparison chart
+        const labels = data.map(c => c.channel_id || 'Unknown');
+        const values = data.map(c => parseFloat(c.total_pnl || 0));
+
+        if (compareChart) compareChart.destroy();
+        compareChart = createChannelBarChart('channel-compare-chart', labels, values);
+
+        updateLastRefresh();
+    } catch (err) {
+        setStatus(false);
+        document.getElementById('channel-grid').innerHTML =
+            '<div class="error-msg">Failed to load channel data</div>';
+    }
+}
+
+startAutoRefresh(loadChannelCards, 30000);
+</script>
+{% endblock %}
