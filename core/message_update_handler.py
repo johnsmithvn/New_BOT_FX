@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from core.models import ParsedSignal, ParseFailure
 from core.signal_parser.parser import SignalParser

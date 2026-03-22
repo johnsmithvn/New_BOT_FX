@@ -193,14 +193,20 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 │   ├── circuit_breaker.py       # CLOSED/OPEN/HALF_OPEN trade safety
 │   ├── daily_risk_guard.py      # Poll-based daily risk limits (MT5 deal history)
 │   ├── exposure_guard.py        # Per-symbol + correlation group limits
-│   ├── position_manager.py      # Breakeven, trailing stop, partial close (per-channel)
+│   ├── position_manager.py      # Breakeven, trailing stop, partial close, P10 group management
 │   ├── channel_manager.py       # Per-channel rule configuration
 │   ├── trade_tracker.py         # Background deal polling, PnL tracking, reply messages
 │   ├── command_parser.py        # Management command parser
 │   ├── command_executor.py      # Execute management commands vs MT5
 │   ├── order_lifecycle_manager.py # Pending order TTL expiration
 │   ├── mt5_watchdog.py          # Connection health monitor
-│   └── message_update_handler.py # MessageEdited handling
+│   ├── message_update_handler.py # MessageEdited handling
+│   ├── pipeline.py              # Sole execution orchestrator (v0.9.0)
+│   ├── entry_strategy.py        # Multi-entry plan engine (v0.9.0)
+│   ├── signal_state_manager.py  # Active signal lifecycle tracking (v0.9.0)
+│   ├── range_monitor.py         # Background price-cross re-entry (v0.9.0)
+│   ├── reply_action_parser.py   # Reply command parser (v0.8.0)
+│   └── reply_command_executor.py # Per-ticket reply execution (v0.8.0)
 ├── utils/
 │   ├── logger.py                # Structured JSON logging
 │   └── symbol_mapper.py         # Symbol alias resolution
@@ -226,10 +232,12 @@ Telegram NewMessage
   → storage.is_duplicate()
   → signal_validator.validate(price, spread, positions, age, distance)
   → risk_manager.calculate_volume()
-  → order_builder.decide_order_type() + build_request()
-  → validator.validate_entry_drift() [MARKET orders only]
-  → trade_executor.execute() [or DRY_RUN simulate]
-  → storage.store_signal() + store_order() + store_event(channel_id)
+  → pipeline.execute_signal_plans()  [P9: multi-order orchestrator]
+    → entry_strategy.plan_entries() → 1..N entry plans
+    → for each plan: order_builder.decide_order_type() + build_request()
+    → trade_executor.execute() [or DRY_RUN simulate]
+    → position_manager.register_group() [P10: group tracking]
+  → storage.store_signal() + store_order() + store_event()
 ```
 
 ### Background Tasks
@@ -240,8 +248,13 @@ TradeTracker: poll MT5 history_deals_get()
   → partial close throttle (60s cooldown)
 
 PositionManager: poll open positions
-  → per-channel rules from channels.json
+  → P10: route to group management or individual management
+  → group: coordinated SL (zone/trail/signal), auto-BE on partial close
+  → individual: per-channel rules from channels.json
   → breakeven / trailing stop / partial close
+
+RangeMonitor: background price-cross re-entry (P9)
+  → callback to pipeline.handle_reentry()
 
 Heartbeat: per-channel metrics breakdown
 ```
@@ -273,8 +286,8 @@ To process signals from multiple Telegram channels with per-channel rules:
    ```
    When enabled, the bot polls MT5 deal history, tracks PnL, and replies under the original Telegram signal.
 
-4. **Reply-Based Signal Management** (v0.8.0) — automatically enabled. When a channel admin replies to a signal with:
-   - `close` / `exit` / `đóng` → closes all positions from that signal
+4. **Reply-Based Signal Management** (v0.8.0, enhanced v0.10.0) — automatically enabled. When a channel admin replies to a signal with:
+   - `close` / `exit` / `đóng` → closes all positions (or selective close if P10 strategy configured)
    - `SL 2035` / `move sl 2035` → moves SL on all positions from that signal
    - `TP 2045` / `move tp 2045` → moves TP on all positions from that signal
    - `BE` / `breakeven` → moves SL to entry price
@@ -304,10 +317,17 @@ Edit `core/signal_parser/detectors/`:
 
 ### Changing Trade Entry Strategy
 
+Edit `config/channels.json` → `strategy` section per channel:
+- `mode`: `single` (1 order), `range` (N orders across zone), `scale_in` (stepped re-entries)
+- `max_entries`: max orders per signal
+- `volume_split`: `equal`, `pyramid`, `risk_based`
+
+### Changing Order Type Decision
+
 Edit `core/order_builder.py`:
-- `_determine_order_type()` — controls MARKET vs LIMIT vs STOP order selection
-- `_calculate_lot_size()` — risk-based lot sizing
-- `build()` — assembles the final MT5 order request
+- `decide_order_type()` — controls MARKET vs LIMIT vs STOP order selection
+- `order_types_allowed` — filter STOP orders when not desired
+- `build_request()` — assembles the final MT5 order request
 
 ### Per-Channel Configuration
 
@@ -319,4 +339,4 @@ Edit `config/channels.json`:
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.8.0**
+Current: **v0.10.0**

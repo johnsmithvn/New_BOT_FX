@@ -95,10 +95,6 @@ class ChannelManager:
                 error=str(exc),
             )
 
-    def is_known_channel(self, chat_id: str) -> bool:
-        """Check if a channel has explicit configuration."""
-        return str(chat_id) in self._channels
-
     def get_channel_name(self, chat_id: str) -> str:
         """Get human-readable channel name."""
         channel = self._channels.get(str(chat_id), {})
@@ -158,10 +154,6 @@ class ChannelManager:
         Empty dict means: use global .env settings.
         """
         return self._get_section(chat_id, "validation", self._default_validation)
-
-    def get_all_channel_ids(self) -> list[str]:
-        """Return all configured channel IDs."""
-        return list(self._channels.keys())
 
     def reload(self) -> None:
         """Hot-reload configuration from disk.

@@ -688,8 +688,15 @@ class Bot:
                         pip_size = point * 10  # XAU: 0.01*10=0.1
                     else:
                         pip_size = point * 10  # EUR: 0.00001*10=0.0001
-            except Exception:
-                pass
+            except Exception as exc:
+                log_event(
+                    "pip_size_lookup_failed",
+                    symbol=signal_obj.symbol,
+                    error=str(exc),
+                )
+                # Fallback: assume 5-digit broker defaults
+                point = 0.00001
+                pip_size = 0.0001
 
             tick = self.executor.get_tick(signal_obj.symbol)
             current_price = None

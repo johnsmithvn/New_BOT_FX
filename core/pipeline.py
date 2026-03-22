@@ -29,7 +29,6 @@ Design note:
 
 from __future__ import annotations
 
-import json
 import time
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
@@ -39,10 +38,7 @@ from core.models import (
     EntryPlan,
     OrderKind,
     ParsedSignal,
-    Side,
-    SignalLifecycle,
     SignalState,
-    SignalStatus,
     order_fingerprint,
 )
 from utils.logger import log_event

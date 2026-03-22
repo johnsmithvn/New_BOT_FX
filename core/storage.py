@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from core.models import ParsedSignal, SignalStatus
@@ -655,16 +655,6 @@ class Storage:
             "DELETE FROM active_signals WHERE fingerprint = ?",
             (fingerprint,),
         )
-
-    def expire_active_signals(self) -> int:
-        """Mark expired signals and return count."""
-        cursor = self._execute_with_retry(
-            """UPDATE active_signals
-               SET status = 'expired'
-               WHERE status IN ('pending', 'partial')
-                 AND datetime(expires_at) < datetime('now')""",
-        )
-        return cursor.rowcount
 
     # ── P10: Signal Group Persistence ──────────────────────────────
 

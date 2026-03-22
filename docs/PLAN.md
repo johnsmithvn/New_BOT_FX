@@ -1,8 +1,8 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P10 - Smart Signal Group Management`
-- Status: `complete`
+- Phase: `P10.1 - Edit & Delete Message Handling`
+- Status: `planned`
 
 ## Execution Phases
 
@@ -147,6 +147,7 @@
 - v0.8.0: reply-based signal management (reply to signal → close/SL/TP/BE on specific trade)
 - v0.9.0: channel-driven strategy architecture (P9)
 - v0.10.0: smart signal group management (P10) + restart recovery
+- v0.10.1: codebase audit cleanup (dead code, swallowed exceptions, outdated docs)
 
 ### Upcoming
 

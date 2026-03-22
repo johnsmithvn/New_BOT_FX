@@ -108,5 +108,8 @@ class CircuitBreaker:
         for cb in self._on_state_change:
             try:
                 cb(old_state, new_state)
-            except Exception:
-                pass
+            except Exception as exc:
+                log_event(
+                    "circuit_breaker_callback_error",
+                    error=str(exc),
+                )

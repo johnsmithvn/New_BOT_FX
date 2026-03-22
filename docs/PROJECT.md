@@ -2,7 +2,7 @@
 
 ## Project Overview
 - Name: `telegram-mt5-bot`
-- Version: `v0.9.0`
+- Version: `v0.10.0`
 - Goal: Run a low-latency Python bot that reads Telegram trading signals and executes MT5 orders safely.
 - Scope: Single-process runtime, signal-to-trade automation, operational reliability, channel-driven multi-order strategy.
 
@@ -71,6 +71,12 @@ Signal trace must be possible using a unique signal fingerprint across logs and 
   - Signal state machine: PENDING → PARTIAL → COMPLETED → EXPIRED
   - Background price-cross re-entry monitor with debounce
   - Order fingerprint v2: `base_fp:L{N}` for multi-order linking
+- Smart signal group management (v0.10.0):
+  - Every signal = 1 managed order group
+  - Group trailing SL, zone SL, multi-source SL calculation
+  - Selective close via reply (highest/lowest entry, oldest)
+  - Auto-breakeven after partial group close
+  - DB persistence for restart recovery
 
 ## Users
 - Primary: Solo or small-team discretionary traders using Telegram signal channels.

@@ -219,9 +219,3 @@ class RangeMonitor:
         last = self._last_trigger.get(key, 0.0)
         return (time.time() - last) < self._debounce_seconds
 
-    def cleanup_debounce(self) -> None:
-        """Remove stale debounce entries (older than 2x debounce_seconds)."""
-        cutoff = time.time() - (self._debounce_seconds * 2)
-        stale = [k for k, v in self._last_trigger.items() if v < cutoff]
-        for k in stale:
-            del self._last_trigger[k]

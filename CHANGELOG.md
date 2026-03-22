@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.10.1 - 2026-03-21
+
+### Fixed
+- **Swallowed exception** in `main.py:691` — pip_size calculation now logs warning + uses fallback instead of `except: pass`
+- **Swallowed exception** in `circuit_breaker.py:111` — state change callback errors now logged instead of silently ignored
+
+### Removed
+- 6 unused imports: `field` (settings.py), `Settings` TYPE_CHECKING (command_executor.py), `timezone` (message_update_handler.py, storage.py), `json`/`Side`/`SignalLifecycle`/`SignalStatus` (pipeline.py)
+- 5 dead functions (grep-verified 0 callers): `check_symbol()` (trade_executor.py), `cleanup_debounce()` (range_monitor.py), `expire_active_signals()` (storage.py), `is_known_channel()` + `get_all_channel_ids()` (channel_manager.py)
+
+### Changed
+- **README.md**: Updated to v0.10.0, added P9/P10 modules to project structure, updated pipeline flow, reply docs, customization guide
+- **PROJECT.md**: Updated to v0.10.0, added P10 group management features
+- **ROADMAP.md**: Added R8 milestone (Smart Signal Group Management)
+
 ## 0.10.0 - 2026-03-21
 
 ### Added
