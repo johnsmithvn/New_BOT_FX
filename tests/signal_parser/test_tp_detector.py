@@ -14,10 +14,11 @@ class TestTpDetector:
         assert detect("TP: 2050") == [2050.0]
 
     def test_tp_without_colon(self):
-        # "TP 2050" → TP pattern matches, but captures '2050'
-        # Verify the value is captured (regardless of how regex groups)
+        # "TP 2050" is ambiguous: numbered pattern TP(\d) captures "2" as
+        # TP index, leaving "050" = 50.0 as the price. Use "TP: 2050" for
+        # correct single-TP detection. This documents real regex behavior.
         result = detect("TP 2050")
-        assert 2050.0 in result or 50.0 in result  # depends on regex capture group
+        assert result == [50.0]
 
     def test_numbered_tps_ordered(self):
         text = "TP1: 2040\nTP2: 2050\nTP3: 2060"

@@ -139,8 +139,8 @@ describe('resolveChannelName', () => {
     expect(resolveChannelName('', channelMap)).toBe('—');
   });
 
-  it('returns shortened ID when map value equals stringified ID', () => {
-    // channelMap['456'] = '456' (same as ID), so fallback to shortened
+  it('returns full ID when map value equals stringified ID (no shortening for short IDs)', () => {
+    // channelMap['456'] = '456' (same as ID), but since the ID is short it is returned as-is
     expect(resolveChannelName('456', channelMap)).toBe('456');
   });
 });

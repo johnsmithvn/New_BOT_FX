@@ -1,6 +1,21 @@
 # TASKS
 
 ## Current Phase
+- `Codex + Copilot Review Fixes` ✅ COMPLETE (v0.16.6)
+
+### v0.16.6 — Code Review Fixes (Codex P1 + P2, Copilot #2-#6)
+- [x] P1: Add `signalStatusCounts` to `api/client.js`
+- [x] P2: Extract `Overview.helpers.js` + `Analytics.helpers.js`
+- [x] P2: Wire JSX components to import helpers
+- [x] P2: Update tests to import from production helpers
+- [x] Copilot #2: Remove unused `ValidationResult` import
+- [x] Copilot #3: Fix permissive TP test assertion
+- [x] Copilot #4: Fix word boundary test + comment
+- [x] Copilot #5: Simplify client.test.js import
+- [x] Copilot #6: Fix misleading test title
+- [x] **Verified: 249 Python + 130 JS tests pass**
+
+## Previous Phases
 - `Bot System Unit Tests` ✅ COMPLETE (v0.16.5)
 
 ### v0.16.5 — Bot System Unit Tests (Python)

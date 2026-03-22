@@ -1,4 +1,19 @@
 # CHANGELOG
+## 0.16.6 - 2026-03-22
+
+### Fixed
+- **P1** `signalStatusCounts` method added to `dashboard-v2/src/api/client.js` — previously missing, causing runtime undefined error
+- **P2** Extracted inline transforms from `Overview.jsx` → `Overview.helpers.js` and `Analytics.jsx` → `Analytics.helpers.js` — tests now import production code (single source of truth)
+- Removed unused `ValidationResult` import in `test_signal_validator.py`
+- Fixed permissive TP assertion in `test_tp_detector.py` (now exact value)
+- Added word boundary test for `detect("BUYING GOLD")` in `test_side_detector.py`
+- Simplified `client.test.js` to static import (removed unnecessary dynamic import)
+- Fixed misleading test title in `format.test.js` for `resolveChannelName`
+
+### Added
+- `dashboard-v2/src/pages/Overview.helpers.js` — extracted page transforms
+- `dashboard-v2/src/pages/Analytics.helpers.js` — extracted page transforms
+
 ## 0.16.5 - 2026-03-22
 
 ### Added

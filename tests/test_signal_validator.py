@@ -6,7 +6,7 @@ Unit tests for core/signal_validator.py — signal safety validation.
 
 from datetime import datetime, timezone, timedelta
 
-from core.signal_validator import SignalValidator, ValidationResult
+from core.signal_validator import SignalValidator
 from core.models import ParsedSignal, Side
 
 

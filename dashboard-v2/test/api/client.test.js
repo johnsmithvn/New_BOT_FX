@@ -1,17 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { api } from '../../src/api/client.js';
 
 /* ─── Module-level mocks must be set before importing ───── */
 beforeEach(() => {
   localStorage.clear();
-});
-
-// We dynamically import the module so localStorage mock is ready
-let api;
-beforeEach(async () => {
   vi.restoreAllMocks();
-  // Reset module cache so each test gets a clean import
-  const mod = await import('../../src/api/client.js');
-  api = mod.api;
 });
 
 /* ─── fetchApi internal behavior (tested through api methods) ─── */

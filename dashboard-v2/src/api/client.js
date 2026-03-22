@@ -60,6 +60,7 @@ export const api = {
   // Signal Lifecycle
   signals:         (params = {})          => fetchApi('/signals', params),
   signalDetail:    (fp)                   => fetchApi(`/signals/${encodeURIComponent(fp)}`),
+  signalStatusCounts: ()                  => fetchApi('/signal-status-counts'),
   deleteSignal:    (fp)                   => fetchApi(`/signals/${encodeURIComponent(fp)}`, {}, { method: 'DELETE' }),
   deleteOrder:     (id)                   => fetchApi(`/orders/${id}`, {}, { method: 'DELETE' }),
   deleteTrade:     (id)                   => fetchApi(`/trades/${id}`, {}, { method: 'DELETE' }),

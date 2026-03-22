@@ -45,7 +45,7 @@ class TestSideDetector:
         assert detect("BUY SELL") == "BUY"
 
     def test_word_boundary(self):
-        # "BUYING" should not match — \bBUY\b requires word boundary
-        # Note: "BUYING" contains "BUY" at start, regex \bBUY\b will match
-        # because BUY is followed by word char I. Let's test actual boundaries.
+        # BUY should match only as a whole word
         assert detect("XAUUSD BUY 2030") == "BUY"
+        # BUYING should NOT match when using \bBUY\b word boundary
+        assert detect("BUYING GOLD 2030") is None

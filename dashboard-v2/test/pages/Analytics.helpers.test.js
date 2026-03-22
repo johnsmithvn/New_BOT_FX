@@ -1,33 +1,15 @@
 /**
  * Tests for data transformation functions used in Analytics.jsx.
  *
- * These functions are inlined in the page component, so we extract/replicate
- * the logic here for unit testing.
+ * Imports the PRODUCTION helpers (single source of truth).
  */
 import { describe, it, expect } from 'vitest';
-
-/* ═══════════════════════════════════════════════════════════════
-   Extracted logic: WinLossStackedBars — weekly aggregation
-   Source: Analytics.jsx — WinLossStackedBars component (useMemo)
-   ═══════════════════════════════════════════════════════════════ */
-function aggregateWeekly(data) {
-  if (!data.length) return [];
-  const weeks = {};
-  data.forEach(d => {
-    const parts = d.date.split('-');
-    const dt = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
-    const day = dt.getUTCDay();
-    const diff = dt.getUTCDate() - day + (day === 0 ? -6 : 1);
-    dt.setUTCDate(diff);
-    const weekStart = dt.toISOString().slice(0, 10);
-    if (!weeks[weekStart]) weeks[weekStart] = { week: weekStart, wins: 0, losses: 0, net: 0 };
-    const pnl = d.net_pnl || 0;
-    if (pnl >= 0) weeks[weekStart].wins += pnl;
-    else weeks[weekStart].losses += Math.abs(pnl);
-    weeks[weekStart].net += pnl;
-  });
-  return Object.values(weeks).slice(-12);
-}
+import {
+  aggregateWeekly,
+  buildHistogram,
+  calculateDrawdown,
+  enrichWithCumulative,
+} from '../../src/pages/Analytics.helpers';
 
 describe('aggregateWeekly (Analytics WinLossStackedBars)', () => {
   it('groups by week correctly', () => {
@@ -59,22 +41,6 @@ describe('aggregateWeekly (Analytics WinLossStackedBars)', () => {
   });
 });
 
-/* ═══════════════════════════════════════════════════════════════
-   Extracted logic: PnlDistributionChart — histogram bucketing
-   Source: Analytics.jsx — PnlDistributionChart component
-   ═══════════════════════════════════════════════════════════════ */
-function buildHistogram(data, bucketSize = 50) {
-  const histogram = {};
-  data.forEach(d => {
-    const val = d.net_pnl || d.pnl || 0;
-    const bucket = Math.round(val / bucketSize) * bucketSize;
-    histogram[bucket] = (histogram[bucket] || 0) + 1;
-  });
-  return Object.entries(histogram)
-    .map(([k, v]) => ({ bucket: Number(k), count: v }))
-    .sort((a, b) => a.bucket - b.bucket);
-}
-
 describe('buildHistogram (Analytics PnlDistributionChart)', () => {
   it('buckets data correctly with size 50', () => {
     const data = [
@@ -82,7 +48,7 @@ describe('buildHistogram (Analytics PnlDistributionChart)', () => {
       { net_pnl: 30 },   // bucket 50  (round(30/50)=1 → 50)
       { net_pnl: 60 },   // bucket 50  (round(60/50)=1 → 50)
       { net_pnl: -80 },  // bucket -100 (round(-80/50)=-2 → -100)
-      { net_pnl: 120 },  // bucket 100 (round(120/50)=2 → 100) — actually round(2.4)=2 → 100
+      { net_pnl: 120 },  // bucket 100
     ];
     const result = buildHistogram(data);
     expect(result[0].bucket).toBeLessThan(0);  // -100
@@ -105,20 +71,6 @@ describe('buildHistogram (Analytics PnlDistributionChart)', () => {
     }
   });
 });
-
-/* ═══════════════════════════════════════════════════════════════
-   Extracted logic: DrawdownChart — drawdown calculation
-   Source: Analytics.jsx — DrawdownChart component
-   ═══════════════════════════════════════════════════════════════ */
-function calculateDrawdown(data) {
-  let peak = 0;
-  return data.map(d => {
-    const eq = d.cumulative_pnl || 0;
-    if (eq > peak) peak = eq;
-    const drawdown = peak > 0 ? ((eq - peak) / peak) * 100 : 0;
-    return { date: d.date, drawdown: Math.min(drawdown, 0), equity: eq };
-  });
-}
 
 describe('calculateDrawdown (Analytics DrawdownChart)', () => {
   it('calculates drawdown from peak', () => {
@@ -162,18 +114,6 @@ describe('calculateDrawdown (Analytics DrawdownChart)', () => {
     expect(result[0].equity).toBe(0);
   });
 });
-
-/* ═══════════════════════════════════════════════════════════════
-   Extracted logic: TradingActivity — cumulative count
-   Source: Analytics.jsx — TradingActivity component
-   ═══════════════════════════════════════════════════════════════ */
-function enrichWithCumulative(data) {
-  let cumCount = 0;
-  return data.map(d => {
-    cumCount += (d.trades || 0);
-    return { ...d, cumTrades: cumCount };
-  });
-}
 
 describe('enrichWithCumulative (Analytics TradingActivity)', () => {
   it('adds cumulative trade count', () => {

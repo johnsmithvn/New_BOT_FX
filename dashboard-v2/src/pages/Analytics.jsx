@@ -8,29 +8,11 @@ import {
   ResponsiveContainer, Cell, CartesianGrid, ReferenceLine, LabelList,
   ComposedChart, Line, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
+import { aggregateWeekly, buildHistogram, calculateDrawdown, enrichWithCumulative } from './Analytics.helpers';
 
 /** Stacked Win/Loss bar chart by week/period */
 function WinLossStackedBars({ data = [] }) {
-  // Group by week showing wins and losses as stacked bars
-  const weekly = useMemo(() => {
-    if (!data.length) return [];
-    const weeks = {};
-    data.forEach(d => {
-      // Parse YYYY-MM-DD as UTC to avoid timezone shifts
-      const parts = d.date.split('-');
-      const dt = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
-      const day = dt.getUTCDay();
-      const diff = dt.getUTCDate() - day + (day === 0 ? -6 : 1);
-      dt.setUTCDate(diff);
-      const weekStart = dt.toISOString().slice(0, 10);
-      if (!weeks[weekStart]) weeks[weekStart] = { week: weekStart, wins: 0, losses: 0, net: 0 };
-      const pnl = d.net_pnl || 0;
-      if (pnl >= 0) weeks[weekStart].wins += pnl;
-      else weeks[weekStart].losses += Math.abs(pnl);
-      weeks[weekStart].net += pnl;
-    });
-    return Object.values(weeks).slice(-12);
-  }, [data]);
+  const weekly = useMemo(() => aggregateWeekly(data), [data]);
 
   if (!weekly.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No data</p>;
 
@@ -55,16 +37,7 @@ function WinLossStackedBars({ data = [] }) {
 function PnlDistributionChart({ data = [] }) {
   if (!data.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No data</p>;
 
-  const bucketSize = 50;
-  const histogram = {};
-  data.forEach(d => {
-    const val = d.net_pnl || d.pnl || 0;
-    const bucket = Math.round(val / bucketSize) * bucketSize;
-    histogram[bucket] = (histogram[bucket] || 0) + 1;
-  });
-  const sorted = Object.entries(histogram)
-    .map(([k, v]) => ({ bucket: Number(k), count: v }))
-    .sort((a, b) => a.bucket - b.bucket);
+  const sorted = useMemo(() => buildHistogram(data, 50), [data]);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -91,14 +64,7 @@ function PnlDistributionChart({ data = [] }) {
 function DrawdownChart({ data = [] }) {
   if (!data.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No data</p>;
 
-  let peak = 0;
-  const dd = data.map(d => {
-    const eq = d.cumulative_pnl || 0;
-    if (eq > peak) peak = eq;
-    const drawdown = peak > 0 ? ((eq - peak) / peak) * 100 : 0;
-    return { date: d.date, drawdown: Math.min(drawdown, 0), equity: eq };
-  });
-
+  const dd = useMemo(() => calculateDrawdown(data), [data]);
   const maxDD = Math.min(...dd.map(d => d.drawdown));
 
   return (
@@ -157,11 +123,7 @@ function SymbolWinLossCompare({ data = [] }) {
 function TradingActivity({ data = [] }) {
   if (!data.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No data</p>;
 
-  let cumCount = 0;
-  const enriched = data.map(d => {
-    cumCount += (d.trades || 0);
-    return { ...d, cumTrades: cumCount };
-  });
+  const enriched = useMemo(() => enrichWithCumulative(data), [data]);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
