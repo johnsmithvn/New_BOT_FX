@@ -268,6 +268,8 @@ def api_delete_signal(
 ) -> dict:
     """Delete signal and all related data (cascade)."""
     counts = db.delete_signal_cascade(fingerprint)
+    if counts.get("signals", 0) == 0:
+        raise HTTPException(status_code=404, detail="Signal not found")
     return {"ok": True, "deleted": counts}
 
 
@@ -278,6 +280,8 @@ def api_delete_order(
 ) -> dict:
     """Delete a single order (and its related trades)."""
     counts = db.delete_order_by_id(order_id)
+    if counts.get("orders", 0) == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
     return {"ok": True, "deleted": counts}
 
 
@@ -288,7 +292,17 @@ def api_delete_trade(
 ) -> dict:
     """Delete a single trade."""
     count = db.delete_trade_by_id(trade_id)
+    if count.get("trades", 0) == 0:
+        raise HTTPException(status_code=404, detail="Trade not found")
     return {"ok": True, "deleted": count}
+
+
+@router.get("/signal-status-counts")
+def api_signal_status_counts(
+    db: DashboardDB = Depends(get_db),
+) -> dict:
+    """Get signal counts grouped by status (for Overview breakdown)."""
+    return db.get_signal_status_counts()
 
 
 # ── Data Management ──────────────────────────────────────────────

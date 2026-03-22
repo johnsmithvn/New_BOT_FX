@@ -7,12 +7,26 @@
 - **CSS `composes: card`**: Replaced invalid CSS Modules syntax with duplicated base styles in plain CSS (`components.css`)
 - **Missing `--bg-card` CSS var**: Added to design system — `SparkCard` no longer renders transparent background
 - **Unused imports**: Removed `PieChart`/`Pie` from `Overview.jsx`, `ChartCard` from `Trades.jsx`
+- **DELETE no-op returns 200**: Signal/order/trade delete now returns 404 when target not found
+- **Settings fake "Connected"**: Connection panel now pings `/api/overview` to check real API reachability (online/offline + auto-refresh 30s)
+- **Signal Breakdown incomplete counts**: Replaced client-side counting (max 100) with dedicated `/api/signal-status-counts` backend endpoint
+- **Analytics timezone parsing**: Weekly aggregation uses UTC date parsing to avoid timezone-related day/week shifts
+- **VITE_API_URL docs misleading**: Corrected default from `/api` to `http://localhost:8000` with note about double `/api/api/` trap
 
 ### Changed
 - **Version consistency**: Synchronized version to `v0.16.1` across all locations:
   - `App.jsx` footer, `Settings.jsx` About panel, `README.md` (root), `dashboard-v2/README.md`
 - **Dependency table**: Corrected `recharts` 2.x → 3.x, `@nivo/core` 0.88.x → 0.99.x, `lucide-react` 0.47x → 0.577+ in `dashboard-v2/README.md`
 - **Root README.md**: Corrected "read-only" claim — V2 supports DELETE operations for test data cleanup; pages 6 → 7
+
+### Added
+- **`/api/signal-status-counts`** backend endpoint + `useSignalStatusCounts` hook for accurate signal breakdown
+- **`.spin` CSS utility** — keyframe animation for Settings refresh button
+
+### Removed
+- **Dead template files**: Deleted `src/App.css` and `src/index.css` (leftover Vite scaffolding, not imported)
+- **Unused `signal` import** in `run.py`
+- **`useSignals({ per_page: 100 })` in Overview** — replaced by backend-counted signal status endpoint
 
 ## 0.16.1 - 2026-03-22
 

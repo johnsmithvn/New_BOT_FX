@@ -16,11 +16,13 @@ function WinLossStackedBars({ data = [] }) {
     if (!data.length) return [];
     const weeks = {};
     data.forEach(d => {
-      // Get ISO week start (Monday)
-      const dt = new Date(d.date);
-      const day = dt.getDay();
-      const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
-      const weekStart = new Date(dt.setDate(diff)).toISOString().slice(0, 10);
+      // Parse YYYY-MM-DD as UTC to avoid timezone shifts
+      const parts = d.date.split('-');
+      const dt = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
+      const day = dt.getUTCDay();
+      const diff = dt.getUTCDate() - day + (day === 0 ? -6 : 1);
+      dt.setUTCDate(diff);
+      const weekStart = dt.toISOString().slice(0, 10);
       if (!weeks[weekStart]) weeks[weekStart] = { week: weekStart, wins: 0, losses: 0, net: 0 };
       const pnl = d.net_pnl || 0;
       if (pnl >= 0) weeks[weekStart].wins += pnl;

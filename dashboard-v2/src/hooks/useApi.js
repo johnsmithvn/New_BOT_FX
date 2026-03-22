@@ -135,3 +135,10 @@ export function useTableCounts() {
   });
 }
 
+export function useSignalStatusCounts() {
+  return useQuery({
+    queryKey: ['signal-status-counts'],
+    queryFn: api.signalStatusCounts,
+    refetchInterval: REFETCH,
+  });
+}

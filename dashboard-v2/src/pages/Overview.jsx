@@ -5,7 +5,7 @@ import ChartCard from '../components/ChartCard';
 import SparkCard from '../components/SparkCard';
 import EquityCurve from '../charts/EquityCurve';
 import WinLossDonut from '../charts/WinLossDonut';
-import { useOverview, useDailyPnl, useEquityCurve, useChannels, useActive, useSignals } from '../hooks/useApi';
+import { useOverview, useDailyPnl, useEquityCurve, useChannels, useActive, useSignalStatusCounts } from '../hooks/useApi';
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, CartesianGrid, LabelList, Legend,
@@ -158,18 +158,8 @@ function WinRateGauge({ winRate = 0, wins = 0, losses = 0 }) {
 /* ═══════════════════════════════════════════════════════════════
    NEW CHART: Signal Breakdown (table card like PLECTO MRR Breakdown)
    ═══════════════════════════════════════════════════════════════ */
-function SignalBreakdown({ signalData }) {
-  const stats = useMemo(() => {
-    const signals = signalData?.signals || [];
-    const counts = { executed: 0, rejected: 0, failed: 0, received: 0, duplicate: 0, active: 0 };
-    signals.forEach(s => {
-      const st = s.status || 'received';
-      if (counts[st] !== undefined) counts[st]++;
-      else counts.received++;
-    });
-    const total = signalData?.total || signals.length;
-    return { ...counts, total };
-  }, [signalData]);
+function SignalBreakdown({ statusCounts }) {
+  const stats = statusCounts || {};
 
   const rows = [
     { label: 'Executed', count: stats.executed, color: '#22c55e', icon: '✅' },
@@ -450,7 +440,7 @@ export default function Overview() {
   const { data: equity, isLoading: eqLoading } = useEquityCurve(365);
   const { data: channels, isLoading: chLoading } = useChannels();
   const { data: active } = useActive();
-  const { data: signalData } = useSignals({ per_page: 100 });
+  const { data: statusCounts } = useSignalStatusCounts();
 
   const [vis, toggleVis] = useChartVisibility();
 
@@ -522,8 +512,8 @@ export default function Overview() {
           </ChartCard>
         )}
         {vis.signalBreakdown && (
-          <ChartCard title="Signal Breakdown" loading={!signalData}>
-            <SignalBreakdown signalData={signalData} />
+          <ChartCard title="Signal Breakdown" loading={!statusCounts}>
+            <SignalBreakdown statusCounts={statusCounts} />
           </ChartCard>
         )}
       </div>

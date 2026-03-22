@@ -696,4 +696,19 @@ class DashboardDB:
         finally:
             conn.close()
 
-
+    def get_signal_status_counts(self) -> dict:
+        """Get signal counts grouped by status (for Overview breakdown)."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) as cnt FROM signals GROUP BY status"
+            ).fetchall()
+            total = 0
+            by_status: dict[str, int] = {}
+            for row in rows:
+                by_status[row["status"]] = row["cnt"]
+                total += row["cnt"]
+            by_status["total"] = total
+            return by_status
+        finally:
+            conn.close()

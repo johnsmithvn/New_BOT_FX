@@ -246,8 +246,11 @@ npx vite preview         # Preview production build locally
 ### Environment Variables
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
-| `VITE_API_URL` | `/api` | API base URL (production only) |
+|----------|---------|---------:|
+| `VITE_API_URL` | `http://localhost:8000` | Backend origin/base URL (no `/api` suffix) |
+
+> **Note:** Set `VITE_API_URL` to the backend origin (e.g., `http://localhost:8000`), *not* to `/api`.
+> The client internally calls `${VITE_API_URL}/api/...`, so `VITE_API_URL=/api` would produce `/api/api/...`.
 
 ---
 

@@ -29,7 +29,6 @@ if _sys.platform == "win32":
         pass
 
 import os
-import signal
 import subprocess
 import sys
 import threading
@@ -87,6 +86,7 @@ def run_dashboard_v2() -> None:
         cwd=str(V2_DIR),
         shell=True,
     )
+    _CHILD_PROCS.append(proc)
     try:
         proc.wait()
     except KeyboardInterrupt:
@@ -101,6 +101,9 @@ def _thread(target, name):
     t = threading.Thread(target=target, name=name, daemon=True)
     t.start()
     return t
+
+
+_CHILD_PROCS: list[subprocess.Popen] = []
 
 
 def run_combo(components: list[str]) -> None:
@@ -128,6 +131,16 @@ def run_combo(components: list[str]) -> None:
             time.sleep(1)
     except KeyboardInterrupt:
         print("\n🛑 Shutting down ...")
+        # Terminate any child subprocesses (e.g. npm dev server)
+        for proc in _CHILD_PROCS:
+            try:
+                proc.terminate()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
         sys.exit(0)
 
 
