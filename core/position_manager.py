@@ -1224,19 +1224,51 @@ class PositionManager:
                 worst_ticket, close_action, dry_run=dry_run,
             )
             closed_ticket = worst_ticket
-
-            # Set BE on remaining
+            worst_entry = group.entry_prices.get(closed_ticket, 0)
             remaining = [t for t in open_tickets if t != worst_ticket]
-            be_action = ReplyAction(action=ReplyActionType.BREAKEVEN)
+
+            # Set BE on remaining: use CLOSED entry as floor + lock
+            # SELL: SL = closed_entry - lock (below worst entry = profit zone)
+            # BUY:  SL = closed_entry + lock (above worst entry = profit zone)
+            symbol_info = mt5.symbol_info(group.symbol)
+            pip_size = symbol_info.point * 10 if symbol_info and symbol_info.point > 0 else 0.1
+            digits = symbol_info.digits if symbol_info else 5
+            lock_pips = getattr(reply_executor, '_reply_be_lock_pips', 1.0)
+            lock_distance = lock_pips * pip_size
+
+            if is_buy:
+                floor_sl = worst_entry + lock_distance
+            else:
+                floor_sl = worst_entry - lock_distance
+            floor_sl = round(floor_sl, digits)
+
             for ticket in remaining:
-                reply_executor.execute(ticket, be_action, dry_run=dry_run)
-                be_tickets.append(ticket)
+                positions = mt5.positions_get(ticket=ticket)
+                if not positions:
+                    continue
+                pos = positions[0]
+                # Guard: only move SL if favorable
+                if is_buy and pos.sl > 0 and floor_sl <= pos.sl:
+                    continue  # BUY: don't move SL down
+                if not is_buy and pos.sl > 0 and floor_sl >= pos.sl:
+                    continue  # SELL: don't move SL up
+                request = {
+                    "action": mt5.TRADE_ACTION_SLTP,
+                    "position": ticket,
+                    "symbol": pos.symbol,
+                    "sl": floor_sl,
+                    "tp": pos.tp,
+                }
+                result = mt5.order_send(request)
+                if result and result.retcode in (10008, 10009):
+                    be_tickets.append(ticket)
 
             log_event(
                 "secure_profit_multi",
                 fingerprint=fingerprint,
                 closed_ticket=closed_ticket,
-                closed_entry=group.entry_prices.get(closed_ticket),
+                closed_entry=worst_entry,
+                floor_sl=floor_sl,
                 be_tickets=be_tickets,
             )
 

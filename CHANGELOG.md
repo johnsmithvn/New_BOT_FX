@@ -18,6 +18,10 @@
 
 ### Fixed
 - **G12b: Reply BE guard** — reply "be" no longer overwrites a better SL. If auto BE already set SL to lock $3, reply "be" (lock $1) will keep the better SL and return info message. (`reply_command_executor.py`)
+- **G4: Secure profit floor SL** — reply "+N pip" now sets remaining SL to closed entry ± lock (group floor) instead of per-position entry ± lock. SELL: closes lowest entry (worst), sets SL = closed_entry - lock for all remaining. Includes SL direction guard. (`position_manager.py`)
+- **G7: sym_info scope** — max re-entry distance guard now fetches symbol_info independently instead of relying on G1's scoped variable. (`pipeline.py`)
+- **G5: docstring** — range_monitor tolerance docstring corrected to match code: BUY = level + tol, SELL = level - tol. (`range_monitor.py`)
+- **G1: cancelled plan leak** — plans skipped by min_sl_distance guard are now marked `cancelled` so RangeMonitor can't trigger them later. (`pipeline.py`)
 
 ### Changed
 - `channels.json` — 8 new config keys:

@@ -309,7 +309,9 @@ class SignalPipeline:
         max_reentry_dist = strategy_config.get("max_reentry_distance_pips", 0)
         if max_reentry_dist > 0:
             try:
-                pip_sz = sym_info.point * 10 if sym_info else 0.1
+                import MetaTrader5 as mt5
+                _sym = mt5.symbol_info(signal_state.symbol)
+                pip_sz = _sym.point * 10 if _sym and _sym.point > 0 else 0.1
             except Exception:
                 pip_sz = 0.1
             ref_price = ask if signal_state.side == Side.BUY else bid
@@ -594,6 +596,7 @@ class SignalPipeline:
                         level=plan.level, sl_distance_pips=round(sl_distance_pips, 1),
                         min_required=min_sl_dist_pips,
                     )
+                    plan.status = "cancelled"  # Prevent RangeMonitor trigger
                     continue  # Skip this plan entirely
 
             if execute_all or plan.order_kind == OrderKind.MARKET or plan.level_id == 0:

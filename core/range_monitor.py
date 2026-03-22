@@ -222,7 +222,7 @@ class RangeMonitor:
         Uses state.last_price as previous reference.
 
         G5: With tolerance, cross detection uses effective_level:
-            effective = level - tol (BUY) or level + tol (SELL)
+            effective = level + tol (BUY) or level - tol (SELL)
             This fires slightly before exact cross.
 
         BUY re-entry: trigger when price drops THROUGH level
