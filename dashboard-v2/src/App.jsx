@@ -6,6 +6,7 @@ import Analytics from './pages/Analytics';
 import Channels from './pages/Channels';
 import Symbols from './pages/Symbols';
 import Trades from './pages/Trades';
+import Signals from './pages/Signals';
 import Settings from './pages/Settings';
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/channels" element={<Channels />} />
             <Route path="/symbols" element={<Symbols />} />
             <Route path="/trades" element={<Trades />} />
+            <Route path="/signals" element={<Signals />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </AnimatePresence>

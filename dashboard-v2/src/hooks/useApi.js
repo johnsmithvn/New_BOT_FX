@@ -110,3 +110,28 @@ export function usePnlDistribution() {
     refetchInterval: 60_000,
   });
 }
+
+export function useSignals(params = {}) {
+  return useQuery({
+    queryKey: ['signals', params],
+    queryFn: () => api.signals(params),
+    refetchInterval: REFETCH,
+  });
+}
+
+export function useSignalDetail(fingerprint) {
+  return useQuery({
+    queryKey: ['signal-detail', fingerprint],
+    queryFn: () => api.signalDetail(fingerprint),
+    enabled: !!fingerprint,
+  });
+}
+
+export function useTableCounts() {
+  return useQuery({
+    queryKey: ['table-counts'],
+    queryFn: api.tableCounts,
+    refetchInterval: 60_000,
+  });
+}
+

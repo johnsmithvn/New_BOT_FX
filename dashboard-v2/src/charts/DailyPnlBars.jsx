@@ -1,11 +1,12 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, ReferenceLine, LabelList } from 'recharts';
 import { PremiumTooltip } from './ChartPrimitives';
+import { tickCcy, tooltipCcy } from '../utils/format';
 
 /** Custom label on top of bars */
 const renderBarLabel = (props) => {
   const { x, y, width, value } = props;
   if (value == null || value === 0) return null;
-  const formatted = Math.abs(value) >= 100 ? `${(value / 1).toFixed(0)}` : value.toFixed(1);
+  const formatted = Math.abs(value) >= 100 ? `${(value / 1).toFixed(0)}` : value.toFixed(1);  // suffix $ added below
   return (
     <text
       x={x + width / 2}
@@ -17,7 +18,7 @@ const renderBarLabel = (props) => {
       fontWeight={600}
       opacity={0.8}
     >
-      ${formatted}
+      {formatted} $
     </text>
   );
 };
@@ -40,12 +41,12 @@ export default function DailyPnlBars({ data = [] }) {
           tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
           axisLine={false}
           tickLine={false}
-          tickFormatter={(v) => `$${v}`}
+          tickFormatter={tickCcy}
           width={60}
         />
         <Tooltip cursor={false} content={
           <PremiumTooltip
-            formatter={(v, name) => `$${v?.toFixed(2)}`}
+            formatter={(v) => tooltipCcy(v)}
           />
         } />
         <ReferenceLine y={0} stroke="rgba(148,163,184,0.15)" />

@@ -7,7 +7,8 @@
 
 const BASE = import.meta.env.VITE_API_URL || '';
 
-async function fetchApi(endpoint, params = {}) {
+async function fetchApi(endpoint, params = {}, options = {}) {
+  const { method = 'GET' } = options;
   const query = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== null && v !== undefined && v !== '') {
@@ -23,7 +24,7 @@ async function fetchApi(endpoint, params = {}) {
     headers['X-API-Key'] = apiKey;
   }
 
-  const res = await fetch(url, { headers });
+  const res = await fetch(url, { method, headers });
 
   if (!res.ok) {
     throw new Error(`API ${res.status}: ${res.statusText}`);
@@ -55,4 +56,16 @@ export const api = {
     const qs = query.toString();
     return `${BASE}/api/export/csv${qs ? `?${qs}` : ''}`;
   },
+
+  // Signal Lifecycle
+  signals:         (params = {})          => fetchApi('/signals', params),
+  signalDetail:    (fp)                   => fetchApi(`/signals/${encodeURIComponent(fp)}`),
+  deleteSignal:    (fp)                   => fetchApi(`/signals/${encodeURIComponent(fp)}`, {}, { method: 'DELETE' }),
+  deleteOrder:     (id)                   => fetchApi(`/orders/${id}`, {}, { method: 'DELETE' }),
+  deleteTrade:     (id)                   => fetchApi(`/trades/${id}`, {}, { method: 'DELETE' }),
+
+  // Data Management
+  tableCounts:     ()                     => fetchApi('/data/counts'),
+  clearTable:      (table)                => fetchApi(`/data/${table}`, {}, { method: 'DELETE' }),
+  clearAll:        ()                     => fetchApi('/data/all', {}, { method: 'DELETE' }),
 };

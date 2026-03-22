@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import ChartCard from '../components/ChartCard';
 import { useTrades, useChannelList, useSymbols } from '../hooks/useApi';
 import { api } from '../api/client';
+import { fmtCcy, buildChannelMap, resolveChannelName } from '../utils/format';
 
 export default function Trades() {
   const [filters, setFilters] = useState({
@@ -16,6 +17,9 @@ export default function Trades() {
   const trades = data?.trades || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / filters.per_page);
+
+  // Build channel name lookup map
+  const channelMap = useMemo(() => buildChannelMap(channelList), [channelList]);
 
   const update = (key, val) => setFilters(f => ({ ...f, [key]: val, page: 1 }));
 
@@ -32,7 +36,7 @@ export default function Trades() {
           <select className="select" value={filters.channel} onChange={e => update('channel', e.target.value)}>
             <option value="">All Channels</option>
             {(channelList || []).map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>{c.name || c.id}</option>
             ))}
           </select>
 
@@ -67,12 +71,12 @@ export default function Trades() {
           <span className="text-muted">{total} trades</span>
           <span>
             Total: <span style={{ color: (data?.total_pnl || 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-              ${(data?.total_pnl || 0).toFixed(2)}
+              {fmtCcy(data?.total_pnl)}
             </span>
           </span>
           <span>
             Avg: <span style={{ color: (data?.avg_pnl || 0) >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-              ${(data?.avg_pnl || 0).toFixed(2)}
+              {fmtCcy(data?.avg_pnl)}
             </span>
           </span>
         </div>
@@ -113,10 +117,12 @@ export default function Trades() {
                     <td>{t.close_price}</td>
                     <td>{t.close_volume}</td>
                     <td style={{ color: t.pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 600 }}>
-                      {t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)}
+                      {t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} $
                     </td>
-                    <td>{t.commission?.toFixed(2)}</td>
-                    <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t.channel_name || t.channel_id?.slice(-6)}</td>
+                    <td>{t.commission?.toFixed(2)} $</td>
+                    <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {resolveChannelName(t.channel_id, channelMap)}
+                    </td>
                     <td style={{ fontSize: '0.75rem' }}>{t.ticket}</td>
                   </tr>
                 ))}

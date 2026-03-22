@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { BarChart3, LayoutDashboard, LineChart, Radio, BookOpen, Settings, Layers } from 'lucide-react';
+import { BarChart3, LayoutDashboard, LineChart, Radio, BookOpen, Settings, Layers, Workflow } from 'lucide-react';
 
 const links = [
   { to: '/',          icon: LayoutDashboard, label: 'Overview' },
@@ -7,6 +7,7 @@ const links = [
   { to: '/channels',  icon: Radio,           label: 'Channels' },
   { to: '/symbols',   icon: Layers,          label: 'Symbols' },
   { to: '/trades',    icon: BookOpen,        label: 'Trades' },
+  { to: '/signals',   icon: Workflow,        label: 'Signals' },
   { to: '/settings',  icon: Settings,        label: 'Settings' },
 ];
 

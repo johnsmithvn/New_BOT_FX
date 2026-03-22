@@ -1,5 +1,42 @@
 # CHANGELOG
 
+## 0.16.0 - 2026-03-22
+
+### Added
+- **Signal Lifecycle page** — new "Signals" tab in Dashboard V2
+  - Expandable table grouping orders under their parent signal (fingerprint)
+  - Filters: channel, symbol, status, date range + pagination
+  - **SignalDetailModal** — full lifecycle popup showing:
+    - Raw signal text from Telegram
+    - Parsed result (symbol, side, entry, SL, TP)
+    - Timeline of all events (received → parsed → executed/rejected → reply → close)
+    - Orders table with status + delete per order
+    - Trade outcomes with PnL
+    - Signal group info
+  - **Cascade delete** — delete signal removes all related orders, trades, events, groups
+  - **Individual order delete** — remove single orders to clean test data
+  - **ConfirmModal** — shared popup component (glassmorphism, type-to-confirm for destructive ops)
+- **Backend API** — 8 new endpoints:
+  - `GET /api/signals` — paginated signal list with aggregated stats
+  - `GET /api/signals/{fp}` — full lifecycle detail
+  - `DELETE /api/signals/{fp}` — cascade delete
+  - `DELETE /api/orders/{id}` — single order delete
+  - `DELETE /api/trades/{id}` — single trade delete
+  - `GET /api/data/counts` — table row counts
+  - `DELETE /api/data/all` — clear all tables
+  - `DELETE /api/data/{table}` — clear specific table
+- **DashboardDB write ops** — added `_connect_rw()` for write operations on read-only DB class
+
+### Changed
+- `dashboard/db/queries.py` — added signal lifecycle queries + delete methods
+- `core/storage.py` — added lifecycle queries + cascade/granular delete methods
+- `dashboard/api/routes.py` — 8 new endpoints
+- `dashboard-v2/src/api/client.js` — added `method` support for DELETE + new API methods
+- `dashboard-v2/src/hooks/useApi.js` — `useSignals`, `useSignalDetail`, `useTableCounts`
+- `dashboard-v2/src/components/Navbar.jsx` — added Signals nav link
+- `dashboard-v2/src/App.jsx` — added `/signals` route
+
+
 ## 0.15.0 - 2026-03-22
 
 ### Added

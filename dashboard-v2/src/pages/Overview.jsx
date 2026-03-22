@@ -9,13 +9,7 @@ import {
   ResponsiveContainer, Cell, CartesianGrid, LabelList, Legend,
 } from 'recharts';
 import { PremiumTooltip } from '../charts/ChartPrimitives';
-
-function fmt(n, prefix = '$') {
-  if (n == null) return `${prefix}0.00`;
-  const abs = Math.abs(n);
-  const str = abs >= 1000 ? `${(abs / 1000).toFixed(1)}K` : abs.toFixed(2);
-  return `${n < 0 ? '-' : ''}${prefix}${str}`;
-}
+import { fmtCcy, tickCcy, tooltipCcy } from '../utils/format';
 
 /** Combo Chart: Daily PnL bars + cumulative line overlay */
 function ComboPnlChart({ dailyData = [], equityData = [] }) {
@@ -51,18 +45,18 @@ function ComboPnlChart({ dailyData = [], equityData = [] }) {
           yAxisId="bar"
           tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
           axisLine={false} tickLine={false}
-          tickFormatter={(v) => `$${v}`}
+          tickFormatter={tickCcy}
           width={55}
         />
         <YAxis
           yAxisId="line" orientation="right"
           tick={{ fill: '#8b5cf6', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}
           axisLine={false} tickLine={false}
-          tickFormatter={(v) => `$${v}`}
+          tickFormatter={tickCcy}
           width={55}
         />
         <Tooltip cursor={false} content={
-          <PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />
+          <PremiumTooltip formatter={(v) => tooltipCcy(v)} />
         } />
         <Legend
           wrapperStyle={{ fontSize: '0.6875rem', color: '#94a3b8' }}
@@ -95,7 +89,7 @@ function MonthlyWinLossGrouped({ data = [] }) {
     if (!data.length) return [];
     const months = {};
     data.forEach(d => {
-      const month = d.date?.slice(0, 7); // "2026-03"
+      const month = d.date?.slice(0, 7);
       if (!month) return;
       if (!months[month]) months[month] = { month, wins: 0, losses: 0 };
       const pnl = d.net_pnl || 0;
@@ -125,24 +119,24 @@ function MonthlyWinLossGrouped({ data = [] }) {
         <YAxis
           tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
           axisLine={false} tickLine={false}
-          tickFormatter={v => `$${v}`}
+          tickFormatter={tickCcy}
           width={55}
         />
-        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => tooltipCcy(v)} />} />
         <Legend wrapperStyle={{ fontSize: '0.6875rem' }} iconType="circle" iconSize={8} />
-        <Bar dataKey="wins" name="Wins $" fill="#22c55e" fillOpacity={0.85} radius={[4, 4, 0, 0]} maxBarSize={28}>
+        <Bar dataKey="wins" name="Wins" fill="#22c55e" fillOpacity={0.85} radius={[4, 4, 0, 0]} maxBarSize={28}>
           <LabelList
             dataKey="wins"
             position="top"
-            formatter={v => v > 0 ? `$${v.toFixed(0)}` : ''}
+            formatter={v => v > 0 ? `${v.toFixed(0)} $` : ''}
             style={{ fill: '#22c55e', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}
           />
         </Bar>
-        <Bar dataKey="losses" name="Losses $" fill="#ef4444" fillOpacity={0.75} radius={[4, 4, 0, 0]} maxBarSize={28}>
+        <Bar dataKey="losses" name="Losses" fill="#ef4444" fillOpacity={0.75} radius={[4, 4, 0, 0]} maxBarSize={28}>
           <LabelList
             dataKey="losses"
             position="top"
-            formatter={v => v > 0 ? `$${v.toFixed(0)}` : ''}
+            formatter={v => v > 0 ? `${v.toFixed(0)} $` : ''}
             style={{ fill: '#ef4444', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}
           />
         </Bar>
@@ -161,14 +155,14 @@ function TopChannelsBars({ channels = [] }) {
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={sorted} layout="vertical" margin={{ top: 5, right: 50, left: 10, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
-        <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
+        <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} axisLine={false} tickLine={false} tickFormatter={tickCcy} />
         <YAxis type="category" dataKey="channel_name" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} width={100} />
-        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => tooltipCcy(v)} />} />
         <Bar dataKey="total_pnl" name="Total PnL" radius={[0, 4, 4, 0]} animationDuration={800} maxBarSize={22}>
           <LabelList
             dataKey="total_pnl"
             position="right"
-            formatter={(v) => `$${v?.toFixed(1)}`}
+            formatter={(v) => `${v?.toFixed(1)} $`}
             style={{ fill: '#94a3b8', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}
           />
           {sorted.map((ch, i) => (
@@ -199,9 +193,6 @@ export default function Overview() {
     (equity || []).slice(-14).map(d => ({ value: d.cumulative_pnl || 0 }))
   , [equity]);
 
-  // Compute commission from overview
-  const commRate = ov.total_trades > 0 ? (ov.total_commission || 0) / ov.total_trades : 0;
-
   return (
     <div className="page-content">
       <div className="page-header">
@@ -213,8 +204,8 @@ export default function Overview() {
       <div className="grid-stats">
         <SparkCard
           title="Net PnL"
-          value={ovLoading ? '...' : fmt(ov.net_pnl)}
-          subtitle={ovLoading ? '' : `Gross: ${fmt(ov.total_pnl)} | Comm: ${fmt(ov.total_commission)}`}
+          value={ovLoading ? '...' : fmtCcy(ov.net_pnl)}
+          subtitle={ovLoading ? '' : `Gross: ${fmtCcy(ov.total_pnl)} | Comm: ${fmtCcy(ov.total_commission)}`}
           color={ov.net_pnl >= 0 ? 'green' : 'red'}
           sparkData={pnlSpark}
           sparkType="bar"
@@ -232,7 +223,7 @@ export default function Overview() {
         <SparkCard
           title="Total Trades"
           value={ovLoading ? '...' : String(ov.total_trades || 0)}
-          subtitle={`Avg: ${fmt(ov.avg_pnl)}`}
+          subtitle={`Avg: ${fmtCcy(ov.avg_pnl)}`}
           color="purple"
           sparkData={pnlSpark}
           sparkType="line"
@@ -255,7 +246,7 @@ export default function Overview() {
         </ChartCard>
       </div>
 
-      {/* ── Combo Chart: Daily PnL bars + Cumulative line overlay (full width) */}
+      {/* ── Combo Chart: Daily PnL bars + Cumulative line ──────── */}
       <div className="full-width">
         <ChartCard
           title="Daily PnL + Cumulative Trend"
@@ -279,7 +270,7 @@ export default function Overview() {
         </ChartCard>
       </div>
 
-      {/* ── Monthly Wins vs Losses (grouped bars, cashflow style) + Donut ── */}
+      {/* ── Monthly Wins vs Losses + Donut ──────────────────────── */}
       <div className="grid-main">
         <ChartCard title="Monthly Performance — Wins vs Losses" loading={dpLoading}>
           <MonthlyWinLossGrouped data={dailyPnl} />

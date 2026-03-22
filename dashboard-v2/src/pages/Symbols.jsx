@@ -2,6 +2,7 @@ import ChartCard from '../components/ChartCard';
 import { useSymbolStats } from '../hooks/useApi';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, LabelList } from 'recharts';
 import { PremiumTooltip } from '../charts/ChartPrimitives';
+import { tickCcy, tooltipCcy } from '../utils/format';
 
 function SymbolTable({ data }) {
   if (!data?.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No symbol data</p>;
@@ -33,10 +34,10 @@ function SymbolTable({ data }) {
                 </div>
               </td>
               <td style={{ color: s.total_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                ${s.total_pnl?.toFixed(2)}
+                {s.total_pnl?.toFixed(2)} $
               </td>
               <td style={{ color: s.avg_pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                ${s.avg_pnl?.toFixed(2)}
+                {s.avg_pnl?.toFixed(2)} $
               </td>
               <td>
                 <span style={{ color: 'var(--accent-green)' }}>{s.wins}</span>
@@ -97,11 +98,11 @@ export default function Symbols() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={symbols} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
+                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={tickCcy} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11 }} width={80} axisLine={false} tickLine={false} />
-                <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => tooltipCcy(v)} />} />
                 <Bar dataKey="total_pnl" name="PnL" radius={[0, 4, 4, 0]} maxBarSize={22}>
-                  <LabelList dataKey="total_pnl" position="right" formatter={v => `$${v?.toFixed(1)}`} style={{ fill: '#94a3b8', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }} />
+                  <LabelList dataKey="total_pnl" position="right" formatter={v => `${v?.toFixed(1)} $`} style={{ fill: '#94a3b8', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }} />
                   {symbols.map((s, i) => (
                     <Cell key={i} fill={s.total_pnl >= 0 ? '#22c55e' : '#ef4444'} fillOpacity={0.8} />
                   ))}

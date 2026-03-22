@@ -3,6 +3,7 @@ import ChartCard from '../components/ChartCard';
 import { useChannels, useChannelDailyPnl } from '../hooks/useApi';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, LineChart, Line, LabelList } from 'recharts';
 import { PremiumTooltip } from '../charts/ChartPrimitives';
+import { tickCcy, tooltipCcy } from '../utils/format';
 
 function ChannelCard({ ch, isSelected, onClick }) {
   const pnl = ch.total_pnl || 0;
@@ -23,7 +24,7 @@ function ChannelCard({ ch, isSelected, onClick }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{ch.channel_name || ch.channel_id}</span>
         <span className={`badge ${pnl >= 0 ? 'badge-profit' : 'badge-loss'}`}>
-          {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+          {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} $
         </span>
       </div>
 
@@ -66,11 +67,11 @@ export default function Channels() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={channels} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
+                <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={tickCcy} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="channel_name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={120} axisLine={false} tickLine={false} />
-                <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => tooltipCcy(v)} />} />
                 <Bar dataKey="total_pnl" name="Total PnL" radius={[0, 4, 4, 0]} animationDuration={600} maxBarSize={22}>
-                  <LabelList dataKey="total_pnl" position="right" formatter={v => `$${v?.toFixed(1)}`} style={{ fill: '#94a3b8', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} />
+                  <LabelList dataKey="total_pnl" position="right" formatter={v => `${v?.toFixed(1)} $`} style={{ fill: '#94a3b8', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} />
                   {channels.map((ch, i) => (
                     <Cell key={i} fill={ch.total_pnl >= 0 ? '#22c55e' : '#ef4444'} fillOpacity={0.8} />
                   ))}
@@ -106,8 +107,8 @@ export default function Channels() {
                 <LineChart data={chDaily} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" />
                   <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={d => d?.slice(5)} axisLine={{ stroke: 'rgba(148,163,184,0.08)' }} tickLine={false} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} />} />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={tickCcy} axisLine={false} tickLine={false} />
+                  <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => tooltipCcy(v)} />} />
                   <Line type="monotone" dataKey="pnl" name="PnL" stroke="#3b82f6" strokeWidth={2.5} dot={{ fill: '#3b82f6', r: 3, stroke: 'var(--bg-primary)', strokeWidth: 2 }} activeDot={{ r: 5, stroke: '#3b82f6', fill: 'var(--bg-primary)', strokeWidth: 2 }} />
                 </LineChart>
               </ResponsiveContainer>

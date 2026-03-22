@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import ChartCard from '../components/ChartCard';
 import { useDailyPnl, useEquityCurve, useSymbolStats } from '../hooks/useApi';
 import { PremiumTooltip } from '../charts/ChartPrimitives';
+import { tickCcy, tooltipCcy } from '../utils/format';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, CartesianGrid, ReferenceLine, LabelList,
@@ -36,9 +37,9 @@ function WinLossStackedBars({ data = [] }) {
       <ComposedChart data={weekly} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" vertical={false} />
         <XAxis dataKey="week" tick={{ fill: '#64748b', fontSize: 10 }} tickFormatter={d => d?.slice(5)} />
-        <YAxis yAxisId="stack" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} width={55} axisLine={false} tickLine={false} />
-        <YAxis yAxisId="line" orientation="right" tick={{ fill: '#f59e0b', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} width={50} axisLine={false} tickLine={false} hide />
-        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `$${v?.toFixed(2)}`} showTotal />} />
+        <YAxis yAxisId="stack" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={tickCcy} width={55} axisLine={false} tickLine={false} />
+        <YAxis yAxisId="line" orientation="right" tick={{ fill: '#f59e0b', fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={tickCcy} width={50} axisLine={false} tickLine={false} hide />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => tooltipCcy(v)} showTotal />} />
         <Legend wrapperStyle={{ fontSize: '0.6875rem' }} iconType="circle" iconSize={8} />
         <Bar yAxisId="stack" dataKey="wins" name="Wins" fill="#22c55e" fillOpacity={0.8} stackId="a" radius={[0, 0, 0, 0]} maxBarSize={28} />
         <Bar yAxisId="stack" dataKey="losses" name="Losses" fill="#ef4444" fillOpacity={0.7} stackId="a" radius={[3, 3, 0, 0]} maxBarSize={28} />
@@ -67,7 +68,7 @@ function PnlDistributionChart({ data = [] }) {
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={sorted} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" vertical={false} />
-        <XAxis dataKey="bucket" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `$${v}`} />
+        <XAxis dataKey="bucket" tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={tickCcy} />
         <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} axisLine={false} tickLine={false} />
         <Tooltip cursor={false} content={
           <PremiumTooltip formatter={(v, name) => name === 'count' || name === 'Days' ? `${v} days` : v} />
@@ -109,8 +110,8 @@ function DrawdownChart({ data = [] }) {
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" />
         <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={d => d?.slice(5)} />
-        <YAxis tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `${v}%`} width={50} axisLine={false} tickLine={false} />
-        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `${v?.toFixed(2)}%`} />} />
+        <YAxis tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }} tickFormatter={v => `${v} %`} width={50} axisLine={false} tickLine={false} />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => `${v?.toFixed(2)} %`} />} />
         <ReferenceLine y={0} stroke="rgba(148,163,184,0.2)" />
         {maxDD < 0 && <ReferenceLine y={maxDD} stroke="#ef4444" strokeDasharray="2 4" strokeOpacity={0.4} label={{ value: `Max ${maxDD.toFixed(1)}%`, fill: '#ef4444', fontSize: 10, position: 'left' }} />}
         <Area type="monotone" dataKey="drawdown" name="Drawdown" stroke="#ef4444" fill="url(#ddGrad)" strokeWidth={1.5} />

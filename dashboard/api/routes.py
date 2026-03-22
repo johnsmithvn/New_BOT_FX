@@ -214,3 +214,108 @@ def api_channel_list(db: DashboardDB = Depends(get_db)) -> list[dict]:
     """Get all unique channel IDs with names."""
     channels = db.get_channels()
     return [{"id": ch, "name": _resolve_name(ch)} for ch in channels]
+
+
+# ── Signal Lifecycle ─────────────────────────────────────────────
+
+
+@router.get("/signals")
+def api_signals(
+    channel: str | None = Query(default=None),
+    symbol: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    from_date: str | None = Query(default=None, alias="from"),
+    to_date: str | None = Query(default=None, alias="to"),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    db: DashboardDB = Depends(get_db),
+) -> dict:
+    """Get paginated signal list with aggregated order/trade stats."""
+    result = db.get_signals_paginated(
+        page=page,
+        per_page=per_page,
+        channel=channel,
+        symbol=symbol,
+        status=status,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    _inject_names(result["signals"], key="source_chat_id")
+    return result
+
+
+@router.get("/signals/{fingerprint}")
+def api_signal_detail(
+    fingerprint: str,
+    db: DashboardDB = Depends(get_db),
+) -> dict:
+    """Get full lifecycle for a signal."""
+    data = db.get_signal_lifecycle(fingerprint)
+    if not data:
+        return {"error": "Signal not found"}
+    # Inject channel name
+    if data.get("signal"):
+        data["signal"]["channel_name"] = _resolve_name(
+            data["signal"].get("source_chat_id", ""),
+        )
+    return data
+
+
+@router.delete("/signals/{fingerprint}")
+def api_delete_signal(
+    fingerprint: str,
+    db: DashboardDB = Depends(get_db),
+) -> dict:
+    """Delete signal and all related data (cascade)."""
+    counts = db.delete_signal_cascade(fingerprint)
+    return {"ok": True, "deleted": counts}
+
+
+@router.delete("/orders/{order_id}")
+def api_delete_order(
+    order_id: int,
+    db: DashboardDB = Depends(get_db),
+) -> dict:
+    """Delete a single order (and its related trades)."""
+    counts = db.delete_order_by_id(order_id)
+    return {"ok": True, "deleted": counts}
+
+
+@router.delete("/trades/{trade_id}")
+def api_delete_trade(
+    trade_id: int,
+    db: DashboardDB = Depends(get_db),
+) -> dict:
+    """Delete a single trade."""
+    count = db.delete_trade_by_id(trade_id)
+    return {"ok": True, "deleted": count}
+
+
+# ── Data Management ──────────────────────────────────────────────
+
+
+@router.get("/data/counts")
+def api_table_counts(db: DashboardDB = Depends(get_db)) -> dict:
+    """Get row counts for all data tables."""
+    return db.get_table_counts()
+
+
+@router.delete("/data/all")
+def api_clear_all(db: DashboardDB = Depends(get_db)) -> dict:
+    """Clear ALL data tables (except schema_versions)."""
+    counts = db.clear_all_data()
+    return {"ok": True, "deleted": counts}
+
+
+@router.delete("/data/{table}")
+def api_clear_table(
+    table: str,
+    db: DashboardDB = Depends(get_db),
+) -> dict:
+    """Clear all data from a specific table."""
+    try:
+        count = db.clear_table(table)
+        return {"ok": True, "table": table, "deleted": count}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+
