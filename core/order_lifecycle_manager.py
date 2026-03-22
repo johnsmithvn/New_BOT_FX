@@ -104,3 +104,29 @@ class OrderLifecycleManager:
                     ticket=ticket,
                     fingerprint=fingerprint,
                 )
+
+    def cancel_by_fingerprint(self, fingerprint: str) -> bool:
+        """Cancel a pending order matching the given fingerprint.
+
+        Scans pending orders for a comment matching 'signal:<fingerprint>'.
+        Returns True if an order was found and cancellation attempted.
+        """
+        orders = self._executor.get_pending_orders()
+        if not orders:
+            return False
+
+        for order in orders:
+            comment = order.get("comment", "")
+            order_fp = comment.replace("signal:", "") if comment.startswith("signal:") else ""
+            if order_fp == fingerprint:
+                ticket = order["ticket"]
+                log_event(
+                    "edit_cancel_pending",
+                    fingerprint=fingerprint,
+                    ticket=ticket,
+                    symbol=order.get("symbol", ""),
+                )
+                self._executor.cancel_order(ticket=ticket, fingerprint=fingerprint)
+                return True
+
+        return False

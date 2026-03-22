@@ -1,14 +1,233 @@
 # CHANGELOG
 
-## 0.5.5 - 2026-03-15
+## 0.14.1 - 2026-03-22
+
+### Fixed
+- **R3**: `self.position_manager` → `self.position_mgr` — 13 references in main.py caused AttributeError (edit/delete/reply all broken)
+- **R2**: orders table missing `symbol` column — added V5 migration, fixed reply-command query crash
+- **R1**: single-mode execution now persists to orders table — fixes TradeTracker matching and PnL replies
+- **R4**: `_restore_groups_from_db()` deferred to after `init_mt5()` — prevents stale group cleanup on restart
+- **R5**: TradeTracker strips sub-fingerprint (`:L0`) before signal lookup — fixes PnL replies for multi-order trades
+- **R9**: TradeTracker polls immediately on startup instead of waiting `poll_seconds`
+- **R7**: Dashboard `_query()` only suppresses "no such table" errors (was swallowing all OperationalError)
+- **R6**: Dashboard footer version updated to v0.14.0 (was hardcoded v0.12.0)
+- **R10**: DASHBOARD.md API reference corrected for `/api/channel-list` response format
+- **R8**: Added `config/channels.json` to `.gitignore`
+
+## 0.14.0 - 2026-03-22
 
 ### Added
-- **Entry Range Parsing**: `SignalParser` now accurately parses signal ranges (e.g., `Buy Gold 5162 - 5170`).
+- **P13: Bot Hardening & Reliability**
+  - Health check HTTP endpoint (`/health` on port 8080) — uptime, MT5 status, signal/order/error counters, circuit breaker state
+  - Runtime health stats tracker (`HealthStats`) — daily auto-reset counters, status computation (healthy/degraded/unhealthy)
+  - Watchdog → health stats bridge — MT5 connection status feeds into health endpoint in real-time
+  - Circuit breaker → health stats bridge — CB state changes reflected in `/health` response
+  - Signal/order/error tracking wired throughout the pipeline
+
+### Changed
+- `MT5Watchdog` now accepts `on_health_update` callback (non-breaking, optional param)
+- Environment variable `HEALTH_CHECK_PORT` configures health server port (default 8080)
+
+## 0.13.0 - 2026-03-22
+
+### Added
+- **P12: Dashboard Enhancement**
+  - Channel name mapping — channel IDs now show human-readable names from `channels.json`
+  - Equity curve chart — cumulative PnL over time (line chart with gradient fill)
+  - Win rate by symbol chart — horizontal bar with color coding (green ≥60%, orange ≥45%, red <45%)
+  - CSV export — download all trades as CSV with channel names, filterable by date/channel
+  - Basic HTTP auth — `DASHBOARD_PASSWORD` env var protects page access
+  - 3 new API endpoints: `/api/equity-curve`, `/api/symbol-stats`, `/api/export/csv`
+  - `/api/channel-list` now returns `{id, name}` objects
+
+### Changed
+- All API responses now include `channel_name` field alongside `channel_id`
+- Dashboard version bumped to 0.13.0
+
+## 0.12.0 - 2026-03-21
+
+### Added
+- **P11: Web Analytics Dashboard** — separate FastAPI process for trade analytics
+  - `dashboard/db/queries.py`: Read-only SQL aggregation (overview, daily PnL, channel stats, paginated trades, active groups)
+  - `dashboard/api/routes.py`: 7 REST API endpoints with FastAPI dependency injection
+  - `dashboard/dashboard.py`: FastAPI app with CORS, API key middleware, Jinja2 templates
+  - `dashboard/templates/`: 3 pages — Overview (stat cards, charts), Channels (cards, comparison), Trades (filters, pagination)
+  - `dashboard/static/`: Dark theme CSS (glassmorphism, responsive), Chart.js utilities, auto-refresh 30s
+- New dependencies: `fastapi`, `uvicorn`, `jinja2`
+
+## 0.11.0 - 2026-03-21
+
+### Added
+- **P10.1: MessageDeleted listener** — `telegram_listener.py` now listens for `events.MessageDeleted`, forwarding to `_process_delete()` which cancels pending orders from deleted signals
+- **P10.1: `cancel_group_pending_orders()`** — new PositionManager method to cancel all unfilled pending orders in a group while keeping filled positions running
+- **P10.1: `CANCEL_GROUP_PENDING` action** — new UpdateAction in `MessageUpdateHandler` for signals with mixed state (some filled, some pending)
+
+### Changed
+- **`message_update_handler.py`** — `handle_edit()` now accepts `has_filled_orders` param; uses MT5 position check instead of blind CANCEL_ORDER; removed stale TODO
+- **`main.py`** `_process_edit()` — group-aware: checks PositionManager for filled orders before deciding action; routes to `cancel_group_pending_orders()` for groups
+- **`telegram_listener.py`** — added `DeleteCallback` type, `set_delete_callback()`, and `events.MessageDeleted` handler registration
+
+## 0.10.1 - 2026-03-21
+
+### Fixed
+- **Swallowed exception** in `main.py:691` — pip_size calculation now logs warning + uses fallback instead of `except: pass`
+- **Swallowed exception** in `circuit_breaker.py:111` — state change callback errors now logged instead of silently ignored
+
+### Removed
+- 6 unused imports: `field` (settings.py), `Settings` TYPE_CHECKING (command_executor.py), `timezone` (message_update_handler.py, storage.py), `json`/`Side`/`SignalLifecycle`/`SignalStatus` (pipeline.py)
+- 5 dead functions (grep-verified 0 callers): `check_symbol()` (trade_executor.py), `cleanup_debounce()` (range_monitor.py), `expire_active_signals()` (storage.py), `is_known_channel()` + `get_all_channel_ids()` (channel_manager.py)
+
+### Changed
+- **README.md**: Updated to v0.10.0, added P9/P10 modules to project structure, updated pipeline flow, reply docs, customization guide
+- **PROJECT.md**: Updated to v0.10.0, added P10 group management features
+- **ROADMAP.md**: Added R8 milestone (Smart Signal Group Management)
+
+## 0.10.0 - 2026-03-21
+
+### Added
+- **P10: Smart Signal Group Management** — every signal creates a managed order group
+- `core/models.py` — `OrderGroup` dataclass and `GroupStatus` enum for group lifecycle
+- `core/position_manager.py` — Group-aware position management:
+  - `_check_positions()` routes to group vs individual management
+  - `register_group()` creates groups from pipeline results
+  - `add_order_to_group()` for re-entry orders from RangeMonitor
+  - `_manage_group()` with group trailing SL, zone SL, and auto-BE
+  - `_calculate_group_sl()` — multi-source SL calculation (zone, signal, fixed, trail)
+  - `_modify_group_sl()` — applies SL to ALL tickets atomically
+  - `close_selective_entry()` — strategy-based single order close from reply
+  - `apply_group_be()` — auto-breakeven after partial group close
+  - `get_group()`, `get_group_by_ticket()`, `get_group_status()` — query methods
+- `core/pipeline.py` — `_register_group_from_results()` called after every execution
+- `core/order_builder.py` — `order_types_allowed` filter (P10d):
+  - STOP not allowed → MARKET (if price in zone) or LIMIT at zone midpoint
+- `core/storage.py` — Migration V4: `signal_groups` table for restart recovery
+  - `store_group()`, `get_active_groups()`, `update_group_sl()`, `update_group_tickets()`, `complete_group_db()`
+- `config/channels.example.json` — 6 new config fields:
+  - `group_trailing_pips`, `group_be_on_partial_close`, `reply_close_strategy`
+  - `sl_mode` (`signal`/`zone`/`fixed`), `sl_max_pips_from_zone`, `order_types_allowed`
+
+### Changed
+- `main.py` — Reply handler intercepts CLOSE for groups with selective strategy
+- `core/position_manager.py` — Per-position logic extracted to `_manage_individual()`
+- Cleanup task now includes `signal_groups` table
+
+## 0.9.0 - 2026-03-21
+
+### Added
+- **Channel-driven strategy architecture** (P9) — multi-order per signal with per-channel strategy config
+- `core/entry_strategy.py` — generate multi-entry plans from signal + strategy config
+  - Strategy modes: `single` (backward-compat), `range` (N orders across entry zone), `scale_in` (stepped re-entries)
+  - Volume split: `equal`, `pyramid`, `risk_based` (weighted by SL distance per entry)
+- `core/signal_state_manager.py` — active signal lifecycle tracking
+  - State machine: PENDING → PARTIAL → COMPLETED → EXPIRED
+  - DB-backed persistence for restart recovery
+- `core/pipeline.py` — sole orchestrator for multi-order execution
+  - `execute_signal_plans()` replaces single-order execute path
+  - `handle_reentry()` with full risk guard gauntlet (circuit breaker, daily guard, exposure guard)
+- `core/range_monitor.py` — background price-cross re-entry trigger
+  - Price-cross detection (not proximity — only triggers on actual crossing)
+  - 30-second debounce per level to prevent order spam
+- **Order fingerprint v2**: `base_fp:L{N}` — unique per order, debuggable, linkable via base_fp
+- `core/models.py` — `EntryPlan`, `SignalState`, `SignalLifecycle` enum, `order_fingerprint()`
+- Storage migration V3: `active_signals` table with status/plans/expiry tracking
+- `channels.json` schema expanded: `strategy`, `risk`, `validation` sections per channel
+- Index `idx_orders_source_msg` on `(source_chat_id, source_message_id)` for P9 reply handler
+
+### Changed
+- `core/channel_manager.py` — `get_strategy()`, `get_risk_config()`, `get_validation_config()` with `_get_section()` DRY pattern
+- `core/storage.py` — `get_orders_by_message()` now uses direct source_message_id join (supports sub-fingerprints), with fallback to old fingerprint JOIN for pre-P9 orders
+- `config/channels.example.json` — updated with full strategy/risk/validation example
+
+## 0.8.1 - 2026-03-18
+
+### Fixed
+- **CRITICAL**: Reply management completely broken — `orders.fingerprint` stored as truncated 12-char string while `signals.fingerprint` stored as full 16-char string, causing JOIN in `get_orders_by_message()` to never match. All reply actions (close, SL, TP, BE) were non-functional since v0.6.0. Fix: `fp` now uses full fingerprint for all DB operations, `fp_short` for console display only.
+- Signal debug messages now sent on **parse failures** — previously only triggered after successful parse
+- Market data section skipped in debug message when no market data available (parse fail stage)
+
+## 0.8.0 - 2026-03-18
+
+### Added
+- Reply-based signal management: channel admin replies to signal → bot acts on specific trade(s)
+- `reply_action_parser.py` — parse reply text (close/exit/đóng, SL/TP {price}, BE, close N%)
+- `reply_command_executor.py` — per-ticket MT5 operations with position existence check
+- Multi-order support: all orders from a signal are actioned, results grouped
+- Channel guard: cross-channel reply prevention
+- Symbol consistency check before execution
+- TradeTracker PnL reply suppression for reply-closed tickets (5 min TTL)
+- "No active trade found" UX feedback for replies to non-signal messages
+- Percent range validation (1-100) for partial close
+
+### Changed
+- `telegram_listener.py` — new `ReplyCallback`, detects `reply_to_msg_id`, early return (no signal parser fallthrough)
+- `storage.py` — `get_orders_by_message()` returns list of all orders for a signal
+- `trade_tracker.py` — `_reply_closed` dict with TTL, `mark_reply_closed()`, `_is_reply_closed()` with auto-cleanup
+
+## 0.7.1 - 2026-03-17
+
+### Added
+- Command response via Telegram: reply to source chat + admin log
+- Position manager Telegram alerts: breakeven, trailing stop, partial close with channel context
+- Per-ticket alert throttle (60s cooldown per event_type)
+- Trailing stop delta threshold: only alert if SL moved ≥ 5 pips
+
+### Changed
+- `telegram_alerter.py` — `parse_mode="md"` on all `send_message` calls for proper markdown rendering
+
+## 0.7.0 - 2026-03-17
+
+### Added
+- `store_event()` calls in pipeline now include `channel_id` — all 11 call sites wired (2 parse-fail, 9 post-parse)
+- `Storage.get_fingerprint_by_message()` — lookup fingerprint by `(source_chat_id, source_message_id)`
+- `OrderLifecycleManager.cancel_by_fingerprint()` — cancel pending order by matching fingerprint in comment field
+- Per-channel session metrics: `_channel_metrics` dict with lazy-init per-channel `_SessionMetrics`, heartbeat breakdown for multi-channel
+- `_SessionMetrics.as_summary()` — one-line per-channel heartbeat output
+- `_process_edit()` fully wired: fingerprint lookup → `MessageUpdateHandler.handle_edit()` → cancel/reprocess decision
+- TradeTracker partial close reply throttle: 60s cooldown per `position_id` prevents Telegram spam
+
+### Changed
+- `main.py` — `_process_edit()` from stub to full implementation with cancel+reprocess flow
+- Heartbeat log includes per-channel breakdown when `len(_channel_metrics) > 1`
+
+## 0.6.0 - 2026-03-17
+
+### ⚠️ Breaking Change
+- **Fingerprint format changed**: `generate_fingerprint()` now includes `source_chat_id` as first element. Dedup is no longer backward compatible with v0.5.x data. **Backup DB before upgrading.**
+
+### Added
+- **Versioned schema migration system** in `core/storage.py` — `schema_versions` table, idempotent migrations safe for repeated restarts
+- **`core/channel_manager.py`** — per-channel configuration via `config/channels.json`, rule merging with default fallback
+- **`core/trade_tracker.py`** — background deal polling, PnL persistence, Telegram reply under original signal
+  - 2-step ticket→position resolution (MARKET + pending order support)
+  - Pending fill detection: `DEAL_ENTRY_IN` → `update_position_ticket()`
+  - `tracker_state` table for restart recovery (`last_deal_poll_time`)
+- **`core/telegram_alerter.py`** — `reply_to_message()` + `reply_to_message_sync()` for trade outcome threading
+- DB tables: `trades` (deal_ticket UNIQUE), `tracker_state` (key-value), `schema_versions` (version tracking)
+- DB columns: `orders.channel_id`, `orders.source_chat_id`, `orders.source_message_id`, `orders.position_ticket`, `events.channel_id`
+- 8 new `Storage` methods: `store_trade()`, `get_open_tickets()`, `get_signal_reply_info()`, `update_position_ticket()`, `get/set_tracker_state()`, `get_order_by_ticket/position_ticket()`
+- `ParsedSignal.parse_confidence` + `ParsedSignal.parse_source` fields
+- `TRADE_TRACKER_POLL_SECONDS` env key (default 30, 0 = disabled)
+- `config/channels.example.json` — per-channel rule template
+
+### Changed
+- `core/position_manager.py` — accepts `ChannelManager` + `Storage`, per-channel breakeven/trailing/partial rules, ticket→channel cache with startup rebuild
+- `core/storage.py` — `store_order()` and `store_event()` accept channel context params
+- `main.py` — wires `ChannelManager`, `TradeTracker`, passes channel context through pipeline, `register_ticket()` on execution
+- `config/settings.py` — `trade_tracker_poll_seconds` in `ExecutionConfig`
+
+## 0.5.5 - 2026-03-18
+
+### Added
+- **Entry Range Parsing**: `SignalParser` now accurately parses signal ranges (e.g., `Buy Gold 5162 - 5170` or `BUY GOLD zone 4963 - 4961 now`).
+  - Supports multiple optional words between side keyword and price (e.g., `GOLD ZONE`).
+  - Supports `-`, `/`, `–` (em-dash), and `TO` as range separators.
   - Automatically identifies extreme bounds `[low, high]`.
   - Determines final execution `entry` strictly by `Side` (uses lowest for `BUY` and highest for `SELL`).
 
 ### Changed
 - **Strict Entry Enforcement**: If the parser cannot identify a single entry price and no explicit `MARKET` intent (like `NOW` or `CMP`) is passed, the signal is now explicitly REJECTED as a `ParseFailure` instead of wrongly defaulting to a market execution.
+- **Relative TP Filtering**: `tp_detector` now skips TP values followed by `PIPS`/`POINTS`/`PTS` — these are relative offsets from entry, not absolute price levels. Signals like `TP: 30 pips – 50 pips` correctly return `tp=[]`.
+- **Market Keyword Priority**: Market keywords (`NOW`, `CMP`, etc.) are now checked **last** in the entry detection chain, ensuring numeric entry/range detection always takes priority.
 
 ## 0.5.4 - 2026-03-15
 

@@ -1,8 +1,8 @@
 # telegram-mt5-bot
 
-Automated Forex / CFD signal → MT5 execution bot.
+Automated Forex / CFD signal → MT5 execution bot with multi-channel support.
 
-Listens to Telegram channels for trading signals, parses them, validates safety rules, and executes orders on MetaTrader 5.
+Listens to Telegram channels for trading signals, parses them, validates safety rules, executes orders on MetaTrader 5, and tracks trade outcomes with PnL reply messages.
 
 ---
 
@@ -128,7 +128,11 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your credentials and settings
 
-# 3. Run
+# 3. Multi-channel setup (optional)
+cp config/channels.example.json config/channels.json
+# Edit channels.json with per-channel rules
+
+# 4. Run
 python main.py
 ```
 
@@ -172,7 +176,10 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 
 ```
 ├── main.py                      # Entry point, pipeline orchestration
-├── config/settings.py           # Typed config from .env
+├── config/
+│   ├── settings.py              # Typed config from .env
+│   ├── channels.json            # Per-channel rules (created from .example)
+│   └── channels.example.json    # Channel config template
 ├── core/
 │   ├── models.py                # Data contracts (ParsedSignal, ExecutionResult, etc.)
 │   ├── signal_parser/           # 7-module parser pipeline
@@ -180,18 +187,26 @@ Simulates execution without sending real orders. **Bid/Ask prices are dynamicall
 │   ├── risk_manager.py          # Position sizing
 │   ├── order_builder.py         # Order type decision + MT5 request builder
 │   ├── trade_executor.py        # MT5 connection + bounded retry execution
-│   ├── storage.py               # SQLite persistence (WAL mode)
+│   ├── storage.py               # SQLite persistence (WAL mode, versioned migrations)
 │   ├── telegram_listener.py     # Telethon listener + auto-reconnect
-│   ├── telegram_alerter.py      # Rate-limited admin alerts
+│   ├── telegram_alerter.py      # Rate-limited admin alerts + reply threading
 │   ├── circuit_breaker.py       # CLOSED/OPEN/HALF_OPEN trade safety
 │   ├── daily_risk_guard.py      # Poll-based daily risk limits (MT5 deal history)
 │   ├── exposure_guard.py        # Per-symbol + correlation group limits
-│   ├── position_manager.py      # Breakeven, trailing stop, partial close
+│   ├── position_manager.py      # Breakeven, trailing stop, partial close, P10 group management
+│   ├── channel_manager.py       # Per-channel rule configuration
+│   ├── trade_tracker.py         # Background deal polling, PnL tracking, reply messages
 │   ├── command_parser.py        # Management command parser
 │   ├── command_executor.py      # Execute management commands vs MT5
 │   ├── order_lifecycle_manager.py # Pending order TTL expiration
 │   ├── mt5_watchdog.py          # Connection health monitor
-│   └── message_update_handler.py # MessageEdited handling
+│   ├── message_update_handler.py # MessageEdited handling
+│   ├── pipeline.py              # Sole execution orchestrator (v0.9.0)
+│   ├── entry_strategy.py        # Multi-entry plan engine (v0.9.0)
+│   ├── signal_state_manager.py  # Active signal lifecycle tracking (v0.9.0)
+│   ├── range_monitor.py         # Background price-cross re-entry (v0.9.0)
+│   ├── reply_action_parser.py   # Reply command parser (v0.8.0)
+│   └── reply_command_executor.py # Per-ticket reply execution (v0.8.0)
 ├── utils/
 │   ├── logger.py                # Structured JSON logging
 │   └── symbol_mapper.py         # Symbol alias resolution
@@ -217,10 +232,31 @@ Telegram NewMessage
   → storage.is_duplicate()
   → signal_validator.validate(price, spread, positions, age, distance)
   → risk_manager.calculate_volume()
-  → order_builder.decide_order_type() + build_request()
-  → validator.validate_entry_drift() [MARKET orders only]
-  → trade_executor.execute() [or DRY_RUN simulate]
+  → pipeline.execute_signal_plans()  [P9: multi-order orchestrator]
+    → entry_strategy.plan_entries() → 1..N entry plans
+    → for each plan: order_builder.decide_order_type() + build_request()
+    → trade_executor.execute() [or DRY_RUN simulate]
+    → position_manager.register_group() [P10: group tracking]
   → storage.store_signal() + store_order() + store_event()
+```
+
+### Background Tasks
+```
+TradeTracker: poll MT5 history_deals_get()
+  → match deal → DB order (ticket / position_ticket)
+  → store_trade() → reply_to_message() (PnL under original signal)
+  → partial close throttle (60s cooldown)
+
+PositionManager: poll open positions
+  → P10: route to group management or individual management
+  → group: coordinated SL (zone/trail/signal), auto-BE on partial close
+  → individual: per-channel rules from channels.json
+  → breakeven / trailing stop / partial close
+
+RangeMonitor: background price-cross re-entry (P9)
+  → callback to pipeline.handle_reentry()
+
+Heartbeat: per-channel metrics breakdown
 ```
 
 ## Signal Lifecycle Events (DB Tracing)
@@ -232,9 +268,169 @@ signal_received → signal_parsed → signal_submitted → signal_executed
                                 → signal_failed (with retcode)
 ```
 
+## Multi-Channel Setup
+
+To process signals from multiple Telegram channels with per-channel rules:
+
+1. Copy the template:
+   ```bash
+   cp config/channels.example.json config/channels.json
+   ```
+
+2. Edit `config/channels.json` — set per-channel rules (breakeven, trailing stop, partial close).
+   Channels not listed fall back to the `"default"` section or global `.env` values.
+
+3. **Trade Outcome Tracking** — set `TRADE_TRACKER_POLL_SECONDS` in `.env` (default 0 = disabled):
+   ```env
+   TRADE_TRACKER_POLL_SECONDS=30
+   ```
+   When enabled, the bot polls MT5 deal history, tracks PnL, and replies under the original Telegram signal.
+
+4. **Reply-Based Signal Management** (v0.8.0, enhanced v0.10.0) — automatically enabled. When a channel admin replies to a signal with:
+   - `close` / `exit` / `đóng` → closes all positions (or selective close if P10 strategy configured)
+   - `SL 2035` / `move sl 2035` → moves SL on all positions from that signal
+   - `TP 2045` / `move tp 2045` → moves TP on all positions from that signal
+   - `BE` / `breakeven` → moves SL to entry price
+   - `close 30%` → closes 30% of each position from that signal
+
+## Customization Guide
+
+### Adding New Reply Keywords
+
+Edit `core/reply_action_parser.py`:
+
+```python
+# Add your pattern at module level:
+_MY_CLOSE_WORDS = r"^(my_custom_word|another_word)$"
+
+# In ReplyActionParser.parse(), add a new match block before "return None":
+if re.match(_MY_CLOSE_WORDS, match_lower, re.IGNORECASE):
+    return ReplyAction(action=ReplyActionType.CLOSE, raw_text=cleaned)
+```
+
+### Adding New Signal Parser Rules
+
+Edit `core/signal_parser/detectors/`:
+- Each detector is a separate file (e.g., `side_detector.py`, `symbol_detector.py`)
+- Add new regex patterns or logic to the relevant detector
+- The parser runs all detectors and merges results
+
+### Changing Trade Entry Strategy
+
+Edit `config/channels.json` → `strategy` section per channel:
+- `mode`: `single` (1 order), `range` (N orders across zone), `scale_in` (stepped re-entries)
+- `max_entries`: max orders per signal
+- `volume_split`: `equal`, `pyramid`, `risk_based`
+
+### Changing Order Type Decision
+
+Edit `core/order_builder.py`:
+- `decide_order_type()` — controls MARKET vs LIMIT vs STOP order selection
+- `order_types_allowed` — filter STOP orders when not desired
+- `build_request()` — assembles the final MT5 order request
+
+### Per-Channel Configuration
+
+Edit `config/channels.json`:
+- Breakeven, trailing stop, and partial close rules per channel
+- See `config/channels.example.json` for all available options
+
+## 📊 Analytics Dashboard
+
+Separate web dashboard for visualizing trade performance, PnL, and channel analytics.
+
+### Quick Start
+
+```bash
+# Install dashboard dependencies
+pip install fastapi uvicorn jinja2
+
+# Run from project root
+python -m dashboard.dashboard
+```
+
+Open `http://localhost:8000`
+
+### Pages
+
+| Page | URL | Content |
+|------|-----|---------|
+| **Overview** | `/` | PnL cards, daily PnL chart, top channels, recent trades, active positions |
+| **Channels** | `/channels` | Per-channel cards (PnL, win rate, avg), comparison chart |
+| **Trades** | `/trades` | Filterable table (date, symbol, channel, outcome), pagination |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DASHBOARD_DB_PATH` | `data/bot.db` | Path to SQLite database |
+| `DASHBOARD_API_KEY` | _(empty)_ | API key for `/api/*` endpoints |
+| `DASHBOARD_PORT` | `8000` | Server port |
+| `DASHBOARD_HOST` | `0.0.0.0` | Bind address |
+
+### Deploy on VPS
+
+```bash
+DASHBOARD_DB_PATH=/path/to/data/bot.db \
+DASHBOARD_API_KEY=your_secret_key \
+python -m dashboard.dashboard
+```
+
+> 📖 Full documentation: [dashboard/docs/DASHBOARD.md](dashboard/docs/DASHBOARD.md)
+
+## 🏥 Health Check Endpoint (P13)
+
+Bot exposes a lightweight HTTP health check at `http://vps-ip:8080/health`.
+
+Starts automatically with the bot — no extra dependencies or setup required.
+
+### Response Format
+
+```json
+{
+  "status": "healthy",
+  "uptime": "3d 14h 22m",
+  "uptime_seconds": 308520,
+  "mt5_connected": true,
+  "telegram_connected": true,
+  "last_signal_time": "2026-03-22T07:45:00",
+  "last_signal_symbol": "XAUUSD",
+  "signals_today": 12,
+  "orders_today": 8,
+  "errors_today": 0,
+  "circuit_breaker": "CLOSED",
+  "circuit_breaker_failures": 0
+}
+```
+
+### Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `healthy` | MT5 connected, circuit breaker closed |
+| `degraded` | MT5 disconnected (watchdog attempting reconnect) |
+| `unhealthy` | Circuit breaker OPEN (trading paused) |
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_CHECK_PORT` | `8080` | Port for `/health` endpoint |
+
+### Monitoring
+
+```bash
+# Quick check from terminal
+curl http://your-vps:8080/health | jq .status
+
+# UptimeRobot / Healthchecks.io
+# URL: http://your-vps:8080/health
+# Method: GET
+# Keyword: "healthy"
+```
+
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.5.0**
-
+Current: **v0.14.1**

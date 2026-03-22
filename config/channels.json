@@ -1,0 +1,40 @@
+{
+    "default": {
+        "name": "Global Defaults",
+        "rules": {
+            "breakeven_trigger_pips": 0,
+            "breakeven_lock_pips": 2,
+            "trailing_stop_pips": 0,
+            "partial_close_percent": 0
+        },
+        "strategy": {
+            "mode": "single",
+            "max_entries": 1,
+            "reentry_enabled": false,
+            "reentry_step_pips": 0,
+            "signal_ttl_minutes": 15,
+            "volume_split": "equal"
+        },
+        "risk": {},
+        "validation": {}
+    },
+    "channels": {
+        "-1002044139064": {
+            "name": "Noval channel",
+            "rules": {
+                "breakeven_trigger_pips": 50,
+                "breakeven_lock_pips": 30,
+                "trailing_stop_pips": 40,
+                "partial_close_percent": 0
+            }
+        },
+        "-1009876543210": {
+            "name": "Forex Signals Pro",
+            "rules": {
+                "breakeven_trigger_pips": 10,
+                "trailing_stop_pips": 8,
+                "partial_close_percent": 0
+            }
+        }
+    }
+}

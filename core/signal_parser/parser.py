@@ -23,12 +23,18 @@ def generate_fingerprint(
     entry: float | None,
     sl: float | None,
     tp_list: list[float],
+    source_chat_id: str = "",
 ) -> str:
     """Generate a deterministic fingerprint from normalized signal fields.
 
     Uses SHA-256 hash of concatenated fields.
+    Includes source_chat_id to isolate dedup per channel (v0.6.0).
+
+    BREAKING CHANGE: fingerprints from v0.5.x are NOT compatible
+    with v0.6.0 due to the added source_chat_id prefix.
     """
     parts = [
+        source_chat_id,
         symbol,
         side,
         str(entry) if entry is not None else "MARKET",
@@ -145,13 +151,14 @@ class SignalParser:
         # Step 6: Detect TPs
         tp_list = tp_detector.detect(cleaned)
 
-        # Step 7: Generate fingerprint
+        # Step 7: Generate fingerprint (includes source_chat_id for channel isolation)
         fingerprint = generate_fingerprint(
             symbol=symbol,
             side=side_str,
             entry=entry,
             sl=sl,
             tp_list=tp_list,
+            source_chat_id=common.get("source_chat_id", ""),
         )
 
         return ParsedSignal(

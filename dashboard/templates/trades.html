@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Trade History — Forex Bot Dashboard{% endblock %}
+{% block nav_trades %}active{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Trade History</h1>
+
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <div class="filter-group">
+        <label class="filter-label">From</label>
+        <input type="date" class="filter-input" id="filter-from">
+    </div>
+    <div class="filter-group">
+        <label class="filter-label">To</label>
+        <input type="date" class="filter-input" id="filter-to">
+    </div>
+    <div class="filter-group">
+        <label class="filter-label">Channel</label>
+        <select class="filter-select" id="filter-channel">
+            <option value="">All Channels</option>
+        </select>
+    </div>
+    <div class="filter-group">
+        <label class="filter-label">Symbol</label>
+        <input type="text" class="filter-input" id="filter-symbol" placeholder="e.g. XAUUSD">
+    </div>
+    <div class="filter-group">
+        <label class="filter-label">Outcome</label>
+        <select class="filter-select" id="filter-outcome">
+            <option value="">All</option>
+            <option value="win">Win</option>
+            <option value="loss">Loss</option>
+        </select>
+    </div>
+    <button class="filter-btn" onclick="applyFilters()">Search</button>
+    <button class="filter-btn" style="background:var(--blue)" onclick="exportCSV()">📥 CSV</button>
+</div>
+
+<!-- Summary Bar -->
+<div class="summary-bar" id="summary-bar">
+    <div class="summary-item">
+        <span class="summary-label">Showing:</span>
+        <span class="summary-value" id="sum-count">--</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Total P&L:</span>
+        <span class="summary-value" id="sum-pnl">--</span>
+    </div>
+    <div class="summary-item">
+        <span class="summary-label">Avg P&L:</span>
+        <span class="summary-value" id="sum-avg">--</span>
+    </div>
+</div>
+
+<!-- Trade Table -->
+<div class="chart-container" style="padding:0;">
+    <div class="table-container">
+        <table class="data-table" id="trade-table">
+            <thead>
+                <tr>
+                    <th>Close Time</th>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Entry</th>
+                    <th>Close</th>
+                    <th>Volume</th>
+                    <th>P&L</th>
+                    <th>Comm</th>
+                    <th>Channel</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody id="trade-tbody">
+                <tr><td colspan="10" class="loading">
+                    <div class="loading-spinner"></div> Loading...
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Pagination -->
+<div class="pagination" id="pagination"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+const perPage = 50;
+
+function getFilters() {
+    const params = new URLSearchParams();
+    const from = document.getElementById('filter-from').value;
+    const to = document.getElementById('filter-to').value;
+    const channel = document.getElementById('filter-channel').value;
+    const symbol = document.getElementById('filter-symbol').value;
+    const outcome = document.getElementById('filter-outcome').value;
+
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (channel) params.set('channel', channel);
+    if (symbol) params.set('symbol', symbol);
+    if (outcome) params.set('outcome', outcome);
+    params.set('page', currentPage);
+    params.set('per_page', perPage);
+
+    return params.toString();
+}
+
+function applyFilters() {
+    currentPage = 1;
+    loadTrades();
+}
+
+function exportCSV() {
+    const params = new URLSearchParams();
+    const from = document.getElementById('filter-from').value;
+    const to = document.getElementById('filter-to').value;
+    const channel = document.getElementById('filter-channel').value;
+
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (channel) params.set('channel', channel);
+
+    window.open(`/api/export/csv?${params.toString()}`, '_blank');
+}
+
+async function loadTrades() {
+    const tbody = document.getElementById('trade-tbody');
+    tbody.innerHTML = '<tr><td colspan="10" class="loading"><div class="loading-spinner"></div> Loading...</td></tr>';
+
+    try {
+        const data = await API.get(`/trades?${getFilters()}`);
+        setStatus(true);
+
+        // Summary
+        document.getElementById('sum-count').textContent = `${data.total} trades`;
+        const sumPnlEl = document.getElementById('sum-pnl');
+        sumPnlEl.textContent = formatPnL(data.total_pnl);
+        sumPnlEl.className = 'summary-value ' + pnlClass(data.total_pnl);
+        document.getElementById('sum-avg').textContent = formatPnL(data.avg_pnl);
+
+        // Table
+        if (!data.trades || data.trades.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No trades found</td></tr>';
+            document.getElementById('pagination').innerHTML = '';
+            return;
+        }
+
+        tbody.innerHTML = data.trades.map(t => `
+            <tr>
+                <td>${formatDateTime(t.close_time)}</td>
+                <td><strong>${t.symbol || '--'}</strong></td>
+                <td><span class="badge ${(t.side||'').toLowerCase()}">${t.side || '--'}</span></td>
+                <td>${t.entry_price ? parseFloat(t.entry_price).toFixed(5) : '--'}</td>
+                <td>${parseFloat(t.close_price).toFixed(5)}</td>
+                <td>${parseFloat(t.close_volume).toFixed(2)}</td>
+                <td class="${pnlTableClass(t.pnl)}">${formatPnL(t.pnl)}</td>
+                <td>${formatPnL(t.commission || 0)}</td>
+                <td title="${t.channel_id}">${t.channel_name || t.channel_id || '--'}</td>
+                <td>${t.close_reason || '--'}</td>
+            </tr>
+        `).join('');
+
+        renderPagination(data.total, data.page, data.per_page);
+        updateLastRefresh();
+    } catch (err) {
+        setStatus(false);
+        tbody.innerHTML = '<tr><td colspan="10" class="error-msg">Failed to load trades</td></tr>';
+    }
+}
+
+function renderPagination(total, page, perPage) {
+    const totalPages = Math.ceil(total / perPage);
+    const el = document.getElementById('pagination');
+
+    if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+    let html = `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} onclick="goToPage(${page - 1})">← Prev</button>`;
+    const start = Math.max(1, page - 2);
+    const end = Math.min(totalPages, page + 2);
+
+    if (start > 1) html += `<button class="page-btn" onclick="goToPage(1)">1</button>`;
+    if (start > 2) html += `<span style="color:var(--text-secondary);padding:6px">...</span>`;
+    for (let i = start; i <= end; i++) {
+        html += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+    }
+    if (end < totalPages - 1) html += `<span style="color:var(--text-secondary);padding:6px">...</span>`;
+    if (end < totalPages) html += `<button class="page-btn" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+    html += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} onclick="goToPage(${page + 1})">Next →</button>`;
+
+    el.innerHTML = html;
+}
+
+function goToPage(page) {
+    currentPage = page;
+    loadTrades();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function loadFilterOptions() {
+    try {
+        const channels = await API.get('/channel-list');
+        const select = document.getElementById('filter-channel');
+        channels.forEach(ch => {
+            const opt = document.createElement('option');
+            opt.value = ch.id;
+            opt.textContent = ch.name || ch.id;
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Failed to load filter options', err);
+    }
+}
+
+loadFilterOptions();
+loadTrades();
+</script>
+{% endblock %}

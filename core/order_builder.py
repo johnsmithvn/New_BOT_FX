@@ -70,6 +70,9 @@ class OrderBuilder:
         bid: float,
         ask: float,
         point: float = 0.00001,
+        allowed_types: list[str] | None = None,
+        zone_low: float | None = None,
+        zone_high: float | None = None,
     ) -> TradeDecision:
         """Decide the order type based on signal and live prices.
 
@@ -78,6 +81,11 @@ class OrderBuilder:
             bid: Current bid price.
             ask: Current ask price.
             point: Symbol point value for tolerance calc.
+            allowed_types: P10 — list of allowed order types (e.g. ["MARKET","LIMIT"]).
+                If STOP not in list, uses MARKET/LIMIT instead.
+                Default None = all types allowed.
+            zone_low: P10 — lowest entry in zone (for STOP→LIMIT fallback).
+            zone_high: P10 — highest entry in zone.
 
         Returns:
             TradeDecision with order_kind and execution price.
@@ -85,15 +93,22 @@ class OrderBuilder:
         tolerance = self._tolerance * point
 
         if signal.side == Side.BUY:
-            return self._decide_buy(signal, ask, tolerance)
+            return self._decide_buy(
+                signal, ask, tolerance, allowed_types, zone_low, zone_high,
+            )
         else:
-            return self._decide_sell(signal, bid, tolerance)
+            return self._decide_sell(
+                signal, bid, tolerance, allowed_types, zone_low, zone_high,
+            )
 
     def _decide_buy(
         self,
         signal: ParsedSignal,
         ask: float,
         tolerance: float,
+        allowed_types: list[str] | None = None,
+        zone_low: float | None = None,
+        zone_high: float | None = None,
     ) -> TradeDecision:
         """BUY decision: compare entry against ASK price."""
         # Market execution
@@ -123,7 +138,34 @@ class OrderBuilder:
                 tp=signal.tp[0] if signal.tp else None,
             )
 
-        # Entry above ASK → BUY_STOP
+        # Entry above ASK → BUY_STOP (or fallback if STOP not allowed)
+        if allowed_types and "STOP" not in [t.upper() for t in allowed_types]:
+            # P10d: STOP not allowed — use MARKET or LIMIT instead
+            if zone_low is not None and zone_high is not None:
+                # Check if price is inside zone
+                if zone_low <= ask <= zone_high:
+                    return TradeDecision(
+                        order_kind=OrderKind.MARKET,
+                        price=None,
+                        sl=signal.sl,
+                        tp=signal.tp[0] if signal.tp else None,
+                    )
+                # Price outside zone → LIMIT at zone midpoint
+                zone_mid = (zone_low + zone_high) / 2
+                return TradeDecision(
+                    order_kind=OrderKind.BUY_LIMIT,
+                    price=zone_mid,
+                    sl=signal.sl,
+                    tp=signal.tp[0] if signal.tp else None,
+                )
+            # No zone info → MARKET as safest fallback
+            return TradeDecision(
+                order_kind=OrderKind.MARKET,
+                price=None,
+                sl=signal.sl,
+                tp=signal.tp[0] if signal.tp else None,
+            )
+
         return TradeDecision(
             order_kind=OrderKind.BUY_STOP,
             price=signal.entry,
@@ -136,6 +178,9 @@ class OrderBuilder:
         signal: ParsedSignal,
         bid: float,
         tolerance: float,
+        allowed_types: list[str] | None = None,
+        zone_low: float | None = None,
+        zone_high: float | None = None,
     ) -> TradeDecision:
         """SELL decision: compare entry against BID price."""
         # Market execution
@@ -165,7 +210,31 @@ class OrderBuilder:
                 tp=signal.tp[0] if signal.tp else None,
             )
 
-        # Entry below BID → SELL_STOP
+        # Entry below BID → SELL_STOP (or fallback if STOP not allowed)
+        if allowed_types and "STOP" not in [t.upper() for t in allowed_types]:
+            # P10d: STOP not allowed — use MARKET or LIMIT instead
+            if zone_low is not None and zone_high is not None:
+                if zone_low <= bid <= zone_high:
+                    return TradeDecision(
+                        order_kind=OrderKind.MARKET,
+                        price=None,
+                        sl=signal.sl,
+                        tp=signal.tp[0] if signal.tp else None,
+                    )
+                zone_mid = (zone_low + zone_high) / 2
+                return TradeDecision(
+                    order_kind=OrderKind.SELL_LIMIT,
+                    price=zone_mid,
+                    sl=signal.sl,
+                    tp=signal.tp[0] if signal.tp else None,
+                )
+            return TradeDecision(
+                order_kind=OrderKind.MARKET,
+                price=None,
+                sl=signal.sl,
+                tp=signal.tp[0] if signal.tp else None,
+            )
+
         return TradeDecision(
             order_kind=OrderKind.SELL_STOP,
             price=signal.entry,

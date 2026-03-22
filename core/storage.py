@@ -5,6 +5,11 @@ SQLite persistence for:
 - Signal fingerprints (dedupe window).
 - Order audit trail.
 - Runtime event records.
+- Trade outcome tracking (v0.6.0).
+- Tracker state (background worker persistence).
+
+Schema evolution uses a versioned migration system.
+Migrations are idempotent — safe for repeated restarts.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from core.models import ParsedSignal, SignalStatus
@@ -69,7 +74,132 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_fingerprint ON events(fingerprint);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+
+CREATE TABLE IF NOT EXISTS schema_versions (
+    version    INTEGER PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
+
+# ── Versioned Migrations ─────────────────────────────────────────
+# Each migration runs exactly once. The version number is stored in
+# schema_versions after successful execution. Safe for repeated restarts.
+
+_MIGRATIONS: dict[int, str] = {
+    1: """
+        -- V1: Multi-channel support columns
+        ALTER TABLE orders ADD COLUMN channel_id TEXT;
+        ALTER TABLE orders ADD COLUMN source_chat_id TEXT;
+        ALTER TABLE orders ADD COLUMN source_message_id TEXT;
+        ALTER TABLE orders ADD COLUMN position_ticket INTEGER;
+        ALTER TABLE events ADD COLUMN channel_id TEXT;
+
+        CREATE INDEX IF NOT EXISTS idx_signals_channel
+            ON signals(source_chat_id);
+        CREATE INDEX IF NOT EXISTS idx_orders_channel
+            ON orders(channel_id);
+        CREATE INDEX IF NOT EXISTS idx_orders_position
+            ON orders(position_ticket);
+        CREATE INDEX IF NOT EXISTS idx_events_channel
+            ON events(channel_id);
+    """,
+    2: """
+        -- V2: Trade outcome tracking + tracker state
+        CREATE TABLE IF NOT EXISTS trades (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket          INTEGER NOT NULL,
+            deal_ticket     INTEGER NOT NULL UNIQUE,
+            fingerprint     TEXT NOT NULL,
+            channel_id      TEXT NOT NULL,
+            source_chat_id  TEXT,
+            source_message_id TEXT,
+            close_volume    REAL NOT NULL,
+            close_price     REAL NOT NULL,
+            close_time      TEXT NOT NULL,
+            pnl             REAL NOT NULL,
+            commission      REAL DEFAULT 0.0,
+            swap            REAL DEFAULT 0.0,
+            close_reason    TEXT,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_trades_ticket
+            ON trades(ticket);
+        CREATE INDEX IF NOT EXISTS idx_trades_channel
+            ON trades(channel_id);
+        CREATE INDEX IF NOT EXISTS idx_trades_time
+            ON trades(close_time);
+
+        CREATE TABLE IF NOT EXISTS tracker_state (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+    """,
+    3: """
+        -- V3: Active signal tracking for multi-order strategies (P9)
+        CREATE TABLE IF NOT EXISTS active_signals (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            fingerprint       TEXT NOT NULL UNIQUE,
+            symbol            TEXT NOT NULL,
+            side              TEXT NOT NULL,
+            entry_range       TEXT,
+            sl                REAL,
+            tp                TEXT,
+            source_chat_id    TEXT,
+            source_message_id TEXT,
+            channel_id        TEXT,
+            entry_plans       TEXT,
+            total_volume      REAL,
+            status            TEXT NOT NULL DEFAULT 'pending',
+            created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at        TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_active_signals_status
+            ON active_signals(status);
+        CREATE INDEX IF NOT EXISTS idx_active_signals_fp
+            ON active_signals(fingerprint);
+
+        -- Add source_message_id index on orders for P9 reply handler
+        CREATE INDEX IF NOT EXISTS idx_orders_source_msg
+            ON orders(source_chat_id, source_message_id);
+    """,
+    4: """
+        -- V4: Signal groups for P10 group management
+        CREATE TABLE IF NOT EXISTS signal_groups (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            fingerprint           TEXT NOT NULL UNIQUE,
+            symbol                TEXT NOT NULL,
+            side                  TEXT NOT NULL,
+            channel_id            TEXT NOT NULL,
+            source_message_id     TEXT,
+            zone_low              REAL,
+            zone_high             REAL,
+            signal_sl             REAL,
+            signal_tp             TEXT,          -- JSON array
+            tickets               TEXT NOT NULL, -- JSON array of ints
+            entry_prices          TEXT NOT NULL, -- JSON {ticket: price}
+            sl_mode               TEXT NOT NULL DEFAULT 'signal',
+            sl_max_pips_from_zone REAL DEFAULT 50.0,
+            group_trailing_pips   REAL DEFAULT 0.0,
+            group_be_on_partial   INTEGER DEFAULT 0,
+            reply_close_strategy  TEXT DEFAULT 'all',
+            current_group_sl      REAL,
+            status                TEXT NOT NULL DEFAULT 'active',
+            created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_signal_groups_status
+            ON signal_groups(status);
+        CREATE INDEX IF NOT EXISTS idx_signal_groups_channel
+            ON signal_groups(channel_id);
+    """,
+    5: """
+        -- V5: Add symbol column to orders (fixes reply-command lookup)
+        ALTER TABLE orders ADD COLUMN symbol TEXT;
+    """,
+}
 
 
 class Storage:
@@ -85,9 +215,56 @@ class Storage:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        """Create tables if they don't exist."""
+        """Create base tables and apply pending migrations."""
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
+        self._apply_migrations()
+
+    def _apply_migrations(self) -> None:
+        """Apply pending versioned migrations.
+
+        Checks schema_versions to skip already-applied migrations.
+        Each migration runs in a transaction for atomicity.
+        """
+        applied = set()
+        try:
+            rows = self._conn.execute(
+                "SELECT version FROM schema_versions"
+            ).fetchall()
+            applied = {row["version"] for row in rows}
+        except sqlite3.OperationalError:
+            # Table might not exist on very first run before _SCHEMA_SQL
+            pass
+
+        for version in sorted(_MIGRATIONS.keys()):
+            if version in applied:
+                continue
+            try:
+                self._conn.executescript(_MIGRATIONS[version])
+                self._conn.execute(
+                    "INSERT INTO schema_versions (version) VALUES (?)",
+                    (version,),
+                )
+                self._conn.commit()
+                log_event(
+                    "schema_migration_applied",
+                    version=version,
+                )
+            except sqlite3.OperationalError as exc:
+                # Handle "duplicate column" if migration partially ran before
+                if "duplicate column" in str(exc).lower():
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO schema_versions (version) VALUES (?)",
+                        (version,),
+                    )
+                    self._conn.commit()
+                    log_event(
+                        "schema_migration_skipped",
+                        version=version,
+                        reason=str(exc),
+                    )
+                else:
+                    raise
 
     def _execute_with_retry(self, sql: str, params=(), commit: bool = True):
         """Execute SQL with retry on database locked errors."""
@@ -178,19 +355,134 @@ class Storage:
         tp: float | None,
         retcode: int,
         success: bool,
+        channel_id: str = "",
+        source_chat_id: str = "",
+        source_message_id: str = "",
+        symbol: str = "",
     ) -> int:
-        """Persist an order execution record."""
+        """Persist an order execution record.
+
+        Args:
+            channel_id: Source channel identifier (denormalized).
+            source_chat_id: Telegram chat ID for reply threading.
+            source_message_id: Telegram message ID for reply threading.
+            symbol: Trading symbol (e.g. XAUUSD).
+        """
         cursor = self._execute_with_retry(
             """
             INSERT INTO orders
                 (ticket, fingerprint, order_kind, price, sl, tp,
-                 retcode, success)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 retcode, success, channel_id, source_chat_id,
+                 source_message_id, symbol)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ticket, fingerprint, order_kind, price, sl, tp,
-             retcode, int(success)),
+             retcode, int(success), channel_id, source_chat_id,
+             source_message_id, symbol),
         )
         return cursor.lastrowid
+
+    def update_position_ticket(
+        self, order_ticket: int, position_ticket: int,
+    ) -> None:
+        """Update position_ticket when a pending order fills.
+
+        For MARKET orders, order_ticket == position_ticket.
+        For pending orders, MT5 creates a new position_ticket on fill.
+        """
+        self._execute_with_retry(
+            "UPDATE orders SET position_ticket = ? WHERE ticket = ?",
+            (position_ticket, order_ticket),
+        )
+
+    def get_order_by_ticket(self, ticket: int) -> dict | None:
+        """Lookup order by MT5 ticket (direct match)."""
+        row = self._conn.execute(
+            "SELECT * FROM orders WHERE ticket = ? AND success = 1",
+            (ticket,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_order_by_position_ticket(self, position_ticket: int) -> dict | None:
+        """Lookup order by position_ticket (filled pending orders)."""
+        row = self._conn.execute(
+            "SELECT * FROM orders WHERE position_ticket = ? AND success = 1",
+            (position_ticket,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_open_tickets(self) -> dict[int, str]:
+        """Return {ticket: channel_id} for all successful orders.
+
+        Used by PositionManager to rebuild ticket→channel cache on startup.
+        """
+        rows = self._conn.execute(
+            "SELECT ticket, channel_id FROM orders WHERE success = 1 AND ticket IS NOT NULL",
+        ).fetchall()
+        return {row["ticket"]: (row["channel_id"] or "") for row in rows}
+
+    def get_fingerprint_by_message(
+        self, source_chat_id: str, source_message_id: str,
+    ) -> str | None:
+        """Lookup fingerprint by original message coordinates.
+
+        Used by _process_edit to find the original signal before
+        comparing fingerprints on edited messages.
+        """
+        row = self._conn.execute(
+            """SELECT fingerprint FROM signals
+               WHERE source_chat_id = ? AND source_message_id = ?
+               ORDER BY id DESC LIMIT 1""",
+            (source_chat_id, source_message_id),
+        ).fetchone()
+        return row["fingerprint"] if row else None
+
+    def get_orders_by_message(
+        self, source_chat_id: str, source_message_id: str,
+    ) -> list[dict]:
+        """Get ALL orders associated with a signal message.
+
+        P9 update: Direct query on orders table via source_chat_id +
+        source_message_id. No longer joins through signals.fingerprint,
+        because re-entry orders use sub-fingerprints (e.g. fp:L0, fp:L1)
+        that won't match the signal's base fingerprint.
+
+        Falls back to old JOIN path for orders that pre-date V3 migration
+        (orders without source_message_id).
+        """
+        # Primary path (P9): direct lookup on orders table
+        rows = self._conn.execute(
+            """SELECT ticket, symbol, fingerprint, channel_id, success
+               FROM orders
+               WHERE source_chat_id = ? AND source_message_id = ?
+                 AND ticket IS NOT NULL
+               ORDER BY id""",
+            (source_chat_id, source_message_id),
+        ).fetchall()
+
+        if not rows:
+            # Fallback: old JOIN through signals table (pre-P9 orders)
+            rows = self._conn.execute(
+                """SELECT o.ticket, s.symbol, o.fingerprint,
+                          o.channel_id, o.success
+                   FROM orders o
+                   JOIN signals s ON o.fingerprint = s.fingerprint
+                   WHERE s.source_chat_id = ? AND s.source_message_id = ?
+                     AND o.ticket IS NOT NULL
+                   ORDER BY o.id""",
+                (source_chat_id, source_message_id),
+            ).fetchall()
+
+        return [
+            {
+                "ticket": row["ticket"],
+                "symbol": row["symbol"],
+                "fingerprint": row["fingerprint"],
+                "channel_id": row["channel_id"] or "",
+                "success": bool(row["success"]),
+            }
+            for row in rows
+        ]
 
     # ── Events ───────────────────────────────────────────────────
 
@@ -200,21 +492,287 @@ class Storage:
         event_type: str,
         symbol: str = "",
         details: dict | None = None,
+        channel_id: str = "",
     ) -> int:
         """Persist a runtime event for signal lifecycle tracing."""
         cursor = self._execute_with_retry(
             """
-            INSERT INTO events (fingerprint, event_type, symbol, details)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO events (fingerprint, event_type, symbol, details,
+                                channel_id)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 fingerprint,
                 event_type,
                 symbol,
                 json.dumps(details) if details else None,
+                channel_id,
             ),
         )
         return cursor.lastrowid
+
+    # ── Trades ────────────────────────────────────────────────────
+
+    def store_trade(
+        self,
+        ticket: int,
+        deal_ticket: int,
+        fingerprint: str,
+        channel_id: str,
+        close_volume: float,
+        close_price: float,
+        close_time: str,
+        pnl: float,
+        commission: float = 0.0,
+        swap: float = 0.0,
+        close_reason: str = "",
+        source_chat_id: str = "",
+        source_message_id: str = "",
+    ) -> int | None:
+        """Persist a trade outcome (closing deal).
+
+        Returns row ID on success, None if deal_ticket already exists.
+        """
+        try:
+            cursor = self._execute_with_retry(
+                """
+                INSERT INTO trades
+                    (ticket, deal_ticket, fingerprint, channel_id,
+                     close_volume, close_price, close_time, pnl,
+                     commission, swap, close_reason,
+                     source_chat_id, source_message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    ticket, deal_ticket, fingerprint, channel_id,
+                    close_volume, close_price, close_time, pnl,
+                    commission, swap, close_reason,
+                    source_chat_id, source_message_id,
+                ),
+            )
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            # deal_ticket UNIQUE constraint — already processed
+            return None
+
+    def get_signal_reply_info(
+        self, fingerprint: str,
+    ) -> tuple[str, str] | None:
+        """Get (source_chat_id, source_message_id) for Telegram reply."""
+        row = self._conn.execute(
+            "SELECT source_chat_id, source_message_id FROM signals WHERE fingerprint = ? LIMIT 1",
+            (fingerprint,),
+        ).fetchone()
+        if row:
+            return (row["source_chat_id"] or "", row["source_message_id"] or "")
+        return None
+
+    # ── Tracker State ─────────────────────────────────────────────
+
+    def get_tracker_state(self, key: str) -> str | None:
+        """Read a tracker state value."""
+        row = self._conn.execute(
+            "SELECT value FROM tracker_state WHERE key = ?",
+            (key,),
+        ).fetchone()
+        return row["value"] if row else None
+
+    def set_tracker_state(self, key: str, value: str) -> None:
+        """Write a tracker state value (upsert)."""
+        self._execute_with_retry(
+            """
+            INSERT INTO tracker_state (key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (key, value),
+        )
+
+    # ── Active Signals (P9) ────────────────────────────────────────
+
+    def store_active_signal(
+        self,
+        fingerprint: str,
+        symbol: str,
+        side: str,
+        entry_range: list[float] | None,
+        sl: float | None,
+        tp: list[float],
+        source_chat_id: str,
+        source_message_id: str,
+        channel_id: str,
+        entry_plans_json: str,
+        total_volume: float,
+        expires_at: str,
+    ) -> int:
+        """Persist an active signal for restart recovery."""
+        cursor = self._execute_with_retry(
+            """
+            INSERT OR REPLACE INTO active_signals
+                (fingerprint, symbol, side, entry_range, sl, tp,
+                 source_chat_id, source_message_id, channel_id,
+                 entry_plans, total_volume, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                fingerprint, symbol, side,
+                json.dumps(entry_range) if entry_range else None,
+                sl,
+                json.dumps(tp),
+                source_chat_id, source_message_id, channel_id,
+                entry_plans_json, total_volume, expires_at,
+            ),
+        )
+        return cursor.lastrowid
+
+    def get_active_signals(self, status: str = "pending") -> list[dict]:
+        """Get all active signals with given status.
+
+        Returns raw dicts — caller (SignalStateManager) deserializes.
+        Includes both 'pending' and 'partial' by default for rebuild.
+        """
+        rows = self._conn.execute(
+            """SELECT * FROM active_signals
+               WHERE status IN ('pending', 'partial')
+               ORDER BY created_at""",
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_active_signal_status(
+        self, fingerprint: str, status: str,
+    ) -> None:
+        """Update the status of an active signal."""
+        self._execute_with_retry(
+            "UPDATE active_signals SET status = ? WHERE fingerprint = ?",
+            (status, fingerprint),
+        )
+
+    def update_active_signal_plans(
+        self, fingerprint: str, entry_plans_json: str,
+    ) -> None:
+        """Update entry plans JSON (after marking levels executed/cancelled)."""
+        self._execute_with_retry(
+            "UPDATE active_signals SET entry_plans = ? WHERE fingerprint = ?",
+            (entry_plans_json, fingerprint),
+        )
+
+    def delete_active_signal(self, fingerprint: str) -> None:
+        """Remove an active signal (completed or expired)."""
+        self._execute_with_retry(
+            "DELETE FROM active_signals WHERE fingerprint = ?",
+            (fingerprint,),
+        )
+
+    # ── P10: Signal Group Persistence ──────────────────────────────
+
+    def store_group(
+        self,
+        fingerprint: str,
+        symbol: str,
+        side: str,
+        channel_id: str,
+        source_message_id: str,
+        tickets: list[int],
+        entry_prices: dict[int, float],
+        zone_low: float | None = None,
+        zone_high: float | None = None,
+        signal_sl: float | None = None,
+        signal_tp: list[float] | None = None,
+        sl_mode: str = "signal",
+        sl_max_pips_from_zone: float = 50.0,
+        group_trailing_pips: float = 0.0,
+        group_be_on_partial: bool = False,
+        reply_close_strategy: str = "all",
+    ) -> None:
+        """Persist a signal group to DB for restart recovery."""
+        self._execute_with_retry(
+            """INSERT OR REPLACE INTO signal_groups (
+                fingerprint, symbol, side, channel_id, source_message_id,
+                zone_low, zone_high, signal_sl, signal_tp,
+                tickets, entry_prices,
+                sl_mode, sl_max_pips_from_zone, group_trailing_pips,
+                group_be_on_partial, reply_close_strategy,
+                status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', datetime('now'))""",
+            (
+                fingerprint, symbol, side, channel_id, source_message_id,
+                zone_low, zone_high, signal_sl,
+                json.dumps(signal_tp) if signal_tp else None,
+                json.dumps(tickets),
+                json.dumps({str(k): v for k, v in entry_prices.items()}),
+                sl_mode, sl_max_pips_from_zone, group_trailing_pips,
+                1 if group_be_on_partial else 0,
+                reply_close_strategy,
+            ),
+        )
+
+    def get_active_groups(self) -> list[dict]:
+        """Get all active signal groups for restart recovery.
+
+        Returns list of dicts with parsed JSON fields.
+        """
+        try:
+            cursor = self._execute_with_retry(
+                "SELECT * FROM signal_groups WHERE status = 'active'"
+            )
+            rows = cursor.fetchall()
+        except Exception:
+            return []
+
+        groups = []
+        for row in rows:
+            row_dict = dict(row)
+            # Parse JSON fields
+            try:
+                row_dict["tickets"] = json.loads(row_dict["tickets"])
+            except (json.JSONDecodeError, TypeError):
+                row_dict["tickets"] = []
+            try:
+                raw_prices = json.loads(row_dict["entry_prices"])
+                row_dict["entry_prices"] = {int(k): v for k, v in raw_prices.items()}
+            except (json.JSONDecodeError, TypeError):
+                row_dict["entry_prices"] = {}
+            try:
+                tp = row_dict.get("signal_tp")
+                row_dict["signal_tp"] = json.loads(tp) if tp else []
+            except (json.JSONDecodeError, TypeError):
+                row_dict["signal_tp"] = []
+            row_dict["group_be_on_partial"] = bool(row_dict.get("group_be_on_partial", 0))
+            groups.append(row_dict)
+
+        return groups
+
+    def update_group_sl(self, fingerprint: str, new_sl: float) -> None:
+        """Update the current SL for a signal group."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET current_group_sl = ?, updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (new_sl, fingerprint),
+        )
+
+    def update_group_tickets(
+        self, fingerprint: str, tickets: list[int], entry_prices: dict[int, float],
+    ) -> None:
+        """Update tickets and entry_prices after re-entry adds order."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET tickets = ?, entry_prices = ?, updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (
+                json.dumps(tickets),
+                json.dumps({str(k): v for k, v in entry_prices.items()}),
+                fingerprint,
+            ),
+        )
+
+    def complete_group_db(self, fingerprint: str) -> None:
+        """Mark a signal group as completed in DB."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET status = 'completed', updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (fingerprint,),
+        )
 
     # ── Cleanup ──────────────────────────────────────────────────
 
@@ -226,12 +784,24 @@ class Storage:
         cutoff = f"-{retention_days} days"
         counts = {}
 
-        for table, col in [("signals", "created_at"), ("orders", "created_at"), ("events", "timestamp")]:
-            cursor = self._execute_with_retry(
-                f"DELETE FROM {table} WHERE datetime({col}) < datetime('now', ?)",
-                (cutoff,),
-            )
-            counts[table] = cursor.rowcount
+        tables = [
+            ("signals", "created_at"),
+            ("orders", "created_at"),
+            ("events", "timestamp"),
+            ("trades", "created_at"),
+            ("active_signals", "created_at"),
+            ("signal_groups", "created_at"),
+        ]
+        for table, col in tables:
+            try:
+                cursor = self._execute_with_retry(
+                    f"DELETE FROM {table} WHERE datetime({col}) < datetime('now', ?)",
+                    (cutoff,),
+                )
+                counts[table] = cursor.rowcount
+            except sqlite3.OperationalError:
+                # Table may not exist if migrations haven't run yet
+                counts[table] = 0
 
         log_event(
             "storage_cleanup",
@@ -239,5 +809,6 @@ class Storage:
             deleted_signals=counts.get("signals", 0),
             deleted_orders=counts.get("orders", 0),
             deleted_events=counts.get("events", 0),
+            deleted_trades=counts.get("trades", 0),
         )
         return counts

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -126,6 +126,7 @@ class ExecutionConfig:
     watchdog_max_reinit: int
     lifecycle_check_interval_seconds: int
     dynamic_deviation_multiplier: float  # 0 = disabled, e.g. 1.5
+    trade_tracker_poll_seconds: int      # 0 = disabled
 
 
 @dataclass(frozen=True)
@@ -239,6 +240,7 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         watchdog_max_reinit=_env_int("WATCHDOG_MAX_REINIT", 5),
         lifecycle_check_interval_seconds=_env_int("LIFECYCLE_CHECK_INTERVAL_SECONDS", 30),
         dynamic_deviation_multiplier=_env_float("DYNAMIC_DEVIATION_MULTIPLIER", 0.0),
+        trade_tracker_poll_seconds=_env_int("TRADE_TRACKER_POLL_SECONDS", 30),
     )
 
     _dry_run_raw = _env("DRY_RUN", "false").lower()

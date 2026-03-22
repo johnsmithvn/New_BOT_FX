@@ -57,3 +57,27 @@ Expected outcomes:
   - Additional symbols/formats added via modular parser updates.
   - Advanced execution options evaluated (example: multi-TP split).
   - Backward-compatible evolution strategy documented.
+
+## Milestone R7 - Channel-Driven Multi-Order Strategy ✅
+- Goal:
+  - Support per-channel trading strategies with multi-order execution from a single signal.
+- Expected outcomes:
+  - Entry strategy engine: single, range, and scale_in modes.
+  - Volume split algorithms: equal, pyramid, risk_based.
+  - Signal state machine for multi-order lifecycle tracking.
+  - Background price-cross re-entry monitor with debounce.
+  - Pipeline refactor: sole orchestrator for all order execution.
+  - Backward compatible: single mode = existing behavior.
+
+## Milestone R8 - Smart Signal Group Management ✅
+- Goal:
+  - Manage all orders from one signal as a coordinated group.
+  - Coordinated SL, selective close, auto-breakeven across group.
+- Expected outcomes:
+  - Every signal creates a managed OrderGroup (1 or N orders).
+  - Group trailing SL with multi-source calculation (zone, signal, fixed, trail).
+  - Reply-based selective close (highest/lowest entry, oldest).
+  - Auto-breakeven after partial group close.
+  - DB persistence (signal_groups table) for restart recovery.
+  - STOP order filter: MARKET/LIMIT fallback when STOP not allowed.
+

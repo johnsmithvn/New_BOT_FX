@@ -1,7 +1,8 @@
 # LOGIC: Signal Parsing Pipeline
 
-> Mục đích: Giải thích CHI TIẾT cách tin nhắn Telegram được parse thành cấu trúc `ParsedSignal`.  
+> Mục đích: Giải thích CHI TIẾT cách tin nhắn Telegram được parse thành cấu trúc `ParsedSignal`.
 > File này giúp bạn tự sửa đổi logic parse khi cần hỗ trợ format tín hiệu mới.
+> **Version**: v0.9.0 | **Last updated**: 2026-03-21
 
 ---
 
@@ -256,14 +257,21 @@ class ParsedSignal:
     source_chat_id: str      # ID chat Telegram
     source_message_id: str   # ID message
     received_at: datetime    # Thời điểm nhận
+    parse_confidence: float  # 0.0-1.0 (v0.6.0)
+    parse_source: str        # Parser name (v0.6.0)
+    entry_range: tuple[float, float] | None  # (2020, 2030) cho range signals (v0.9.0)
 ```
+
+> **v0.6.0**: fingerprint bao gồm `source_chat_id` (breaking change).
+> **v0.9.0**: `entry_range` được detect khi signal có dạng "BUY GOLD 2020-2030".
+> Nếu `entry_range` khác None và channel strategy mode = `range` → `EntryStrategy` sẽ tạo nhiều entry plans.
 
 ---
 
 ## Tóm Tắt: Khi Nào Message Bị Reject?
 
 | Lý do | File | Dòng |
-|-------|------|------|
+|-------|------|----- |
 | Rỗng hoặc quá dài | `cleaner.py` | 26-30 |
 | Không tìm thấy symbol | `symbol_detector.py` → `parser.py` | 117-121 |
 | Không tìm thấy BUY/SELL | `side_detector.py` → `parser.py` | 125-129 |

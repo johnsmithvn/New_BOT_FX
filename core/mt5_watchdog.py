@@ -33,6 +33,7 @@ class MT5Watchdog:
         reinit_delay_seconds: float = 5.0,
         on_reinit_exhausted=None,
         on_connection_lost=None,
+        on_health_update=None,
     ) -> None:
         self._executor = executor
         self._check_interval = check_interval_seconds
@@ -40,6 +41,7 @@ class MT5Watchdog:
         self._base_reinit_delay = reinit_delay_seconds
         self._on_reinit_exhausted = on_reinit_exhausted
         self._on_connection_lost = on_connection_lost
+        self._on_health_update = on_health_update
         self._running = False
         self._task: asyncio.Task | None = None
         self._consecutive_failures = 0
@@ -92,6 +94,11 @@ class MT5Watchdog:
 
         if info is not None:
             # Connection is healthy
+            if self._on_health_update:
+                try:
+                    self._on_health_update(True)
+                except Exception:
+                    pass
             if self._consecutive_failures > 0:
                 log_event(
                     "mt5_connection_recovered",
@@ -101,6 +108,11 @@ class MT5Watchdog:
             return
 
         # Health check failed
+        if self._on_health_update:
+            try:
+                self._on_health_update(False)
+            except Exception:
+                pass
         self._consecutive_failures += 1
 
         # Suppress false alarms during weekend

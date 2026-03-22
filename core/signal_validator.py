@@ -105,8 +105,8 @@ class SignalValidator:
         if signal.sl is None:
             return ValidationResult(False, "missing Stop Loss (SL)")
 
-        if not signal.tp:
-            return ValidationResult(False, "missing Take Profit (TP)")
+        # if not signal.tp:
+        #     return ValidationResult(False, "missing Take Profit (TP)")
 
         # Rule 2: Duplicate filter
         if is_duplicate:

@@ -8,13 +8,8 @@ Handles: CLOSE_ALL, CLOSE_SYMBOL, CLOSE_HALF, MOVE_SL, BREAKEVEN.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from core.command_parser import ManagementCommand, CommandType
 from utils.logger import log_event
-
-if TYPE_CHECKING:
-    from config.settings import Settings
 
 
 class CommandExecutor:

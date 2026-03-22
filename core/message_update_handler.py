@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from core.models import ParsedSignal, ParseFailure
 from core.signal_parser.parser import SignalParser
@@ -24,6 +24,7 @@ class UpdateAction(str, enum.Enum):
     IGNORE = "ignore"
     UPDATE_ORDER = "update_order"
     CANCEL_ORDER = "cancel_order"
+    CANCEL_GROUP_PENDING = "cancel_group_pending"
     NEW_SIGNAL = "new_signal"
 
 
@@ -59,6 +60,7 @@ class MessageUpdateHandler:
         source_chat_id: str,
         source_message_id: str,
         original_fingerprint: str,
+        has_filled_orders: bool = False,
     ) -> UpdateDecision:
         """Process an edited message and decide action.
 
@@ -67,6 +69,7 @@ class MessageUpdateHandler:
             source_chat_id: Chat/channel ID.
             source_message_id: Original message ID.
             original_fingerprint: Fingerprint of the original signal.
+            has_filled_orders: True if group has at least one filled position.
 
         Returns:
             UpdateDecision describing what action to take.
@@ -77,6 +80,7 @@ class MessageUpdateHandler:
                 source_chat_id,
                 source_message_id,
                 original_fingerprint,
+                has_filled_orders,
             )
         except Exception as exc:
             log_event(
@@ -96,6 +100,7 @@ class MessageUpdateHandler:
         source_chat_id: str,
         source_message_id: str,
         original_fingerprint: str,
+        has_filled_orders: bool = False,
     ) -> UpdateDecision:
         """Internal handler logic."""
 
@@ -134,17 +139,24 @@ class MessageUpdateHandler:
                 original_fingerprint=original_fingerprint,
             )
 
-        # Step 3: Fingerprint changed — check original order status
-        # TODO: P2 — query MT5 for actual order status (pending vs executed)
-        # For now, recommend cancel + new signal approach
-
+        # Step 3: Fingerprint changed — decide based on group status
         log_event(
             "edit_signal_changed",
             fingerprint=original_fingerprint,
             new_fingerprint=new_signal.fingerprint,
             symbol=new_signal.symbol,
+            has_filled_orders=has_filled_orders,
         )
 
+        if has_filled_orders:
+            # Group has filled positions — cancel pending only, no re-process
+            return UpdateDecision(
+                action=UpdateAction.CANCEL_GROUP_PENDING,
+                reason="signal changed but orders already filled, cancel pending only",
+                original_fingerprint=original_fingerprint,
+            )
+
+        # No filled orders — cancel all + allow re-process
         return UpdateDecision(
             action=UpdateAction.CANCEL_ORDER,
             reason="signal parameters changed, cancel original order",

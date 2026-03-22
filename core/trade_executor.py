@@ -178,27 +178,6 @@ class TradeExecutor:
             time=tick.time,
         )
 
-    def check_symbol(self, symbol: str) -> bool:
-        """Ensure symbol is selected and visible in MT5.
-
-        Returns True if symbol is available for trading.
-        """
-        info = mt5.symbol_info(symbol)
-        if info is None:
-            # Try to select it
-            if not mt5.symbol_select(symbol, True):
-                log_event("symbol_select_failed", symbol=symbol)
-                return False
-            info = mt5.symbol_info(symbol)
-
-        if info is None:
-            return False
-
-        if not info.visible:
-            mt5.symbol_select(symbol, True)
-
-        return info.trade_mode != 0  # 0 = SYMBOL_TRADE_MODE_DISABLED
-
     def positions_total(self) -> int:
         """Return the number of currently open positions."""
         total = mt5.positions_total()

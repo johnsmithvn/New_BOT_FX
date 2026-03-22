@@ -1,8 +1,8 @@
 # PLAN
 
 ## Current Phase
-- Phase: `All phases complete (P0–P5)`
-- Status: All high-priority tasks delivered. See `docs/TASKS.md` for medium-priority backlog.
+- Phase: `P13 - Bot Hardening & Reliability`
+- Status: `complete`
 
 ## Execution Phases
 
@@ -71,6 +71,67 @@
   - 10 new configurable env keys, all opt-in (default disabled)
 - Status: `complete`
 
+### P6 - Multi-Channel & Trade Outcome Tracking
+- Goal:
+  - Support multiple Telegram signal channels with per-channel rules.
+  - Track trade outcomes (PnL) and reply under the original signal.
+- Major deliverables:
+  - Versioned schema migration system in `core/storage.py`
+  - `core/channel_manager.py` — per-channel rule configuration
+  - `core/trade_tracker.py` — background deal polling, PnL tracking, reply messages
+  - `core/telegram_alerter.py` — `reply_to_message()` for trade outcome threading
+  - `core/position_manager.py` — per-channel breakeven/trailing/partial rules
+  - Fingerprint updated to include `source_chat_id` (breaking change)
+  - New DB tables: `trades`, `tracker_state`, `schema_versions`
+  - 1 new env key: `TRADE_TRACKER_POLL_SECONDS`
+- Status: `complete`
+
+### P7 - Reply-Based Signal Management
+- Goal:
+  - Allow users to reply to original signal messages to manage trades.
+- Major deliverables:
+  - `core/reply_action_parser.py` — parse reply commands (close, SL, TP, BE, close N%)
+  - `core/reply_command_executor.py` — per-ticket operations with position check
+  - Telegram listener `reply_to_msg_id` forwarding
+  - Storage `get_orders_by_message()` — multi-order lookup
+  - TradeTracker reply-closed suppression with 5min TTL
+  - `main.py` `_process_reply()` — multi-order, channel guard, grouped results
+- Status: `complete`
+
+### P8 - (Reserved)
+- No P8 phase was defined — numbering skipped to P9.
+
+### P9 - Channel-Driven Strategy Architecture
+- Goal:
+  - Redesign system to be channel-driven strategy-based, not just signal-driven.
+  - Support range-based entry, multi-order per signal, dynamic re-entry.
+- Major deliverables:
+  - `core/entry_strategy.py` — multi-entry plan engine (single/range/scale_in)
+  - `core/signal_state_manager.py` — active signal lifecycle with state machine
+  - `core/range_monitor.py` — background price-cross re-entry trigger
+  - `core/pipeline.py` — extracted sole orchestrator from main.py
+  - `channels.json` expanded: strategy, risk, validation per channel
+  - `core/models.py` — EntryPlan, SignalState, order_fingerprint
+  - Storage migration V3: `active_signals` table
+- Status: `complete`
+
+### P10 - Smart Signal Group Management
+- Goal:
+  - Merge group management into PositionManager. Every signal = 1 managed group.
+  - Coordinated group SL (zone/trail/signal), selective close via reply, auto-BE.
+- Major deliverables:
+  - `core/models.py` — `OrderGroup` dataclass, `GroupStatus` enum
+  - `core/position_manager.py` — group-aware routing, register_group, group trailing SL,
+    _calculate_group_sl (zone/signal/fixed/trail), _modify_group_sl (atomic apply to all tickets),
+    close_selective_entry (strategy-based), apply_group_be, query methods, DB wiring
+  - `core/pipeline.py` — _register_group_from_results, re-entry add_order_to_group
+  - `core/order_builder.py` — order_types_allowed filter (STOP→MARKET/LIMIT fallback)
+  - `main.py` — P10f selective close interceptor in _do_process_reply
+  - `core/storage.py` — Migration V4: `signal_groups` table + 5 CRUD methods
+  - `config/channels.example.json` — 6 new config fields
+  - Restart recovery: `_restore_groups_from_db()` loads active groups on startup
+- Status: `complete`
+
 ## Phase Completion Rule
 - Current phase is complete only when all `High Priority` and `Medium Priority` tasks in `docs/TASKS.md` are checked.
 - On completion:
@@ -79,6 +140,36 @@
   - Regenerate `docs/TASKS.md` for the new current phase
 
 ## What's Next
-- Medium-priority P5 backlog: command response via Telegram, position manager alerts
-- Consider P6: extended parser formats, multi-account support, web dashboard
+
+### Done
+- v0.7.0: per-channel metrics, message edit wiring, store_event channel_id, reply throttle
+- v0.7.1: command response via Telegram, position manager alerts with throttle
+- v0.8.0: reply-based signal management (reply to signal → close/SL/TP/BE on specific trade)
+- v0.9.0: channel-driven strategy architecture (P9)
+- v0.10.0: smart signal group management (P10) + restart recovery
+- v0.10.1: codebase audit cleanup (dead code, swallowed exceptions, outdated docs)
+- v0.11.0: edit & delete message handling (P10.1) — group-aware cancel, MessageDeleted listener
+- v0.12.0: web analytics dashboard (P11) — FastAPI + Jinja2 + Chart.js, 3 pages, 7 API endpoints
+- v0.13.0: dashboard enhancement (P12) — channel names, equity curve, symbol stats, CSV export, basic auth
+- v0.14.0: bot hardening (P13) — health check endpoint, runtime stats, watchdog+CB bridge
+
+
+
+### Upcoming
+
+#### P14 — Multi-Account Support
+- **Why**: Chạy nhiều account broker từ 1 bot instance
+- **Scope**: Architecture change lớn, ~800+ LOC, high risk
+- **Deliverables**:
+  - Account config trong settings (list of MT5 accounts)
+  - Per-account TradeExecutor instances
+  - Per-account risk sizing
+  - Dashboard: per-account filtering
+
+### Deferred
+- Parser overrides per detector (no concrete need yet)
+- WebSocket live updates for dashboard (polling 30s đủ dùng)
+- Dockerize dashboard
+- Mobile PWA
+- Migrate SQLite → PostgreSQL
 

@@ -71,7 +71,7 @@ class TelegramAlerter:
 
         try:
             entity = await self._client.get_entity(self._admin_chat)
-            await self._client.send_message(entity, message)
+            await self._client.send_message(entity, message, parse_mode="md")
             log_event(
                 "alert_sent",
                 alert_type=alert_type,
@@ -106,7 +106,7 @@ class TelegramAlerter:
 
         try:
             entity = await self._client.get_entity(self._admin_chat)
-            await self._client.send_message(entity, message)
+            await self._client.send_message(entity, message, parse_mode="md")
             log_event("debug_sent")
         except Exception as exc:
             log_event("debug_send_failed", error=str(exc))
@@ -118,6 +118,47 @@ class TelegramAlerter:
             loop.create_task(self.send_debug(message))
         except RuntimeError:
             log_event("debug_skipped", reason="no event loop")
+
+    # ── Reply-to methods (trade outcome) ─────────────────────────
+
+    async def reply_to_message(
+        self, chat_id: str | int, message_id: int, text: str,
+    ) -> None:
+        """Reply to a specific message in a chat. No rate limiting.
+
+        Used by TradeTracker to reply with PnL under the original signal.
+        """
+        if not self._client:
+            log_event("reply_skipped", reason="no client")
+            return
+
+        try:
+            entity = await self._client.get_entity(chat_id)
+            await self._client.send_message(
+                entity, text, reply_to=message_id, parse_mode="md",
+            )
+            log_event(
+                "reply_sent",
+                chat_id=str(chat_id),
+                message_id=message_id,
+            )
+        except Exception as exc:
+            log_event(
+                "reply_send_failed",
+                chat_id=str(chat_id),
+                message_id=message_id,
+                error=str(exc),
+            )
+
+    def reply_to_message_sync(
+        self, chat_id: str | int, message_id: int, text: str,
+    ) -> None:
+        """Schedule reply from sync context."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.reply_to_message(chat_id, message_id, text))
+        except RuntimeError:
+            log_event("reply_skipped", reason="no event loop")
 
     # ── Convenience methods ──────────────────────────────────────
 

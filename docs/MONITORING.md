@@ -20,6 +20,19 @@ All alerts are sent to `TELEGRAM_ADMIN_CHAT` via the Telegram Alerter. Each aler
 | `startup_position_warning` | ⚠️ Warning | Boot with positions >= MAX_OPEN_TRADES | Bot will refuse new signals |
 | `bot_started` | 🟢 Info | Bot startup complete | Pipeline active |
 | `bot_stopped` | 🔴 Info | Graceful shutdown | — |
+| `trade_tracked` | 🟢 Info | Trade outcome detected from MT5 deals | PnL reply sent (v0.6.0) |
+| `trade_tracker_partial_throttled` | ⚠️ Info | Partial close reply skipped | Within 60s cooldown (v0.7.0) |
+| `edit_decision` | ⚠️ Info | Edited signal processed | CANCEL_ORDER / IGNORE (v0.7.0) |
+| `command_response` | 📋 Info | Management command executed | Response sent to source chat + admin (v0.7.1) |
+| `breakeven_alert` | 🔒 Info | SL moved to breakeven | Throttled per-ticket 60s (v0.7.1) |
+| `trailing_alert` | 📐 Info | Trailing SL moved ≥5 pips | Throttled per-ticket 60s + delta (v0.7.1) |
+| `partial_close_alert` | ✂️ Info | Volume partially closed | Throttled per-ticket 60s (v0.7.1) |
+| `reply_command` | 📋 Info | Reply action executed on signal | Multi-order grouped results (v0.8.0) |
+| `reply_no_orders` | ⚠️ Info | Reply to non-signal message | "No active trade" response (v0.8.0) |
+| `trade_tracker_reply_suppressed` | 🔇 Info | PnL reply suppressed | Ticket closed via reply, 5min TTL (v0.8.0) |
+| `range_monitor_trigger` | 🔄 Info | Price crossed re-entry level | Re-entry order triggered (v0.9.0) |
+| `range_monitor_expired` | ⏳ Info | Active signals expired | TTL exceeded, removed from monitoring (v0.9.0) |
+| `signal_state_registered` | 📋 Info | Multi-order signal registered | State machine tracking started (v0.9.0) |
 
 ---
 
@@ -33,7 +46,11 @@ Emitted every `HEARTBEAT_INTERVAL_MINUTES` (default 30, set 0 to disable).
             open_positions=3  pending_orders=1
             mt5=OK  telegram=OK
             daily_trades=8  daily_loss=$25.50  consec_losses=1
+             [Gold_Signals] p=10 e=6 r=3 f=1
+             [VIP_Channel]  p=5  e=2 r=2 f=1
 ```
+
+> Per-channel breakdown appears automatically when 2+ channels are active (v0.7.0).
 
 ### Reading the Heartbeat
 
@@ -118,6 +135,12 @@ grep "daily_risk_guard_polled" logs/bot.log | tail -5
 
 # Circuit breaker events
 grep "circuit_breaker" logs/bot.log
+
+# Trade tracker outcomes
+grep "trade_tracked" logs/bot.log | tail -5
+
+# Message edit decisions
+grep "edit_decision" logs/bot.log | tail -5
 ```
 
 ---
