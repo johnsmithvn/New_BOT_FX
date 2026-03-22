@@ -378,8 +378,59 @@ python -m dashboard.dashboard
 
 > 📖 Full documentation: [dashboard/docs/DASHBOARD.md](dashboard/docs/DASHBOARD.md)
 
+## 🏥 Health Check Endpoint (P13)
+
+Bot exposes a lightweight HTTP health check at `http://vps-ip:8080/health`.
+
+Starts automatically with the bot — no extra dependencies or setup required.
+
+### Response Format
+
+```json
+{
+  "status": "healthy",
+  "uptime": "3d 14h 22m",
+  "uptime_seconds": 308520,
+  "mt5_connected": true,
+  "telegram_connected": true,
+  "last_signal_time": "2026-03-22T07:45:00",
+  "last_signal_symbol": "XAUUSD",
+  "signals_today": 12,
+  "orders_today": 8,
+  "errors_today": 0,
+  "circuit_breaker": "CLOSED",
+  "circuit_breaker_failures": 0
+}
+```
+
+### Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `healthy` | MT5 connected, circuit breaker closed |
+| `degraded` | MT5 disconnected (watchdog attempting reconnect) |
+| `unhealthy` | Circuit breaker OPEN (trading paused) |
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALTH_CHECK_PORT` | `8080` | Port for `/health` endpoint |
+
+### Monitoring
+
+```bash
+# Quick check from terminal
+curl http://your-vps:8080/health | jq .status
+
+# UptimeRobot / Healthchecks.io
+# URL: http://your-vps:8080/health
+# Method: GET
+# Keyword: "healthy"
+```
+
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.13.0**
+Current: **v0.14.0**

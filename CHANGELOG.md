@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.14.0 - 2026-03-22
+
+### Added
+- **P13: Bot Hardening & Reliability**
+  - Health check HTTP endpoint (`/health` on port 8080) — uptime, MT5 status, signal/order/error counters, circuit breaker state
+  - Runtime health stats tracker (`HealthStats`) — daily auto-reset counters, status computation (healthy/degraded/unhealthy)
+  - Watchdog → health stats bridge — MT5 connection status feeds into health endpoint in real-time
+  - Circuit breaker → health stats bridge — CB state changes reflected in `/health` response
+  - Signal/order/error tracking wired throughout the pipeline
+
+### Changed
+- `MT5Watchdog` now accepts `on_health_update` callback (non-breaking, optional param)
+- Environment variable `HEALTH_CHECK_PORT` configures health server port (default 8080)
+
 ## 0.13.0 - 2026-03-22
 
 ### Added

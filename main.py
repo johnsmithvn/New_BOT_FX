@@ -50,6 +50,7 @@ from core.entry_strategy import EntryStrategy
 from core.signal_state_manager import SignalStateManager
 from core.pipeline import SignalPipeline
 from core.range_monitor import RangeMonitor
+from core.health import HealthStats, HealthCheckServer
 from utils.logger import setup_logger, log_event
 from utils.symbol_mapper import SymbolMapper
 
@@ -130,6 +131,8 @@ class Bot:
         self._metrics = _SessionMetrics()
         self._channel_metrics: dict[str, _SessionMetrics] = {}
         self._start_time: float = 0.0
+        self._health = HealthStats()
+        self._health_server: HealthCheckServer | None = None
 
     def _get_ch_metrics(self, chat_id: str) -> _SessionMetrics:
         """Lazy-init per-channel metrics."""
@@ -245,6 +248,15 @@ class Bot:
             max_reinit_retries=s.execution.watchdog_max_reinit,
             on_connection_lost=self._on_mt5_connection_lost,
             on_reinit_exhausted=self._on_mt5_reinit_exhausted,
+            on_health_update=self._on_watchdog_health,
+        )
+
+        # Health check server (port from env or default 8080)
+        import os
+        health_port = int(os.getenv("HEALTH_CHECK_PORT", "8080"))
+        self._health_server = HealthCheckServer(
+            stats=self._health,
+            port=health_port,
         )
 
         # Daily Risk Guard — live mode only (no MT5 deal history in dry-run)
@@ -337,6 +349,10 @@ class Bot:
 
     def _on_breaker_change(self, old_state, new_state) -> None:
         """Circuit breaker state change callback."""
+        self._health.set_circuit_breaker(
+            state=new_state.value,
+            failures=self.circuit_breaker._consecutive_failures,
+        )
         if new_state == BreakerState.OPEN:
             self.alerter.send_alert_sync(
                 "circuit_breaker_open",
@@ -349,6 +365,10 @@ class Bot:
                 "circuit_breaker_close",
                 "🟢 **CIRCUIT BREAKER CLOSED**\nTrading resumed.",
             )
+
+    def _on_watchdog_health(self, connected: bool) -> None:
+        """Watchdog health update callback."""
+        self._health.set_mt5_status(connected)
 
     def _on_mt5_connection_lost(self) -> None:
         self.alerter.send_alert_sync(
@@ -582,6 +602,7 @@ class Bot:
 
         # Count as parsed
         self._metrics.parsed += 1
+        self._health.record_signal(symbol=signal_obj.symbol)
         self._get_ch_metrics(chat_id).parsed += 1
 
         log_event(
@@ -830,6 +851,7 @@ class Bot:
             self.storage.update_signal_status(signal_obj.fingerprint, SignalStatus.EXECUTED)
             self.storage.store_event(fingerprint=fp, event_type="signal_executed", symbol=signal_obj.symbol, details={"orders": len(results), "mode": self.channel_mgr.get_strategy(chat_id).get("mode", "single")}, channel_id=signal_obj.source_chat_id)
             self._metrics.executed += 1
+            self._health.record_order()
             self._metrics.record_latency(latency_ms)
             self._get_ch_metrics(signal_obj.source_chat_id).executed += 1
         elif any_failure:
@@ -1459,6 +1481,10 @@ class Bot:
             if self.range_monitor:
                 await self.range_monitor.start()
 
+        # Health check server
+        if self._health_server:
+            await self._health_server.start()
+
         self._cleanup_task = asyncio.create_task(self._storage_cleanup_loop())
 
         # Start heartbeat if enabled
@@ -1540,6 +1566,8 @@ class Bot:
             await self.position_mgr.stop()
         if self.trade_tracker:
             await self.trade_tracker.stop()
+        if self._health_server:
+            await self._health_server.stop()
         if self.watchdog:
             await self.watchdog.stop()
         if self.lifecycle_mgr:

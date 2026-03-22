@@ -1,7 +1,7 @@
 # PLAN
 
 ## Current Phase
-- Phase: `P12 - Dashboard Enhancement`
+- Phase: `P13 - Bot Hardening & Reliability`
 - Status: `complete`
 
 ## Execution Phases
@@ -151,18 +151,11 @@
 - v0.11.0: edit & delete message handling (P10.1) — group-aware cancel, MessageDeleted listener
 - v0.12.0: web analytics dashboard (P11) — FastAPI + Jinja2 + Chart.js, 3 pages, 7 API endpoints
 - v0.13.0: dashboard enhancement (P12) — channel names, equity curve, symbol stats, CSV export, basic auth
+- v0.14.0: bot hardening (P13) — health check endpoint, runtime stats, watchdog+CB bridge
+
 
 
 ### Upcoming
-
-#### P13 — Bot Hardening & Reliability
-- **Why**: Production stability — giảm downtime, xử lý edge cases
-- **Scope**: ~200 LOC, medium risk
-- **Deliverables**:
-  - Circuit breaker cho MT5 connection (reconnect logic)
-  - Retry on order failure with backoff
-  - Health check endpoint (uptime, last signal, MT5 status)
-  - Structured logging improvements
 
 #### P14 — Multi-Account Support
 - **Why**: Chạy nhiều account broker từ 1 bot instance
