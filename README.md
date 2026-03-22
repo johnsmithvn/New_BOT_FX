@@ -429,8 +429,31 @@ curl http://your-vps:8080/health | jq .status
 # Keyword: "healthy"
 ```
 
+---
+
+## 📊 Dashboard
+
+Two dashboard versions are available. Both read the same SQLite database **read-only**.
+
+### V1 — FastAPI + Jinja2 (Original)
+```bash
+python -m dashboard.dashboard
+# Opens on http://localhost:8000
+```
+
+### V2 — React SPA (Advanced)
+```bash
+cd dashboard-v2
+npm install      # first time only
+npm run dev      # dev server on http://localhost:5173
+```
+
+V2 features: equity curve, PnL distribution, drawdown chart, symbol radar, interactive channel drill-down, trade journal with multi-filter + pagination + CSV export, glassmorphism dark theme.
+
+Both dashboards use the same API backend. V2 in dev mode proxies `/api/*` to V1 automatically.
+
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.14.1**
+Current: **v0.15.0**

@@ -29,3 +29,7 @@ build/
 
 # Channel config (user-specific, use channels.example.json)
 config/channels.json
+
+# Dashboard V2
+dashboard-v2/node_modules/
+dashboard-v2/dist/

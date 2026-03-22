@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## 0.15.0 - 2026-03-22
+
+### Added
+- **Dashboard V2** — React SPA with advanced analytics (`dashboard-v2/`)
+  - 6 pages: Overview, Analytics, Channels, Symbols, Trades, Settings
+  - Tech: React 19 + Vite 6 + Recharts + TanStack Query + Framer Motion
+  - Premium dark mode with glassmorphism, gradient accents, micro-animations
+  - Charts: equity curve, daily PnL bars, win/loss donut, PnL distribution histogram, drawdown, symbol radar, trading activity area, channel comparison
+  - Interactive channel cards with per-channel daily PnL drill-down
+  - Symbol performance table with inline win-rate progress bars
+  - Trade journal with multi-filter (channel, symbol, date, outcome) + pagination + CSV export
+  - Settings page with API key management and connection status
+  - Shares same FastAPI API backend as V1, no duplication
+  - Users choose which dashboard to run (V1 port 8000, V2 port 5173)
+
 ## 0.14.1 - 2026-03-22
 
 ### Fixed

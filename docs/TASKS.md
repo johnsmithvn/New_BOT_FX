@@ -1,6 +1,22 @@
 # TASKS
 
 ## Current Phase
+- `Dashboard V2` ✅ COMPLETE (v0.15.0)
+
+### Dashboard V2 — React SPA
+- [x] Project scaffold (Vite + React 19)
+- [x] Design system (dark glassmorphism, 3 CSS files)
+- [x] API client + 13 TanStack Query hooks
+- [x] Navbar + StatCard + ChartCard components
+- [x] Overview page (equity curve, daily PnL, win/loss donut, channels, active)
+- [x] Analytics page (PnL distribution, drawdown, symbol bars, activity)
+- [x] Channels page (comparison bar, interactive cards, daily drill-down)
+- [x] Symbols page (performance table, PnL ranking, radar)
+- [x] Trades page (multi-filter, paginated table, CSV export)
+- [x] Settings page (connection status, API key, about)
+- [x] Build verification (2773 modules, 249kB gzip)
+
+## Previous Phase
 - `PR Review Bug Fixes` ✅ COMPLETE (v0.14.1)
 
 ### PR Review Fixes
