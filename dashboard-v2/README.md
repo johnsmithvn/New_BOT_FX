@@ -38,25 +38,30 @@ dashboard-v2/
     ├── main.jsx             # React root + QueryClientProvider
     ├── App.jsx              # Router + Navbar + AnimatePresence
     ├── api/
-    │   └── client.js        # Fetch wrapper + API key auth
+    │   └── client.js        # Fetch wrapper + API key auth + DELETE support
     ├── hooks/
-    │   └── useApi.js        # TanStack Query hooks (13 hooks)
+    │   └── useApi.js        # TanStack Query hooks (16 hooks)
     ├── components/
     │   ├── Navbar.jsx        # Top nav + status indicator
     │   ├── StatCard.jsx      # Animated KPI card
-    │   └── ChartCard.jsx     # Chart wrapper + loading skeleton
+    │   ├── ChartCard.jsx     # Chart wrapper + loading skeleton
+    │   ├── SparkCard.jsx     # KPI card + inline sparkline
+    │   └── ConfirmModal.jsx  # Glassmorphism confirm popup (v0.16.0)
     ├── charts/
     │   ├── ChartPrimitives.jsx  # Premium tooltip + label renderers
     │   ├── EquityCurve.jsx      # Area chart + peak annotation
     │   ├── DailyPnlBars.jsx     # Bar chart + data labels
     │   └── WinLossDonut.jsx     # Interactive donut + glow
     ├── pages/
-    │   ├── Overview.jsx      # Main dashboard
+    │   ├── Overview.jsx      # Main dashboard + chart toggle (v0.16.1)
     │   ├── Analytics.jsx     # Advanced analytics
     │   ├── Channels.jsx      # Channel performance
     │   ├── Symbols.jsx       # Symbol breakdown
     │   ├── Trades.jsx        # Trade journal
+    │   ├── Signals.jsx       # Signal lifecycle + detail modal (v0.16.0)
     │   └── Settings.jsx      # API key + connection
+    ├── utils/
+    │   └── format.js         # Currency formatting + channel name resolver
     └── styles/
         ├── global.css        # CSS variables, reset, fonts
         ├── layout.css        # Grid, responsive, nav, footer
@@ -99,11 +104,17 @@ React SPA (port 5173)
 | Component | Chart Type | Ý Nghĩa |
 |-----------|-----------|---------|
 | **Stat Cards** (×4) | KPI cards | Net PnL, Win Rate, Total Trades, Active Positions |
+| **Win Rate Gauge** | Radial bar | Gauge hiện % win rate + W/L counts (v0.16.1) |
+| **Signal Breakdown** | Table card | Đếm signals theo status: executed/rejected/failed (v0.16.1) |
 | **Equity Curve** | Area chart | Cumulative PnL over time — xu hướng tài khoản tăng/giảm |
 | **Daily PnL + Cumulative** | Combo bar+line | PnL ngày (bars) + tích lũy (line) — thấy vi mô + vĩ mô |
-| **Top Channels** | Horizontal bars | So sánh PnL giữa các channel — channel nào hiệu quả |
+| **Monthly Wins vs Losses** | Grouped bars | Tổng $ wins vs losses theo tháng (6 tháng gần nhất) |
+| **PnL by Weekday** | Bar chart | PnL tổng hợp Mon–Fri — biết ngày nào profitable (v0.16.1) |
 | **Win/Loss Donut** | Interactive donut | Tỷ lệ thắng/thua — hover glow + expand |
+| **Top Channels** | Horizontal bars | So sánh PnL giữa các channel — channel nào hiệu quả |
 | **Active Positions** | Table | Vị thế đang mở (symbol, side, tickets) |
+
+> **Chart Toggle** (v0.16.1): Nút "Customize" góc phải header → dropdown cho phép ẩn/hiện 9 chart cards. Setting lưu vào localStorage.
 
 ### 2. Analytics (`/analytics`)
 
@@ -141,7 +152,19 @@ React SPA (port 5173)
 | **Pagination** | 20 trades/trang, Prev/Next |
 | **CSV Export** | Tải file CSV toàn bộ trades (theo filter) |
 
-### 6. Settings (`/settings`)
+### 6. Signals (`/signals`) — v0.16.0
+
+| Component | Ý Nghĩa |
+|-----------|---------|
+| **Signal Table** | Bảng expandable — mỗi dòng = 1 signal, click `>` xem orders con |
+| **Filters** | Channel, Symbol, Status (executed/rejected/failed), Date range |
+| **Detail Modal** | Click 👁 → popup raw text, parsed result, timeline, orders, trades |
+| **Cascade Delete** | Click 🗑 → xóa signal + ALL orders + trades liên quan |
+| **Order Delete** | Xóa riêng 1 order trong detail modal |
+| **ConfirmModal** | Popup glassmorphism confirm trước khi xóa (type-to-confirm) |
+| **Pagination** | 20 signals/trang |
+
+### 7. Settings (`/settings`)
 
 | Component | Ý Nghĩa |
 |-----------|---------|
@@ -192,6 +215,14 @@ React SPA (port 5173)
 | `/api/active` | GET | `[{symbol, side, tickets, channel_name}]` |
 | `/api/channel-list` | GET | `[{id, name}]` |
 | `/api/export/csv` | GET | CSV file download |
+| `/api/signals?page=&per_page=&...` | GET | `{signals: [...], total, page, per_page}` (v0.16.0) |
+| `/api/signals/{fingerprint}` | GET | `{signal, orders, trades, events, groups}` (v0.16.0) |
+| `/api/signals/{fingerprint}` | DELETE | Cascade delete signal + all related data (v0.16.0) |
+| `/api/orders/{order_id}` | DELETE | Delete individual order (v0.16.0) |
+| `/api/trades/{trade_id}` | DELETE | Delete individual trade (v0.16.0) |
+| `/api/data/counts` | GET | Row counts per table (v0.16.0) |
+| `/api/data/all` | DELETE | Clear all data tables (v0.16.0) |
+| `/api/data/{table}` | DELETE | Clear specific table (v0.16.0) |
 
 Auto-refetch: TanStack Query polls every 30 seconds.
 
@@ -225,30 +256,37 @@ npx vite preview         # Preview production build locally
 ### Completed ✅
 - [x] Project scaffold (Vite + React 19)
 - [x] Design system (dark glassmorphism, 4 CSS files)
-- [x] API client + 13 TanStack Query hooks
-- [x] 6 pages with 15+ chart types
+- [x] API client + 16 TanStack Query hooks
+- [x] 7 pages with 20+ chart types
 - [x] Premium tooltip system
 - [x] Framer Motion page transitions
 - [x] Interactive donut with glow
 - [x] Combo charts (bar + line overlay)
 - [x] Build verification (2775 modules, 249kB gzip)
+- [x] Signal Lifecycle page — expandable table + detail modal (v0.16.0)
+- [x] Cascade delete — signals, orders, trades (v0.16.0)
+- [x] ConfirmModal — shared glassmorphism popup (v0.16.0)
+- [x] Win Rate Gauge — radial bar (v0.16.1)
+- [x] Signal Breakdown — table card (v0.16.1)
+- [x] PnL by Weekday — bar chart Mon–Fri (v0.16.1)
+- [x] Chart Toggle — Customize dropdown + localStorage persistence (v0.16.1)
 
 ### Planned 🔮
 - [ ] Real-time WebSocket updates (replace polling)
 - [ ] PnL Heatmap (calendar view — which days are profitable)
 - [ ] Treemap chart (proportional symbol allocation)
 - [ ] Dark/Light theme toggle
-- [ ] Trade detail modal (click row → full details)
 - [ ] Notification center (alerts from bot)
 - [ ] Mobile responsive improvements
 - [ ] PWA support (installable on phone)
 - [ ] Custom date range for all charts
 - [ ] Performance comparison: period vs period
+- [ ] Data management UI in Settings page (clear tables)
 
 ---
 
 ## Version
 
-**Current: v0.15.0**
+**Current: v0.16.1**
 
 See [CHANGELOG.md](../CHANGELOG.md) for full history.
