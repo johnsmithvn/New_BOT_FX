@@ -2,7 +2,7 @@
 
 ## Project Overview
 - Name: `telegram-mt5-bot`
-- Version: `v0.10.0`
+- Version: `v0.16.1`
 - Goal: Run a low-latency Python bot that reads Telegram trading signals and executes MT5 orders safely.
 - Scope: Single-process runtime, signal-to-trade automation, operational reliability, channel-driven multi-order strategy.
 
@@ -99,6 +99,8 @@ Signal trace must be possible using a unique signal fingerprint across logs and 
 - `docs/` — all documentation
 - `deploy/` — systemd service file
 - `tools/` — CLI debug utilities
+- `dashboard/` — FastAPI backend (V1 Jinja2 + V2 REST API)
+- `dashboard-v2/` — React SPA (Vite + Recharts + TanStack Query)
 - `main.py` — entry point
 - `requirements.txt` — dependencies
 

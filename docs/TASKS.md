@@ -1,6 +1,28 @@
 # TASKS
 
 ## Current Phase
+- `Dashboard V2 Enhancements` ✅ COMPLETE (v0.16.1)
+
+### v0.16.1 — Overview Enhancements
+- [x] Win Rate Gauge — radial bar chart with center % + W/L counts
+- [x] Signal Breakdown — table card (executed/rejected/failed/received counts)
+- [x] PnL by Weekday — bar chart Mon–Fri with cumulative PnL per trading day
+- [x] Chart toggle — "Customize" dropdown to show/hide any chart, persisted to localStorage
+- [x] Signals nav icon changed from Workflow → GitBranch
+
+### v0.16.0 — Signal Lifecycle Page
+- [x] Backend: `queries.py` — `get_signals_paginated()`, `get_signal_lifecycle()`, `_connect_rw()` for write ops
+- [x] Backend: `queries.py` — `delete_signal_cascade()`, `delete_order_by_id()`, `delete_trade_by_id()`
+- [x] Backend: `queries.py` — `clear_table()`, `clear_all_data()`, `get_table_counts()`
+- [x] Backend: `routes.py` — 8 new API endpoints (GET/DELETE signals, orders, trades, data management)
+- [x] Backend: `dashboard.py` — CORS updated to allow DELETE method
+- [x] Frontend: `ConfirmModal.jsx` — shared confirmation popup (glassmorphism, type-to-confirm)
+- [x] Frontend: `Signals.jsx` — expandable grouped signal table + SignalDetailModal
+- [x] Frontend: `client.js` — DELETE method support + 8 new API methods
+- [x] Frontend: `useApi.js` — `useSignals`, `useSignalDetail`, `useTableCounts` hooks
+- [x] Frontend: `App.jsx` + `Navbar.jsx` — added `/signals` route + nav link
+
+## Previous Phase
 - `Dashboard V2` ✅ COMPLETE (v0.15.0)
 
 ### Dashboard V2 — React SPA

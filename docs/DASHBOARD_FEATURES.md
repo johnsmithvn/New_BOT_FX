@@ -11,12 +11,13 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 | **Tech** | Chart.js, vanilla JS, server-side rendering | Recharts, React 19, Vite 6, TanStack Query |
 | **Port** | `http://localhost:8000` | `http://localhost:5173` |
 | **Chạy** | `python -m dashboard.dashboard` | `cd dashboard-v2 && npm run dev` |
-| **Số trang** | 3 (Overview, Channels, Trades) | 6 (Overview, Analytics, Channels, Symbols, Trades, Settings) |
+| **Số trang** | 3 (Overview, Channels, Trades) | 7 (Overview, Analytics, Channels, Symbols, Trades, **Signals**, Settings) |
 | **Backend** | FastAPI (chung) | Reuse API V1, proxy qua Vite |
 | **Auto-refresh** | 30 giây | 30 giây (TanStack Query) |
 | **Design** | Dark mode, neon accents | Dark glassmorphism, gradient accents, micro-animations |
+| **Write ops** | ❌ Read-only | ✅ DELETE (signals, orders, trades, clear data) |
 
-> Cả hai dashboard đều **read-only** — chỉ đọc dữ liệu từ SQLite, không thay đổi database.
+> V1 = read-only. V2 hỗ trợ **delete operations** (v0.16.0) qua REST API với CORS allow DELETE.
 
 ---
 
@@ -33,6 +34,14 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 | `/api/active` | Vị thế đang mở | `[{symbol, side, tickets, channel_name}]` |
 | `/api/channel-list` | Danh sách channel ID + tên | `[{id, name}]` |
 | `/api/export/csv` | Xuất CSV | File CSV download |
+| `/api/signals?page=&per_page=&...` | Signals phân trang (v0.16.0) | `{signals: [...], total, page, per_page}` |
+| `/api/signals/{fingerprint}` | Signal lifecycle detail (v0.16.0) | `{signal, orders, trades, events, groups}` |
+| `DELETE /api/signals/{fingerprint}` | Cascade delete signal (v0.16.0) | `{deleted: {signals, orders, trades, events}}` |
+| `DELETE /api/orders/{order_id}` | Xóa 1 order (v0.16.0) | `{deleted: true}` |
+| `DELETE /api/trades/{trade_id}` | Xóa 1 trade (v0.16.0) | `{deleted: true}` |
+| `GET /api/data/counts` | Đếm rows per table (v0.16.0) | `{signals: N, orders: N, ...}` |
+| `DELETE /api/data/all` | Xóa toàn bộ data (v0.16.0) | `{cleared: [...tables]}` |
+| `DELETE /api/data/{table}` | Xóa 1 bảng (v0.16.0) | `{cleared: table_name}` |
 
 ---
 
@@ -78,6 +87,53 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
   - Nếu đường tím đi xuống dù có cột xanh → lỗ lớn ở ngày khác "ăn mất" lãi
 - **Giá trị**: Đây là biểu đồ quan trọng nhất cho trader — thấy cả vi mô (ngày) và vĩ mô (trend) cùng lúc
 
+### 🆕 Win Rate Gauge — Đồng Hồ Tỷ Lệ Thắng (V2 v0.16.1)
+- **Loại biểu đồ**: Radial bar chart (vòng cung) + số % ở giữa
+- **Ý nghĩa**: Hiển thị trực quan tỷ lệ thắng dạng gauge — nhìn nhanh hơn text
+- **Cách đọc**:
+  - Vòng cung xanh = % thắng (≥ 50% = xanh, < 50% = đỏ)
+  - Số giữa = win rate %
+  - Dưới: Wins (xanh) / Losses (đỏ)
+- **Style**: Inspired by PLECTO MRR Growth gauge
+
+### 🆕 Signal Breakdown — Phân Loại Tín Hiệu (V2 v0.16.1)
+- **Loại**: Table card (không phải biểu đồ — dạng bảng)
+- **Ý nghĩa**: Đếm số lượng signal theo từng status
+- **Các status**:
+  | Type | Icon | Ý nghĩa |
+  |------|------|----------|
+  | Executed | ✅ | Signal đã tạo được order thành công |
+  | Rejected | 🚫 | Signal bị từ chối (entry quá xa, spread cao, ...) |
+  | Failed | ❌ | Signal parse thành công nhưng MT5 execution thất bại |
+  | Received | 📩 | Signal mới nhận, chưa xử lý |
+  | Duplicate | 📋 | Signal trùng lặp (đã có fingerprint) |
+  | Active | 🔄 | Signal đang được theo dõi (range/scale_in chưa complete) |
+- **Style**: Inspired by PLECTO MRR Breakdown table — mỗi dòng có icon + count badge màu
+
+### 🆕 PnL by Weekday — Lãi/Lỗ Theo Ngày Trong Tuần (V2 v0.16.1)
+- **Loại biểu đồ**: Bar chart (5 cột: Mon–Fri)
+- **Ý nghĩa**: Tổng hợp PnL theo ngày trong tuần — phát hiện ngày nào thường lãi/lỗ
+- **Cách đọc**:
+  - Cột xanh = ngày thường lãi, cột đỏ = ngày thường lỗ
+  - Data label giá trị trên đầu mỗi cột
+  - Ví dụ: Friday thường đỏ → tránh trade chiều thứ 6
+- **Ứng dụng**: Time-of-week analysis — quyết định nên trade ngày nào
+
+### 🆕 Chart Toggle — Tùy Chỉnh Biểu Đồ (V2 v0.16.1)
+- **Nút "Customize"** ở góc phải header trang Overview
+- **Chức năng**: Click → dropdown 9 chart cards, toggle Eye/EyeOff để ẩn/hiện
+- **Persistence**: State lưu vào `localStorage` — refresh trang vẫn giữ setting
+- **9 chart có thể toggle**:
+  1. Equity Curve
+  2. Daily PnL + Cumulative
+  3. Monthly Wins vs Losses
+  4. Win / Loss Ratio
+  5. Top Channels
+  6. Active Positions
+  7. Signal Breakdown
+  8. Win Rate Gauge
+  9. PnL by Weekday
+
 ### Top Channels — Xếp Hạng Channel (V1 + V2)
 - **Loại biểu đồ**: Horizontal bar chart
 - **Ý nghĩa**: So sánh hiệu suất các channel tín hiệu — channel nào đang kiếm tiền, channel nào lỗ
@@ -113,6 +169,14 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 - Danh sách vị thế đang mở (chưa đóng)
 - Cột: Symbol, Side, Số ticket, Channel
 - Ý nghĩa: Biết hiện tại bot đang giữ những vị thế nào
+
+### 🆕 Monthly Wins vs Losses (V2 Only)
+- **Loại biểu đồ**: Grouped bar chart
+- **Ý nghĩa**: So sánh tổng $ wins vs tổng $ losses mỗi tháng (tối đa 6 tháng gần nhất)
+- **Cách đọc**:
+  - Cột xanh = total wins, cột đỏ = total losses
+  - Data label giá trị trên đầu mỗi cột
+  - Tháng nào cột xanh cao hơn đỏ → tháng đó profitable
 
 ---
 
@@ -261,13 +325,47 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 
 ---
 
+## 🔗 TRANG SIGNALS — Signal Lifecycle (V2 v0.16.0)
+
+### Signal Table (Expandable)
+- **Mỗi dòng = 1 signal** (grouped by fingerprint)
+- **Cột chính**:
+  | Cột | Ý Nghĩa |
+  |-----|---------|
+  | **Time** | Thời gian nhận signal |
+  | **Symbol** | Cặp tiền (XAUUSD, ...) |
+  | **Side** | BUY (badge xanh) / SELL (badge đỏ) |
+  | **Status** | `executed` (xanh) / `rejected` (vàng) / `failed` (đỏ) |
+  | **Orders** | Số order thành công / tổng |
+  | **PnL** | Tổng PnL (nếu có trades) |
+  | **Channel** | Tên channel hoặc ID |
+  | **Actions** | 👁 Detail modal, 🗑 Cascade delete |
+
+- **Expand row** (click vào `>`): Hiện danh sách orders con với ticket, type, price, SL/TP
+- **Filter bar**: Channel, Symbol, Status, Date range
+- **Phân trang**: 20 signals/trang
+
+### Signal Detail Modal (`SignalDetailModal`)
+- **Raw Text**: Text gốc từ Telegram
+- **Parsed Result**: Symbol, Side, Entry, SL, TP đã parse
+- **Timeline**: Ordered events (received → parsed → executed/rejected)
+- **Orders**: Table chi tiết orders + trades liên quan
+- **Groups**: Signal group info (nếu là range/scale_in)
+
+### Delete Operations
+- **Delete Signal**: Cascade xóa signal + ALL orders + trades + events liên quan
+- **Delete Order**: Xóa riêng 1 order (có confirm modal)
+- **ConfirmModal**: Popup glassmorphism, type-to-confirm cho destructive actions
+
+---
+
 ## ⚙️ TRANG SETTINGS (V2 Only)
 
 | Mục | Ý Nghĩa |
 |-----|---------|
 | **Connection Status** | Hiện trạng kết nối API (● Live = xanh, ● Offline = đỏ) |
 | **API Key** | Nhập/thay đổi dashboard API key (bảo mật, gửi qua header `X-API-Key`) |
-| **About** | Thông tin version (v0.15.0), tech stack |
+| **About** | Thông tin version (v0.16.1), tech stack |
 
 ---
 
@@ -309,6 +407,11 @@ Không cần manual refresh — dashboard luôn cập nhật.
 | Daily PnL bars | ✅ | ✅ + data labels |
 | Combo bar + line | ❌ | ✅ |
 | Win/Loss donut | ❌ | ✅ + interactive glow |
+| Win Rate Gauge | ❌ | ✅ (v0.16.1) |
+| Signal Breakdown table | ❌ | ✅ (v0.16.1) |
+| PnL by Weekday | ❌ | ✅ (v0.16.1) |
+| Chart toggle (Customize) | ❌ | ✅ (v0.16.1) |
+| Monthly wins vs losses | ❌ | ✅ |
 | Stacked win/loss weekly | ❌ | ✅ |
 | PnL distribution histogram | ❌ | ✅ |
 | Max drawdown chart | ❌ | ✅ |
@@ -317,6 +420,10 @@ Không cần manual refresh — dashboard luôn cập nhật.
 | Symbol performance table | ❌ | ✅ |
 | Symbol radar chart | ❌ | ✅ |
 | Channel drill-down line | ❌ | ✅ |
+| **Signal Lifecycle page** | ❌ | ✅ (v0.16.0) |
+| **Signal detail modal** | ❌ | ✅ (v0.16.0) |
+| **Cascade delete** | ❌ | ✅ (v0.16.0) |
+| **Confirm modal** | ❌ | ✅ (v0.16.0) |
 | Settings page | ❌ | ✅ |
 | CSV export | ✅ | ✅ |
 | Premium tooltips | ✅ (upgraded) | ✅ |

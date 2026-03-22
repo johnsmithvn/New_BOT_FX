@@ -1,15 +1,281 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { Eye, EyeOff, SlidersHorizontal } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import ChartCard from '../components/ChartCard';
 import SparkCard from '../components/SparkCard';
 import EquityCurve from '../charts/EquityCurve';
 import WinLossDonut from '../charts/WinLossDonut';
-import { useOverview, useDailyPnl, useEquityCurve, useChannels, useActive } from '../hooks/useApi';
+import { useOverview, useDailyPnl, useEquityCurve, useChannels, useActive, useSignals } from '../hooks/useApi';
 import {
   ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, CartesianGrid, LabelList, Legend,
+  PieChart, Pie, RadialBarChart, RadialBar,
 } from 'recharts';
 import { PremiumTooltip } from '../charts/ChartPrimitives';
 import { fmtCcy, tickCcy, tooltipCcy } from '../utils/format';
+
+/* ═══════════════════════════════════════════════════════════════
+   CHART VISIBILITY HOOK — persisted to localStorage
+   ═══════════════════════════════════════════════════════════════ */
+const STORAGE_KEY = 'overview_chart_visibility';
+const DEFAULT_VISIBILITY = {
+  equity: true,
+  comboPnl: true,
+  monthlyWinLoss: true,
+  winLossDonut: true,
+  topChannels: true,
+  activePositions: true,
+  signalBreakdown: true,
+  winRateGauge: true,
+  pnlByWeekday: true,
+};
+
+function useChartVisibility() {
+  const [visibility, setVisibility] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? { ...DEFAULT_VISIBILITY, ...JSON.parse(saved) } : DEFAULT_VISIBILITY;
+    } catch { return DEFAULT_VISIBILITY; }
+  });
+
+  const toggle = useCallback((key) => {
+    setVisibility(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  return [visibility, toggle];
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CHART TOGGLE PANEL
+   ═══════════════════════════════════════════════════════════════ */
+const CHART_LABELS = {
+  equity:          'Equity Curve',
+  comboPnl:        'Daily PnL + Cumulative',
+  monthlyWinLoss:  'Monthly Wins vs Losses',
+  winLossDonut:    'Win / Loss Ratio',
+  topChannels:     'Top Channels',
+  activePositions: 'Active Positions',
+  signalBreakdown: 'Signal Breakdown',
+  winRateGauge:    'Win Rate Gauge',
+  pnlByWeekday:    'PnL by Weekday',
+};
+
+function ChartTogglePanel({ visibility, onToggle }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        className="btn btn-ghost"
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: '0.8125rem' }}
+      >
+        <SlidersHorizontal size={14} />
+        Customize
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              position: 'absolute', right: 0, top: '100%', marginTop: 6,
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: '12px 16px', zIndex: 100, minWidth: 220,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
+            }}
+          >
+            <p style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+              Show / Hide Charts
+            </p>
+            {Object.entries(CHART_LABELS).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => onToggle(key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                  padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: '0.8125rem', color: visibility[key] ? 'var(--text-primary)' : 'var(--text-muted)',
+                }}
+              >
+                {visibility[key] ? <Eye size={14} color="var(--accent-green)" /> : <EyeOff size={14} />}
+                {label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NEW CHART: Win Rate Gauge (radial bar)
+   ═══════════════════════════════════════════════════════════════ */
+function WinRateGauge({ winRate = 0, wins = 0, losses = 0 }) {
+  const data = [{ name: 'Win Rate', value: winRate, fill: winRate >= 50 ? '#22c55e' : '#ef4444' }];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+      <div style={{ width: 180, height: 180, position: 'relative' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RadialBarChart
+            cx="50%" cy="50%"
+            innerRadius="78%" outerRadius="100%"
+            startAngle={210} endAngle={-30}
+            data={data}
+            barSize={14}
+          >
+            <RadialBar background={{ fill: 'rgba(148,163,184,0.08)' }} dataKey="value" cornerRadius={8} />
+          </RadialBarChart>
+        </ResponsiveContainer>
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <span style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: winRate >= 50 ? '#22c55e' : '#ef4444' }}>
+            {winRate}%
+          </span>
+          <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>Win Rate</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#22c55e', fontFamily: 'var(--font-mono)' }}>{wins}</div>
+          <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Wins</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#ef4444', fontFamily: 'var(--font-mono)' }}>{losses}</div>
+          <div style={{ fontSize: '0.625rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Losses</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NEW CHART: Signal Breakdown (table card like PLECTO MRR Breakdown)
+   ═══════════════════════════════════════════════════════════════ */
+function SignalBreakdown({ signalData }) {
+  const stats = useMemo(() => {
+    const signals = signalData?.signals || [];
+    const counts = { executed: 0, rejected: 0, failed: 0, received: 0, duplicate: 0, active: 0 };
+    signals.forEach(s => {
+      const st = s.status || 'received';
+      if (counts[st] !== undefined) counts[st]++;
+      else counts.received++;
+    });
+    const total = signalData?.total || signals.length;
+    return { ...counts, total };
+  }, [signalData]);
+
+  const rows = [
+    { label: 'Executed', count: stats.executed, color: '#22c55e', icon: '✅' },
+    { label: 'Rejected', count: stats.rejected, color: '#f59e0b', icon: '🚫' },
+    { label: 'Failed', count: stats.failed, color: '#ef4444', icon: '❌' },
+    { label: 'Received', count: stats.received, color: '#3b82f6', icon: '📩' },
+    { label: 'Duplicate', count: stats.duplicate, color: '#94a3b8', icon: '📋' },
+    { label: 'Active', count: stats.active, color: '#8b5cf6', icon: '🔄' },
+  ];
+
+  return (
+    <div style={{ padding: '4px 0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--border)' }}>
+            <th style={{ textAlign: 'left', padding: '6px 0', fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 600 }}>TYPE</th>
+            <th style={{ textAlign: 'right', padding: '6px 0', fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 600 }}>COUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.label} style={{ borderBottom: '1px solid rgba(148,163,184,0.04)' }}>
+              <td style={{ padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>{r.icon}</span>
+                <span>{r.label}</span>
+              </td>
+              <td style={{ textAlign: 'right', padding: '8px 0' }}>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontWeight: 600,
+                  color: r.count > 0 ? r.color : 'var(--text-muted)',
+                  background: r.count > 0 ? `${r.color}15` : 'transparent',
+                  padding: '2px 10px', borderRadius: 6,
+                }}>
+                  {r.count}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr style={{ borderTop: '1px solid var(--border)' }}>
+            <td style={{ padding: '10px 0', fontWeight: 700, fontSize: '0.8125rem' }}>TOTAL</td>
+            <td style={{ textAlign: 'right', padding: '10px 0', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.9375rem' }}>{stats.total}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NEW CHART: PnL by Weekday (bar chart)
+   ═══════════════════════════════════════════════════════════════ */
+function PnlByWeekday({ dailyData = [] }) {
+  const weekdayData = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const agg = days.map(d => ({ day: d, pnl: 0, count: 0 }));
+    dailyData.forEach(d => {
+      if (!d.date) return;
+      const dow = new Date(d.date).getDay();
+      agg[dow].pnl += (d.net_pnl || 0);
+      agg[dow].count++;
+    });
+    // Trading days only (Mon-Fri)
+    return agg.slice(1, 6);
+  }, [dailyData]);
+
+  if (!weekdayData.length || weekdayData.every(d => d.count === 0)) {
+    return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No data</p>;
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={weekdayData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" vertical={false} />
+        <XAxis
+          dataKey="day"
+          tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 600 }}
+          axisLine={false} tickLine={false}
+        />
+        <YAxis
+          tick={{ fill: '#64748b', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
+          axisLine={false} tickLine={false}
+          tickFormatter={tickCcy}
+          width={55}
+        />
+        <Tooltip cursor={false} content={<PremiumTooltip formatter={(v) => tooltipCcy(v)} />} />
+        <Bar dataKey="pnl" name="Total PnL" radius={[6, 6, 0, 0]} maxBarSize={40} animationDuration={800}>
+          <LabelList
+            dataKey="pnl"
+            position="top"
+            formatter={v => v !== 0 ? `${v.toFixed(1)} $` : ''}
+            style={{ fill: '#94a3b8', fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}
+          />
+          {weekdayData.map((entry, i) => (
+            <Cell key={i} fill={entry.pnl >= 0 ? '#22c55e' : '#ef4444'} fillOpacity={0.8} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EXISTING CHARTS (kept as is)
+   ═══════════════════════════════════════════════════════════════ */
 
 /** Combo Chart: Daily PnL bars + cumulative line overlay */
 function ComboPnlChart({ dailyData = [], equityData = [] }) {
@@ -83,7 +349,7 @@ function ComboPnlChart({ dailyData = [], equityData = [] }) {
   );
 }
 
-/** Monthly Wins vs Losses grouped bar chart (cashflow style) */
+/** Monthly Wins vs Losses grouped bar chart */
 function MonthlyWinLossGrouped({ data = [] }) {
   const monthly = useMemo(() => {
     if (!data.length) return [];
@@ -145,7 +411,7 @@ function MonthlyWinLossGrouped({ data = [] }) {
   );
 }
 
-/** Top Channels — horizontal bars with labels */
+/** Top Channels — horizontal bars */
 function TopChannelsBars({ channels = [] }) {
   if (!channels.length) return <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No channel data</p>;
 
@@ -174,6 +440,9 @@ function TopChannelsBars({ channels = [] }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   OVERVIEW PAGE
+   ═══════════════════════════════════════════════════════════════ */
 export default function Overview() {
   const { data: overview, isLoading: ovLoading } = useOverview();
   const [pnlDays, setPnlDays] = useState(30);
@@ -181,6 +450,9 @@ export default function Overview() {
   const { data: equity, isLoading: eqLoading } = useEquityCurve(365);
   const { data: channels, isLoading: chLoading } = useChannels();
   const { data: active } = useActive();
+  const { data: signalData } = useSignals({ per_page: 100 });
+
+  const [vis, toggleVis] = useChartVisibility();
 
   const ov = overview || {};
 
@@ -195,12 +467,15 @@ export default function Overview() {
 
   return (
     <div className="page-content">
-      <div className="page-header">
-        <h1>Dashboard Overview</h1>
-        <p>Real-time trading performance at a glance</p>
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h1>Dashboard Overview</h1>
+          <p>Real-time trading performance at a glance</p>
+        </div>
+        <ChartTogglePanel visibility={vis} onToggle={toggleVis} />
       </div>
 
-      {/* ── SparkCards (cashflow style: big number + sparkline) ──── */}
+      {/* ── SparkCards ──────────────────────────────────────────── */}
       <div className="grid-stats">
         <SparkCard
           title="Net PnL"
@@ -239,83 +514,118 @@ export default function Overview() {
         />
       </div>
 
-      {/* ── Equity Curve (full width) ───────────────────────────── */}
-      <div className="full-width">
-        <ChartCard title="Equity Curve" loading={eqLoading}>
-          <EquityCurve data={equity} />
-        </ChartCard>
-      </div>
-
-      {/* ── Combo Chart: Daily PnL bars + Cumulative line ──────── */}
-      <div className="full-width">
-        <ChartCard
-          title="Daily PnL + Cumulative Trend"
-          loading={dpLoading || eqLoading}
-          actions={
-            <>
-              {[7, 30, 90].map((d) => (
-                <button
-                  key={d}
-                  className={`btn btn-ghost${pnlDays === d ? ' active' : ''}`}
-                  onClick={() => setPnlDays(d)}
-                  style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                >
-                  {d}D
-                </button>
-              ))}
-            </>
-          }
-        >
-          <ComboPnlChart dailyData={dailyPnl} equityData={equity} />
-        </ChartCard>
-      </div>
-
-      {/* ── Monthly Wins vs Losses + Donut ──────────────────────── */}
+      {/* ── NEW: Win Rate Gauge + Signal Breakdown (PLECTO-style) ── */}
       <div className="grid-main">
-        <ChartCard title="Monthly Performance — Wins vs Losses" loading={dpLoading}>
-          <MonthlyWinLossGrouped data={dailyPnl} />
-        </ChartCard>
-        <ChartCard title="Win / Loss Ratio" loading={ovLoading}>
-          <WinLossDonut wins={ov.wins || 0} losses={ov.losses || 0} />
-        </ChartCard>
+        {vis.winRateGauge && (
+          <ChartCard title="Win Rate" loading={ovLoading}>
+            <WinRateGauge winRate={ov.win_rate || 0} wins={ov.wins || 0} losses={ov.losses || 0} />
+          </ChartCard>
+        )}
+        {vis.signalBreakdown && (
+          <ChartCard title="Signal Breakdown" loading={!signalData}>
+            <SignalBreakdown signalData={signalData} />
+          </ChartCard>
+        )}
       </div>
 
-      {/* ── Top Channels + Active Positions ──────────────────────── */}
+      {/* ── Equity Curve ─────────────────────────────────────────── */}
+      {vis.equity && (
+        <div className="full-width">
+          <ChartCard title="Equity Curve" loading={eqLoading}>
+            <EquityCurve data={equity} />
+          </ChartCard>
+        </div>
+      )}
+
+      {/* ── Combo Chart: Daily PnL bars + Cumulative line ────────── */}
+      {vis.comboPnl && (
+        <div className="full-width">
+          <ChartCard
+            title="Daily PnL + Cumulative Trend"
+            loading={dpLoading || eqLoading}
+            actions={
+              <>
+                {[7, 30, 90].map((d) => (
+                  <button
+                    key={d}
+                    className={`btn btn-ghost${pnlDays === d ? ' active' : ''}`}
+                    onClick={() => setPnlDays(d)}
+                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                  >
+                    {d}D
+                  </button>
+                ))}
+              </>
+            }
+          >
+            <ComboPnlChart dailyData={dailyPnl} equityData={equity} />
+          </ChartCard>
+        </div>
+      )}
+
+      {/* ── Monthly + Donut / PnL by Weekday ─────────────────────── */}
       <div className="grid-main">
-        <ChartCard title="Top Channels" loading={chLoading}>
-          <TopChannelsBars channels={channels} />
-        </ChartCard>
-        <ChartCard title="Active Positions" loading={false}>
-          {active && active.length > 0 ? (
-            <div style={{ overflow: 'auto', maxHeight: 260 }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Symbol</th>
-                    <th>Side</th>
-                    <th>Tickets</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {active.map((pos, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 600 }}>{pos.symbol}</td>
-                      <td>
-                        <span className={`badge badge-${pos.side?.toLowerCase() === 'buy' ? 'buy' : 'sell'}`}>
-                          {pos.side}
-                        </span>
-                      </td>
-                      <td>{pos.tickets?.length || 0}</td>
+        {vis.monthlyWinLoss && (
+          <ChartCard title="Monthly Performance — Wins vs Losses" loading={dpLoading}>
+            <MonthlyWinLossGrouped data={dailyPnl} />
+          </ChartCard>
+        )}
+        {vis.pnlByWeekday && (
+          <ChartCard title="PnL by Weekday" loading={dpLoading}>
+            <PnlByWeekday dailyData={dailyPnl} />
+          </ChartCard>
+        )}
+      </div>
+
+      {/* ── Win/Loss Donut + Top Channels ─────────────────────────── */}
+      <div className="grid-main">
+        {vis.winLossDonut && (
+          <ChartCard title="Win / Loss Ratio" loading={ovLoading}>
+            <WinLossDonut wins={ov.wins || 0} losses={ov.losses || 0} />
+          </ChartCard>
+        )}
+        {vis.topChannels && (
+          <ChartCard title="Top Channels" loading={chLoading}>
+            <TopChannelsBars channels={channels} />
+          </ChartCard>
+        )}
+      </div>
+
+      {/* ── Active Positions ──────────────────────────────────────── */}
+      {vis.activePositions && (
+        <div className="full-width">
+          <ChartCard title="Active Positions" loading={false}>
+            {active && active.length > 0 ? (
+              <div style={{ overflow: 'auto', maxHeight: 260 }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th>Tickets</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No active positions</p>
-          )}
-        </ChartCard>
-      </div>
+                  </thead>
+                  <tbody>
+                    {active.map((pos, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 600 }}>{pos.symbol}</td>
+                        <td>
+                          <span className={`badge badge-${pos.side?.toLowerCase() === 'buy' ? 'buy' : 'sell'}`}>
+                            {pos.side}
+                          </span>
+                        </td>
+                        <td>{pos.tickets?.length || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-muted" style={{ textAlign: 'center', paddingTop: 60 }}>No active positions</p>
+            )}
+          </ChartCard>
+        </div>
+      )}
     </div>
   );
 }

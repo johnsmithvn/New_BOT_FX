@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## 0.16.1 - 2026-03-22
+
+### Added
+- **Overview page enhancements** — 3 new PLECTO-inspired chart cards:
+  - **Win Rate Gauge** — radial bar chart with center percentage + W/L counts
+  - **Signal Breakdown** — table card showing executed/rejected/failed/received counts (like PLECTO MRR Breakdown)
+  - **PnL by Weekday** — bar chart showing cumulative PnL per trading day (Mon–Fri)
+- **Chart toggle** — "Customize" dropdown to show/hide any chart card, persisted to `localStorage`
+
+### Changed
+- `dashboard-v2/src/pages/Overview.jsx` — rebuilt with chart visibility system + 3 new charts
+- `dashboard-v2/src/components/Navbar.jsx` — changed Signals icon from `Workflow` to `GitBranch`
+
+
 ## 0.16.0 - 2026-03-22
 
 ### Added
