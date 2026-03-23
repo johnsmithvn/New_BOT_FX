@@ -92,7 +92,7 @@ function SignalDetailModal({ fingerprint, open, onClose, onDeleteOrder, channelM
                       ['SL', sig.sl ?? '—'],
                       ['TP', Array.isArray(sig.tp) ? sig.tp.join(', ') : sig.tp || '—'],
                       ['Status', sig.status],
-                      ['Channel', resolveChannelName(sig.source_chat_id, channelMap)],
+                      ['Channel', sig.channel_name || resolveChannelName(sig.source_chat_id, channelMap)],
                       ['Time', sig.received_at || sig.created_at],
                     ].map(([label, val]) => (
                       <div key={label} style={{ background: 'var(--bg-tertiary)', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
@@ -400,7 +400,7 @@ function SignalRow({ s, isOpen, toggle, onDetail, onDelete, channelMap, sc }) {
           {s.trade_count > 0 ? `${s.total_pnl?.toFixed(2)} $` : '—'}
         </td>
         <td style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-          {resolveChannelName(s.source_chat_id, channelMap)}
+          {s.channel_name || resolveChannelName(s.source_chat_id, channelMap)}
         </td>
         <td onClick={e => e.stopPropagation()}>
           <div style={{ display: 'flex', gap: 4 }}>

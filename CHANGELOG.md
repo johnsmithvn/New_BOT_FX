@@ -1,4 +1,27 @@
 # CHANGELOG
+## 0.19.1 - 2026-03-23
+
+### Fixed
+- **C1: PositionManager memory leak** — 5 tracking dicts (`_ticket_to_channel`, `_breakeven_applied`, `_partially_closed`, `_last_alert_time`, `_last_trailing_sl`) now pruned at end of each poll cycle for closed positions
+- **C2: TradeTracker memory leak** — `_partial_reply_times` and `_reply_closed` dicts now TTL-cleaned each poll
+- **C3: RangeMonitor memory leak** — `_last_trigger` debounce entries cleaned after 2× debounce age
+- **C4: DailyRiskGuard month-end crash** — removed dead `midnight_next` variable that computed `day+1` (ValueError on 31st)
+- **C5: SQLite thread safety** — added `check_same_thread=False` to `sqlite3.connect()`
+- **C6: Completed groups never freed** — groups with COMPLETED status now removed after 1h TTL
+- **M1: TelegramAlerter entity cache** — `get_entity()` for admin chat now cached (was called every alert)
+- **M5: PositionManager `is_enabled` silent skip** — now checks channel-specific rules in `channels.json`, not just global settings; previously channel-only `breakeven_lock_pips: 30` was silently ignored
+
+### Removed
+- **M2: Dead convenience methods** — removed 6 unused async methods: `alert_circuit_breaker_opened/closed`, `alert_mt5_connection_lost`, `alert_mt5_reinit_exhausted`, `alert_bot_started/stopped`
+
+### Files Modified
+- `core/position_manager.py` (C1, C6, M5)
+- `core/trade_tracker.py` (C2)
+- `core/range_monitor.py` (C3)
+- `core/daily_risk_guard.py` (C4)
+- `core/storage.py` (C5)
+- `core/telegram_alerter.py` (M1, M2)
+
 ## 0.19.0 - 2026-03-22
 
 ### Added

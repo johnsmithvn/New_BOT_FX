@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import time as _time
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from utils.logger import log_event
@@ -79,6 +80,7 @@ class PositionManager:
         self._breakeven_applied: set[int] = set()
 
         self._poll_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
 
         # ── P10: Group tracking ──────────────────────────────────
         # All signal order groups, keyed by base fingerprint
@@ -190,12 +192,31 @@ class PositionManager:
 
     @property
     def is_enabled(self) -> bool:
-        """True if at least one position management feature is configured."""
-        return (
+        """True if at least one position management feature is configured.
+
+        Checks both global settings AND channel-specific rules so that
+        channel overrides (e.g., breakeven_lock_pips) are not silently ignored.
+        """
+        # Global settings
+        if (
             self._breakeven_trigger_pips > 0
             or self._trailing_stop_pips > 0
             or self._partial_close_percent > 0
-        )
+        ):
+            return True
+
+        # Channel-level overrides via ChannelManager
+        if self._channel_manager:
+            for ch_id in self._channel_manager._channels:
+                rules = self._channel_manager.get_rules(ch_id)
+                if rules and (
+                    rules.get("breakeven_lock_pips", 0) > 0
+                    or rules.get("trailing_stop_pips", 0) > 0
+                    or rules.get("partial_close_percent", 0) > 0
+                ):
+                    return True
+
+        return False
 
     async def start(self) -> None:
         """Start the background poll loop."""
@@ -207,6 +228,7 @@ class PositionManager:
         self._rebuild_cache()
 
         self._poll_task = asyncio.create_task(self._poll_loop())
+        self._cleanup_task = asyncio.create_task(self._daily_cleanup_loop())
         log_event(
             "position_manager_started",
             breakeven_trigger_pips=self._breakeven_trigger_pips,
@@ -219,13 +241,15 @@ class PositionManager:
 
     async def stop(self) -> None:
         """Stop the background poll loop."""
-        if self._poll_task:
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            self._poll_task = None
+        for task in (self._poll_task, getattr(self, '_cleanup_task', None)):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._poll_task = None
+        self._cleanup_task = None
         log_event("position_manager_stopped")
 
     async def _poll_loop(self) -> None:
@@ -342,6 +366,93 @@ class PositionManager:
             group_open = [t for t in group.tickets if t in open_tickets]
             if not group_open:
                 self._complete_group(group)
+
+        # Cleanup is scheduled daily at 1 AM — see _daily_cleanup_loop()
+
+    # ── Daily Cleanup (memory leak prevention) ────────────────────
+
+    _CLEANUP_HOUR = 1  # 1 AM local time (UTC+7)
+    _TZ_LOCAL = timezone(timedelta(hours=7))
+    _GROUP_COMPLETED_TTL = 3600  # 1 hour before removing completed groups
+
+    async def _daily_cleanup_loop(self) -> None:
+        """Run full cleanup once daily at 1 AM (UTC+7)."""
+        while True:
+            try:
+                now = datetime.now(self._TZ_LOCAL)
+                target = now.replace(
+                    hour=self._CLEANUP_HOUR, minute=0, second=0, microsecond=0,
+                )
+                if target <= now:
+                    target += timedelta(days=1)
+                wait_secs = (target - now).total_seconds()
+                log_event(
+                    "position_manager_cleanup_scheduled",
+                    next_run=target.isoformat(),
+                    wait_hours=round(wait_secs / 3600, 1),
+                )
+                await asyncio.sleep(wait_secs)
+                self._run_full_cleanup()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("position_manager_cleanup_error", error=str(exc))
+                await asyncio.sleep(60)  # retry after 1 min on error
+
+    def _run_full_cleanup(self) -> None:
+        """Full sweep: prune all tracking dicts + completed groups."""
+        try:
+            import MetaTrader5 as mt5
+        except ImportError:
+            return
+        positions = mt5.positions_get()
+        if positions is None:
+            open_tickets: set[int] = set()
+        else:
+            open_tickets = {p.ticket for p in positions if p.magic == self._magic}
+        self._cleanup_closed_tickets(open_tickets)
+        log_event(
+            "position_manager_cleanup_done",
+            open_tickets=len(open_tickets),
+            remaining_tracked=len(self._ticket_to_channel),
+            remaining_groups=len(self._groups),
+        )
+
+    def _cleanup_closed_tickets(self, open_tickets: set[int]) -> None:
+        """Remove entries for closed positions from all tracking dicts.
+
+        Called once daily at 1 AM by _daily_cleanup_loop().
+        Prevents unbounded memory growth over weeks of operation.
+        """
+        # Prune ticket-keyed dicts
+        for ticket in list(self._ticket_to_channel):
+            if ticket not in open_tickets:
+                self._ticket_to_channel.pop(ticket, None)
+
+        self._breakeven_applied -= self._breakeven_applied - open_tickets
+        self._partially_closed -= self._partially_closed - open_tickets
+
+        for ticket in list(self._last_trailing_sl):
+            if ticket not in open_tickets:
+                self._last_trailing_sl.pop(ticket, None)
+
+        # Prune alert throttle: remove entries for closed tickets
+        for key in list(self._last_alert_time):
+            ticket, _ = key
+            if ticket not in open_tickets:
+                self._last_alert_time.pop(key, None)
+
+        # Prune completed groups after TTL
+        now = _time.time()
+        for fp in list(self._groups):
+            group = self._groups[fp]
+            if group.status == GroupStatus.COMPLETED:
+                # Use a simple heuristic: if no tickets are open, remove after TTL
+                age = now - self._last_alert_time.get(
+                    (group.tickets[0] if group.tickets else 0, "group_completed"), 0.0,
+                )
+                if age > self._GROUP_COMPLETED_TTL:
+                    self._groups.pop(fp, None)
 
     def _manage_individual(self, mt5, pos) -> None:
         """Legacy per-position management: breakeven, trailing, partial close.

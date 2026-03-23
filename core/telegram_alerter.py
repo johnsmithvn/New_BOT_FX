@@ -34,10 +34,12 @@ class TelegramAlerter:
         self._admin_chat = admin_chat
         self._cooldown = cooldown_seconds
         self._last_alert_times: dict[str, float] = {}
+        self._admin_entity = None  # Cached entity for admin chat
 
     def set_client(self, client: TelegramClient) -> None:
         """Set the Telethon client (shared with listener)."""
         self._client = client
+        self._admin_entity = None  # Invalidate cache on client change
 
     def _is_rate_limited(self, alert_type: str) -> bool:
         """Check if this alert type is rate-limited."""
@@ -70,7 +72,9 @@ class TelegramAlerter:
             return
 
         try:
-            entity = await self._client.get_entity(self._admin_chat)
+            entity = await self._resolve_admin_entity()
+            if not entity:
+                return
             await self._client.send_message(entity, message, parse_mode="md")
             log_event(
                 "alert_sent",
@@ -105,7 +109,9 @@ class TelegramAlerter:
             return
 
         try:
-            entity = await self._client.get_entity(self._admin_chat)
+            entity = await self._resolve_admin_entity()
+            if not entity:
+                return
             await self._client.send_message(entity, message, parse_mode="md")
             log_event("debug_sent")
         except Exception as exc:
@@ -133,6 +139,7 @@ class TelegramAlerter:
             return
 
         try:
+            # reply_to uses per-chat entity (not cached admin)
             entity = await self._client.get_entity(chat_id)
             await self._client.send_message(
                 entity, text, reply_to=message_id, parse_mode="md",
@@ -160,49 +167,19 @@ class TelegramAlerter:
         except RuntimeError:
             log_event("reply_skipped", reason="no event loop")
 
-    # ── Convenience methods ──────────────────────────────────────
+    # ── Entity resolution (cached) ────────────────────────────────
 
-    async def alert_circuit_breaker_opened(self) -> None:
-        await self.send_alert(
-            "circuit_breaker_open",
-            "🔴 **CIRCUIT BREAKER OPENED**\n"
-            "Trading paused due to consecutive execution failures.\n"
-            "Bot will auto-probe after cooldown.",
-        )
+    async def _resolve_admin_entity(self):
+        """Resolve and cache the admin chat entity.
 
-    async def alert_circuit_breaker_closed(self) -> None:
-        await self.send_alert(
-            "circuit_breaker_close",
-            "🟢 **CIRCUIT BREAKER CLOSED**\n"
-            "Trading resumed. Probe execution succeeded.",
-        )
-
-    async def alert_mt5_connection_lost(self) -> None:
-        await self.send_alert(
-            "mt5_connection_lost",
-            "⚠️ **MT5 CONNECTION LOST**\n"
-            "Watchdog detected connection failure.\n"
-            "Attempting reinitialization...",
-        )
-
-    async def alert_mt5_reinit_exhausted(self) -> None:
-        await self.send_alert(
-            "mt5_reinit_exhausted",
-            "🔴 **MT5 REINIT FAILED**\n"
-            "All reinit retries exhausted.\n"
-            "Manual intervention required.",
-        )
-
-    async def alert_bot_started(self) -> None:
-        await self.send_alert(
-            "bot_started",
-            "🟢 **BOT STARTED**\n"
-            "Signal processing pipeline active.",
-        )
-
-    async def alert_bot_stopped(self) -> None:
-        await self.send_alert(
-            "bot_stopped",
-            "🔴 **BOT STOPPED**\n"
-            "Signal processing pipeline inactive.",
-        )
+        Avoids calling get_entity() on every alert.
+        Cache is invalidated on client change via set_client().
+        """
+        if self._admin_entity is not None:
+            return self._admin_entity
+        try:
+            self._admin_entity = await self._client.get_entity(self._admin_chat)
+            return self._admin_entity
+        except Exception as exc:
+            log_event("admin_entity_resolve_failed", error=str(exc))
+            return None

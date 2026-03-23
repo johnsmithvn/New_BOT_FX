@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import time as _time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from utils.logger import log_event
@@ -48,6 +48,7 @@ class TradeTracker:
         self._magic = magic_number
         self._poll_seconds = poll_seconds
         self._poll_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
         # Throttle partial close replies: {position_id: last_reply_epoch}
         self._partial_reply_times: dict[int, float] = {}
         self._PARTIAL_REPLY_COOLDOWN = 60  # seconds
@@ -90,6 +91,7 @@ class TradeTracker:
             return
 
         self._poll_task = asyncio.create_task(self._poll_loop())
+        self._cleanup_task = asyncio.create_task(self._daily_cleanup_loop())
         log_event(
             "trade_tracker_started",
             poll_seconds=self._poll_seconds,
@@ -98,13 +100,15 @@ class TradeTracker:
 
     async def stop(self) -> None:
         """Stop the background poll loop."""
-        if self._poll_task:
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            self._poll_task = None
+        for task in (self._poll_task, getattr(self, '_cleanup_task', None)):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._poll_task = None
+        self._cleanup_task = None
         log_event("trade_tracker_stopped")
 
     async def _poll_loop(self) -> None:
@@ -117,6 +121,48 @@ class TradeTracker:
                 break
             except Exception as exc:
                 log_event("trade_tracker_error", error=str(exc))
+
+    # ── Daily Cleanup (1 AM UTC+7) ────────────────────────────────
+
+    _CLEANUP_HOUR = 1
+    _TZ_LOCAL = timezone(timedelta(hours=7))
+
+    async def _daily_cleanup_loop(self) -> None:
+        """Run full cleanup once daily at 1 AM (UTC+7)."""
+        while True:
+            try:
+                now = datetime.now(self._TZ_LOCAL)
+                target = now.replace(
+                    hour=self._CLEANUP_HOUR, minute=0, second=0, microsecond=0,
+                )
+                if target <= now:
+                    target += timedelta(days=1)
+                await asyncio.sleep((target - now).total_seconds())
+                self._cleanup_stale_entries()
+                log_event("trade_tracker_cleanup_done")
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("trade_tracker_cleanup_error", error=str(exc))
+                await asyncio.sleep(60)
+
+    def _cleanup_stale_entries(self) -> None:
+        """Remove expired entries from throttle/suppression dicts.
+
+        Prevents unbounded memory growth over weeks of operation.
+        """
+        now = _time.time()
+
+        # Clean partial reply cooldowns older than 2x cooldown
+        max_age = self._PARTIAL_REPLY_COOLDOWN * 2
+        for pid in list(self._partial_reply_times):
+            if (now - self._partial_reply_times[pid]) > max_age:
+                del self._partial_reply_times[pid]
+
+        # Clean reply-closed entries older than TTL
+        for ticket in list(self._reply_closed):
+            if (now - self._reply_closed[ticket]) > self._REPLY_CLOSED_TTL:
+                del self._reply_closed[ticket]
 
     async def _poll_deals(self) -> None:
         """Poll MT5 for new deals and process them."""

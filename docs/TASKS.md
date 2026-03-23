@@ -1,6 +1,22 @@
 # TASKS
 
 ## Current Phase
+- `Codebase Stability Audit` ✅ COMPLETE (v0.19.1)
+
+### v0.19.1 — Stability Audit (C1-C6, M1-M5)
+- [x] C1: Prune closed tickets from PositionManager tracking dicts (`position_manager.py`)
+- [x] C2: Clean stale entries in TradeTracker dicts (`trade_tracker.py`)
+- [x] C3: Clean stale debounce entries in RangeMonitor (`range_monitor.py`)
+- [x] C4: Remove dead `midnight_next` month-end crash (`daily_risk_guard.py`)
+- [x] C5: Add `check_same_thread=False` to SQLite (`storage.py`)
+- [x] C6: TTL-remove completed groups from PositionManager (`position_manager.py`)
+- [x] M1: Cache entity in TelegramAlerter (`telegram_alerter.py`)
+- [x] M2: Remove 6 dead convenience methods (`telegram_alerter.py`)
+- [x] M5: Fix `is_enabled` to check channel configs (`position_manager.py`)
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phase
 - `Trading Logic Gaps` ✅ COMPLETE (v0.19.0)
 
 ### v0.19.0 — Trading Logic Gaps (G1-G12)

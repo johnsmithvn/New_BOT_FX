@@ -111,16 +111,20 @@ def run_combo(components: list[str]) -> None:
     threads = []
     names = []
 
+    # Start FastAPI backend first so Vite proxy has a target
+    if "dash" in components:
+        threads.append(_thread(run_dashboard_v1, "dash-v1"))
+        names.append("📊 API Backend")
+        time.sleep(3)  # Let FastAPI boot before Vite starts proxying
+
     for c in components:
         if c == "bot":
             threads.append(_thread(run_bot, "bot"))
             names.append("🤖 Bot")
-        elif c == "dash":
-            threads.append(_thread(run_dashboard_v1, "dash-v1"))
-            names.append("📊 Dashboard V1")
         elif c == "v2":
             threads.append(_thread(run_dashboard_v2, "dash-v2"))
             names.append("⚛️  Dashboard V2")
+        # "dash" already started above
 
     print(f"\n✅ Running: {' + '.join(names)}")
     print("   Press Ctrl+C to stop all.\n")
@@ -147,11 +151,11 @@ def run_combo(components: list[str]) -> None:
 # ── Mode Definitions ────────────────────────────────────────────
 
 MODES = {
-    "bot":       {"components": ["bot"],           "desc": "Trading Bot only"},
-    "dash":      {"components": ["dash"],           "desc": "Dashboard V1 (port 8000)"},
-    "v2":        {"components": ["v2"],             "desc": "Dashboard V2 (port 5173)"},
-    "dash+bot":  {"components": ["dash", "bot"],    "desc": "Dashboard V1 + Bot"},
-    "v2+bot":    {"components": ["v2", "bot"],      "desc": "Dashboard V2 + Bot"},
+    "bot":       {"components": ["bot"],                  "desc": "Trading Bot only"},
+    "dash":      {"components": ["dash"],                  "desc": "Dashboard V1 (port 8000)"},
+    "v2":        {"components": ["dash", "v2"],            "desc": "Dashboard V2 (API + Vite)"},
+    "dash+bot":  {"components": ["dash", "bot"],           "desc": "Dashboard V1 + Bot"},
+    "v2+bot":    {"components": ["dash", "v2", "bot"],     "desc": "Dashboard V2 + Bot (full)"},
 }
 
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Callable
 
 from core.models import EntryPlan, Side, SignalState
@@ -72,6 +73,7 @@ class RangeMonitor:
         self._pip_size_cache: dict[str, float] = {}  # symbol → pip_size
         self._running = False
         self._task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
 
     @property
     def is_running(self) -> bool:
@@ -87,6 +89,7 @@ class RangeMonitor:
             return
         self._running = True
         self._task = asyncio.create_task(self._monitor_loop())
+        self._cleanup_task = asyncio.create_task(self._daily_cleanup_loop())
         log_event(
             "range_monitor_started",
             poll_seconds=self._poll_seconds,
@@ -97,13 +100,15 @@ class RangeMonitor:
     async def stop(self) -> None:
         """Stop the background monitoring loop."""
         self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for task in (self._task, getattr(self, '_cleanup_task', None)):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._task = None
+        self._cleanup_task = None
         log_event("range_monitor_stopped")
 
     async def _monitor_loop(self) -> None:
@@ -122,6 +127,7 @@ class RangeMonitor:
                 if expired > 0:
                     log_event("range_monitor_expired", count=expired)
 
+
             except asyncio.CancelledError:
                 break
             except Exception as exc:
@@ -131,6 +137,41 @@ class RangeMonitor:
                 )
                 # Don't crash the monitor on transient errors
                 await asyncio.sleep(1)
+
+        # Cleanup is scheduled daily at 1 AM — see _daily_cleanup_loop()
+
+    # ── Daily Cleanup (1 AM UTC+7) ─────────────────────────────
+
+    _CLEANUP_HOUR = 1
+    _TZ_LOCAL = timezone(timedelta(hours=7))
+
+    async def _daily_cleanup_loop(self) -> None:
+        """Run full cleanup once daily at 1 AM (UTC+7)."""
+        while True:
+            try:
+                now = datetime.now(self._TZ_LOCAL)
+                target = now.replace(
+                    hour=self._CLEANUP_HOUR, minute=0, second=0, microsecond=0,
+                )
+                if target <= now:
+                    target += timedelta(days=1)
+                await asyncio.sleep((target - now).total_seconds())
+                self._cleanup_triggers()
+                log_event("range_monitor_cleanup_done")
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("range_monitor_cleanup_error", error=str(exc))
+                await asyncio.sleep(60)
+
+    def _cleanup_triggers(self) -> None:
+        """Remove expired debounce entries from _last_trigger."""
+        now = time.time()
+        max_age = self._debounce_seconds * 2
+        for key in list(self._last_trigger):
+            if (now - self._last_trigger[key]) > max_age:
+                del self._last_trigger[key]
+
 
     def _check_reentries(self) -> None:
         """Check all pending re-entry levels against current prices.
