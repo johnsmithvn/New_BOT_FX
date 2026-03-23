@@ -94,7 +94,10 @@ TRADE_TRACKER_POLL_SECONDS=30  # trade outcome tracking (0 = disabled)
 ```bash
 # Run interactively first time to complete Telegram OTP
 source venv/bin/activate
-python main.py
+python main.py              # Direct bot start
+# Or use the unified launcher:
+# python run.py bot          # Bot only
+# python run.py v2+bot       # Dashboard V2 + Bot
 
 # Enter the OTP code sent to your Telegram
 # Session file is saved for future runs

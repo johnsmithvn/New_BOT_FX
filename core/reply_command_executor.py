@@ -22,8 +22,9 @@ from core.reply_action_parser import ReplyAction, ReplyActionType
 class ReplyCommandExecutor:
     """Execute reply actions on specific MT5 position tickets."""
 
-    def __init__(self, magic: int = 234000) -> None:
+    def __init__(self, magic: int = 234000, reply_be_lock_pips: float = 1.0) -> None:
         self._magic = magic
+        self._reply_be_lock_pips = reply_be_lock_pips
 
     # ── Public API ────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ class ReplyCommandExecutor:
         action: ReplyAction,
         expected_symbol: str = "",
         dry_run: bool = False,
+        reply_be_lock_pips: float | None = None,
     ) -> str:
         """Execute action on a specific ticket.
 
@@ -89,7 +91,8 @@ class ReplyCommandExecutor:
         elif action.action == ReplyActionType.MOVE_TP:
             return self._move_tp(pos, action.price or 0.0)
         elif action.action == ReplyActionType.BREAKEVEN:
-            return self._breakeven(pos)
+            lock = reply_be_lock_pips if reply_be_lock_pips is not None else self._reply_be_lock_pips
+            return self._breakeven(pos, lock)
         else:
             return f"❌ Unknown action: {action.action}"
 
@@ -192,21 +195,51 @@ class ReplyCommandExecutor:
         log_event("reply_move_tp_fail", ticket=pos.ticket, retcode=retcode)
         return f"❌ Move TP failed (retcode={retcode})"
 
-    def _breakeven(self, pos) -> str:
-        """Move SL to entry price."""
+    def _breakeven(self, pos, lock_pips: float = 1.0) -> str:
+        """Move SL to entry + lock pips (profitable side).
+
+        Uses reply_be_lock_pips to offset SL into profit territory.
+        BUY: SL = entry + lock_distance (above entry)
+        SELL: SL = entry - lock_distance (below entry)
+        """
         entry = pos.price_open
+
+        # Calculate lock offset
+        lock_distance = 0.0
+        if lock_pips > 0:
+            sym_info = mt5.symbol_info(pos.symbol)
+            pip_size = sym_info.point * 10 if sym_info and sym_info.point > 0 else 0.1
+            lock_distance = lock_pips * pip_size
+
+        if pos.type == 0:  # BUY
+            new_sl = entry + lock_distance
+            # Guard: only move SL up, never down (keep better SL)
+            if pos.sl > 0 and new_sl <= pos.sl:
+                return f"ℹ️ SL already at {pos.sl} (better than BE {new_sl})"
+        else:  # SELL
+            new_sl = entry - lock_distance
+            # Guard: only move SL down, never up (keep better SL)
+            if pos.sl > 0 and new_sl >= pos.sl:
+                return f"ℹ️ SL already at {pos.sl} (better than BE {new_sl})"
+
+        # Round to symbol digits
+        sym_info = mt5.symbol_info(pos.symbol)
+        digits = sym_info.digits if sym_info else 5
+        new_sl = round(new_sl, digits)
+
         request = {
             "action": mt5.TRADE_ACTION_SLTP,
             "position": pos.ticket,
             "symbol": pos.symbol,
-            "sl": entry,
+            "sl": new_sl,
             "tp": pos.tp,
             "magic": self._magic,
         }
         result = mt5.order_send(request)
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-            log_event("reply_breakeven_ok", ticket=pos.ticket, sl=entry)
-            return f"✅ BE → SL={entry} on {pos.symbol} #{pos.ticket}"
+            log_event("reply_breakeven_ok", ticket=pos.ticket, sl=new_sl,
+                      lock_pips=self._reply_be_lock_pips)
+            return f"\u2705 BE \u2192 SL={new_sl} on {pos.symbol} #{pos.ticket}"
         retcode = result.retcode if result else -1
         log_event("reply_breakeven_fail", ticket=pos.ticket, retcode=retcode)
-        return f"❌ Breakeven failed (retcode={retcode})"
+        return f"\u274c Breakeven failed (retcode={retcode})"

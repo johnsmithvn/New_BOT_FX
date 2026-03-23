@@ -93,6 +93,19 @@ Signals stored in DB have status:
 - `reentry_executed` — re-entry order placed via Pipeline.handle_reentry()
 - `reentry_blocked` — re-entry rejected by risk guards (circuit breaker, daily, exposure)
 
+## Signal Group Management Events (v0.10.0)
+
+- `group_registered` — new signal group created (all signals → group of 1+)
+- `group_order_added` — re-entry order added to existing group
+- `group_sl_modified` — group SL successfully applied to a ticket
+- `group_sl_modify_failed` — group SL modification failed on a ticket
+- `group_sl_moved` — group SL alert (significant SL movement across group)
+- `group_completed` — all orders in group closed
+- `group_selective_close` — reply-based selective close (strategy: highest/lowest entry, oldest)
+- `group_be_applied` — auto-breakeven applied after partial group close
+- `group_be_skipped` — breakeven skipped (current SL already better)
+- `group_pending_cancelled` — pending orders in group cancelled (edit/delete handling, v0.11.0)
+
 ## Log Format
 
 Logs are structured JSON (loguru file sink).

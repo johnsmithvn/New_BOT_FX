@@ -1,4 +1,110 @@
 # CHANGELOG
+## 0.19.1 - 2026-03-23
+
+### Fixed
+- **C1: PositionManager memory leak** — 5 tracking dicts (`_ticket_to_channel`, `_breakeven_applied`, `_partially_closed`, `_last_alert_time`, `_last_trailing_sl`) now pruned at end of each poll cycle for closed positions
+- **C2: TradeTracker memory leak** — `_partial_reply_times` and `_reply_closed` dicts now TTL-cleaned each poll
+- **C3: RangeMonitor memory leak** — `_last_trigger` debounce entries cleaned after 2× debounce age
+- **C4: DailyRiskGuard month-end crash** — removed dead `midnight_next` variable that computed `day+1` (ValueError on 31st)
+- **C5: SQLite thread safety** — added `check_same_thread=False` to `sqlite3.connect()`
+- **C6: Completed groups never freed** — groups with COMPLETED status now removed after 1h TTL
+- **M1: TelegramAlerter entity cache** — `get_entity()` for admin chat now cached (was called every alert)
+- **M5: PositionManager `is_enabled` silent skip** — now checks channel-specific rules in `channels.json`, not just global settings; previously channel-only `breakeven_lock_pips: 30` was silently ignored
+
+### Removed
+- **M2: Dead convenience methods** — removed 6 unused async methods: `alert_circuit_breaker_opened/closed`, `alert_mt5_connection_lost`, `alert_mt5_reinit_exhausted`, `alert_bot_started/stopped`
+
+### Files Modified
+- `core/position_manager.py` (C1, C6, M5)
+- `core/trade_tracker.py` (C2)
+- `core/range_monitor.py` (C3)
+- `core/daily_risk_guard.py` (C4)
+- `core/storage.py` (C5)
+- `core/telegram_alerter.py` (M1, M2)
+
+## 0.19.0 - 2026-03-22
+
+### Added
+- **G1: Min SL Distance Guard** — skip placing orders if current price is within `min_sl_distance_pips` of SL. Applies to both initial multi-order execution and re-entry triggers. Config: `strategy.min_sl_distance_pips` (default: 0 = disabled). (`pipeline.py`)
+- **G2: Default SL from Zone** — auto-generate SL from entry zone bounds when signal has no explicit SL. SELL: `zone_high + N pips`, BUY: `zone_low - N pips`. Config: `strategy.default_sl_pips_from_zone` (default: 0 = disabled). (`pipeline.py`)
+- **G3: Reply `+pip` Parser** — parse `+30`, `+50 pip`, `+120 pips` replies as `SECURE_PROFIT` action. New `ReplyActionType.SECURE_PROFIT` and `pips` field on `ReplyAction`. (`reply_action_parser.py`)
+- **G4: Secure Profit Group Action** — when admin replies `+pip`, close worst entry in group (SELL: lowest entry = least profitable), set BE on remaining orders. Single order: just set BE. New `secure_profit_group()` method. Config: `rules.secure_profit_action` (default: `close_worst_be_rest`). (`position_manager.py`, `main.py`)
+- **G5: Re-entry Tolerance** — allow re-entry trigger within N pips of level, not just exact cross. Config: `strategy.reentry_tolerance_pips` (default: 0 = exact). (`range_monitor.py`, `main.py`)
+- **G6: Cancel Pending Plans on Reply** — when CLOSE, SECURE_PROFIT, or BREAKEVEN reply succeeds, cancel all pending re-entry plans AND unfilled LIMIT/STOP orders on MT5. New `cancel_all_pending()` method. (`signal_state_manager.py`, `main.py`, `position_manager.py`)
+- **G7: Max Re-entry Distance Guard** — skip re-entry if price has moved more than `max_reentry_distance_pips` past the plan level. Config: `strategy.max_reentry_distance_pips` (default: 0 = disabled). (`pipeline.py`)
+- **G8: Force MARKET for Re-entries** — P2/P3 re-entries triggered by RangeMonitor always execute as MARKET orders, bypassing `MARKET_TOLERANCE_POINTS` check that could incorrectly place a LIMIT. (`pipeline.py`)
+- **G9: Step-based P2/P3 Levels** — when `reentry_step_pips > 0`, P2/P3 levels calculated as P1 + N×step instead of spreading across zone. Config: `strategy.reentry_step_pips` (default: 0 = zone-spread). (`entry_strategy.py`)
+- **G10: Multi-trigger** — ~~trigger all crossed levels simultaneously~~ **REVERTED**: each plan triggers individually via cross detection. (`range_monitor.py`)
+- **G11: SL Breach → Cancel All** — if price crosses SL while plans are pending, cancel all pending plans for that signal. Prevents re-entries on invalidated signals. (`range_monitor.py`)
+- **G12a: `per_entry` Volume Split** — new `volume_split` mode where each plan gets the full `FIXED_LOT_SIZE` instead of splitting total. Use case: `FIXED_LOT=0.01`, 3 entries → each 0.01. (`entry_strategy.py`)
+- **G12b: Reply BE Lock Pips** — reply "be" now sets SL = entry ± N pip (profitable side) instead of exact entry. Config per channel: `rules.reply_be_lock_pips` (default: 1 pip). (`reply_command_executor.py`, `main.py`)
+
+### Fixed
+- **G12b: Reply BE guard** — reply "be" no longer overwrites a better SL. If auto BE already set SL to lock $3, reply "be" (lock $1) will keep the better SL and return info message. (`reply_command_executor.py`)
+- **G4: Secure profit floor SL** — reply "+N pip" now sets remaining SL to closed entry ± lock (group floor) instead of per-position entry ± lock. SELL: closes lowest entry (worst), sets SL = closed_entry - lock for all remaining. Includes SL direction guard. (`position_manager.py`)
+- **G7: sym_info scope** — max re-entry distance guard now fetches symbol_info independently instead of relying on G1's scoped variable. (`pipeline.py`)
+- **G5: docstring** — range_monitor tolerance docstring corrected to match code: BUY = level + tol, SELL = level - tol. (`range_monitor.py`)
+- **G1: cancelled plan leak** — plans skipped by min_sl_distance guard are now marked `cancelled` so RangeMonitor can't trigger them later. (`pipeline.py`)
+
+### Changed
+- `channels.json` — 8 new config keys:
+  - **strategy**: `min_sl_distance_pips`, `default_sl_pips_from_zone`, `reentry_tolerance_pips`, `max_reentry_distance_pips`, `reentry_step_pips`
+  - **rules**: `secure_profit_action`, `reply_be_lock_pips`
+  - **volume_split**: added `per_entry` mode option
+- Noval channel: `reentry_step_pips: 2`, `max_reentry_distance_pips: 10`, `reentry_tolerance_pips: 5`, `volume_split: per_entry`, `reply_be_lock_pips: 1`
+
+### Files Modified
+- `core/pipeline.py` (G1, G2, G7, G8)
+- `core/reply_action_parser.py` (G3)
+- `core/position_manager.py` (G4)
+- `core/range_monitor.py` (G5, G11)
+- `core/signal_state_manager.py` (G6)
+- `core/entry_strategy.py` (G9, G12a)
+- `core/reply_command_executor.py` (G12b)
+- `main.py` (G4, G5, G6, G12b)
+- `config/channels.json`
+
+## 0.17.0 - 2026-03-22
+
+### Added
+- **P1: "Now" keyword → force MARKET** — when signal contains "Now" keyword and current price is within entry zone, places MARKET order immediately instead of LIMIT/STOP. New `is_now` field on `ParsedSignal` model. (`entry_detector.py`, `order_builder.py`, `models.py`)
+- **P2: `execute_all_immediately`** — new strategy config option. When `true`, all entry plans in range mode are placed as orders immediately (LIMIT/STOP) instead of deferring to RangeMonitor. Default: `false`. (`pipeline.py`, `channels.json`)
+
+### Changed
+- **P0: Fingerprint includes `source_message_id`** — identical signals from different Telegram messages now generate different fingerprints, preventing false duplicate rejection. **Breaking change**: fingerprints from v0.16.x are not compatible. (`parser.py`)
+- `entry_detector.detect()` now returns 4-tuple `(entry, entry_range, is_market, is_now)` — callers must update accordingly
+- Noval channel config example updated with `strategy` section showing range mode + `execute_all_immediately`
+
+### Files Modified
+- `core/signal_parser/parser.py`
+- `core/signal_parser/entry_detector.py`
+- `core/order_builder.py`
+- `core/models.py`
+- `core/pipeline.py`
+- `config/channels.json`
+
+## 0.16.7 - 2026-03-22
+
+### Fixed
+- **CRITICAL**: `MARKET_TOLERANCE_POINTS` default documented as `30.0` in 4 locations — actual code default is `5.0` (`config/settings.py`)
+- Version references stuck at `v0.16.1` in `PROJECT.md`, `README.md`, `DASHBOARD_FEATURES.md`
+- Version stuck at `v0.16.2` in `App.jsx` footer
+- Version stuck at `v0.9.0` in `FLOW_AND_SETUP_GUIDE.md` and `LOGIC_SIGNAL_PARSER.md`
+- `FLOW_AND_SETUP_GUIDE.md` stale `main.py (1401 dòng)` LOC count
+- `P10_FEATURE_SPEC.md` target version `v1.0.0` → `v0.10.0` (shipped)
+
+### Added
+- `ARCHITECTURE.md`: `/api/signal-status-counts` endpoint (v0.16.2), helper extraction note, unit test note
+- `PROJECT.md`: `tests/` and `run.py` in repository structure
+- `PLAN.md`: v0.16.2–v0.16.6 Done entries
+- `DASHBOARD_FEATURES.md`: `/api/signal-status-counts` endpoint
+- `OBSERVABILITY.md`: 10 P10 group management events
+- `DEPLOY.md`: `run.py` unified launcher mention
+- `ROADMAP.md`: R9 (Analytics Dashboard & Health Check) and R10 (Test Infrastructure) milestones
+
+### Changed
+- 14 files updated, 21 issues resolved (1 critical, 15 major, 5 minor)
+
 ## 0.16.6 - 2026-03-22
 
 ### Fixed

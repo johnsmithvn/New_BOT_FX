@@ -25,7 +25,7 @@ The order type (MARKET / LIMIT / STOP) is determined by comparing the signal ent
 
 If `|entry - reference_price| ≤ MARKET_TOLERANCE_POINTS × point`, the order is treated as **MARKET** (immediate execution) instead of LIMIT/STOP.
 
-- Default: `30.0` points (XAUUSD: 3 pips = $0.30)
+- Default: `5.0` points (XAUUSD: 0.5 pips = $0.05)
 - Setting too high → signals that should be pending become market orders
 - Setting too low → signals near market price become pending when they should execute immediately
 
@@ -162,7 +162,7 @@ All values are in `.env`. Copy from `.env.example` for the full list with explan
 |-----|---------|-------------|
 | `BOT_MAGIC_NUMBER` | `234000` | Unique ID to tag bot orders in MT5 |
 | `DEVIATION_POINTS` | `20` | Max price slippage for market orders |
-| `MARKET_TOLERANCE_POINTS` | `30.0` | Entry-vs-price threshold for market/pending decision |
+| `MARKET_TOLERANCE_POINTS` | `5.0` | Entry-vs-price threshold for market/pending decision |
 | `ORDER_MAX_RETRIES` | `3` | Retry count for failed `order_send` calls |
 | `ORDER_RETRY_DELAY_SECONDS` | `1.0` | Base delay between retries (exponential) |
 
@@ -454,4 +454,4 @@ Port 5173. 7 trang + advanced analytics + signal lifecycle. Xem [dashboard-v2/RE
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-Current: **v0.16.1**
+Current: **v0.16.6**

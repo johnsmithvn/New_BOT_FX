@@ -1,6 +1,79 @@
 # TASKS
 
 ## Current Phase
+- `Codebase Stability Audit` ✅ COMPLETE (v0.19.1)
+
+### v0.19.1 — Stability Audit (C1-C6, M1-M5)
+- [x] C1: Prune closed tickets from PositionManager tracking dicts (`position_manager.py`)
+- [x] C2: Clean stale entries in TradeTracker dicts (`trade_tracker.py`)
+- [x] C3: Clean stale debounce entries in RangeMonitor (`range_monitor.py`)
+- [x] C4: Remove dead `midnight_next` month-end crash (`daily_risk_guard.py`)
+- [x] C5: Add `check_same_thread=False` to SQLite (`storage.py`)
+- [x] C6: TTL-remove completed groups from PositionManager (`position_manager.py`)
+- [x] M1: Cache entity in TelegramAlerter (`telegram_alerter.py`)
+- [x] M2: Remove 6 dead convenience methods (`telegram_alerter.py`)
+- [x] M5: Fix `is_enabled` to check channel configs (`position_manager.py`)
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phase
+- `Trading Logic Gaps` ✅ COMPLETE (v0.19.0)
+
+### v0.19.0 — Trading Logic Gaps (G1-G12)
+
+#### G1-G6 (from v0.18.0)
+- [x] G1: Min SL Distance Guard — skip orders when price too close to SL (`pipeline.py`)
+- [x] G2: Default SL from Zone — auto-generate SL from entry zone bounds (`pipeline.py`)
+- [x] G3: Reply `+pip` Parser — parse `+30`, `+50 pip` as SECURE_PROFIT (`reply_action_parser.py`)
+- [x] G4: Secure Profit Group — close worst entry + BE remaining (`position_manager.py`, `main.py`)
+- [x] G5: Re-entry Tolerance — trigger within N pips of level (`range_monitor.py`, `main.py`)
+- [x] G6: Cancel Pending Plans on Reply — CLOSE/SECURE_PROFIT cancels plans (`signal_state_manager.py`, `main.py`)
+
+#### G7-G11 (new)
+- [x] G7: Max Re-entry Distance Guard — skip re-entry if price > `max_reentry_distance_pips` past level (`pipeline.py`)
+- [x] G8: Force MARKET for Re-entries — P2/P3 always MARKET, bypass `MARKET_TOLERANCE_POINTS` (`pipeline.py`)
+- [x] G9: Step-based P2/P3 Levels — `reentry_step_pips > 0` → P2 = P1 + N×step (`entry_strategy.py`)
+- [x] G10: ~~Multi-trigger on Scan~~ — **REVERTED**, each plan triggers individually via cross detection (`range_monitor.py`)
+- [x] G11: SL Breach → Cancel All — if price crosses SL, cancel all pending plans for signal (`range_monitor.py`)
+
+#### G12 (additional improvements)
+- [x] G12a: `per_entry` volume split — each plan gets full `FIXED_LOT_SIZE` instead of splitting total (`entry_strategy.py`)
+- [x] G12b: Reply BE Lock Pips — reply "be" sets SL = entry ± N pip instead of exact entry (`reply_command_executor.py`, `main.py`)
+
+#### Config & Docs
+- [x] Update `channels.json` — 8 new config keys across rules + strategy
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+- [x] Update PLAN.md
+- [x] Update ARCHITECTURE.md
+
+## Previous Phases
+- `Signal Analysis Fixes` ✅ COMPLETE (v0.17.0)
+
+### v0.17.0 — Signal Analysis Fixes (P0 + P1 + P2)
+- [x] P0: Fingerprint dedup — add `source_message_id` to hash (`parser.py`)
+- [x] P1: "Now" keyword → force MARKET when price in zone (`entry_detector.py`, `order_builder.py`, `models.py`)
+- [x] P2: `execute_all_immediately` option for range mode (`pipeline.py`)
+- [x] Update `channels.json` with new config keys
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phases
+- `Documentation Audit & Fix` ✅ COMPLETE (v0.16.7)
+
+### v0.16.7 — Documentation Audit (21 fixes across 14 files)
+- [x] Fix `MARKET_TOLERANCE_POINTS` default `30.0` → `5.0` (4 locations)
+- [x] Update version `v0.16.1` → `v0.16.6` in PROJECT.md, README.md, DASHBOARD_FEATURES.md, FLOW_AND_SETUP_GUIDE.md, App.jsx, LOGIC_SIGNAL_PARSER.md, ARCHITECTURE.md
+- [x] Add missing `/api/signal-status-counts` to ARCHITECTURE.md + DASHBOARD_FEATURES.md
+- [x] Add missing `tests/`, `run.py` to PROJECT.md structure
+- [x] Add v0.16.2–v0.16.6 entries to PLAN.md Done list
+- [x] Fix P10_FEATURE_SPEC.md target version `v1.0.0` → `v0.10.0`
+- [x] Add P10 group events to OBSERVABILITY.md
+- [x] Add `run.py` launcher mention to DEPLOY.md
+- [x] Add R9 (Dashboard) + R10 (Tests) milestones to ROADMAP.md
+- [x] Add helper extraction + unit test notes to ARCHITECTURE.md
+
+## Previous Phases
 - `Codex + Copilot Review Fixes` ✅ COMPLETE (v0.16.6)
 
 ### v0.16.6 — Code Review Fixes (Codex P1 + P2, Copilot #2-#6)

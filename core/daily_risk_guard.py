@@ -149,10 +149,6 @@ class DailyRiskGuard:
             try:
                 now = datetime.now(timezone.utc)
                 # Seconds until next midnight UTC
-                midnight_next = _today_midnight_utc().replace(
-                    day=now.day + 1 if now.hour < 23 else now.day
-                )
-                # Simpler: sleep until seconds remaining in current day
                 seconds_until_midnight = (
                     86400
                     - now.hour * 3600

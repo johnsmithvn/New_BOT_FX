@@ -208,7 +208,7 @@ class Storage:
     def __init__(self, db_path: str = _DEFAULT_DB_PATH) -> None:
         self._db_path = db_path
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         # Enable WAL mode for better concurrent access
         self._conn.execute("PRAGMA journal_mode=WAL")

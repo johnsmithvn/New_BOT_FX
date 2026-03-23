@@ -50,6 +50,7 @@ class ParsedSignal:
     fingerprint: str = ""
     parse_confidence: float = 1.0     # 0.0-1.0, how confident the parser is
     parse_source: str = "standard"    # which parser/rule produced this signal
+    is_now: bool = False               # "Now" keyword detected — prefer MARKET if in zone
 
 
 @dataclass

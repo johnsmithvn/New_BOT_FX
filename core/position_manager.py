@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import time as _time
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from utils.logger import log_event
@@ -79,6 +80,7 @@ class PositionManager:
         self._breakeven_applied: set[int] = set()
 
         self._poll_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
 
         # ── P10: Group tracking ──────────────────────────────────
         # All signal order groups, keyed by base fingerprint
@@ -190,12 +192,31 @@ class PositionManager:
 
     @property
     def is_enabled(self) -> bool:
-        """True if at least one position management feature is configured."""
-        return (
+        """True if at least one position management feature is configured.
+
+        Checks both global settings AND channel-specific rules so that
+        channel overrides (e.g., breakeven_lock_pips) are not silently ignored.
+        """
+        # Global settings
+        if (
             self._breakeven_trigger_pips > 0
             or self._trailing_stop_pips > 0
             or self._partial_close_percent > 0
-        )
+        ):
+            return True
+
+        # Channel-level overrides via ChannelManager
+        if self._channel_manager:
+            for ch_id in self._channel_manager._channels:
+                rules = self._channel_manager.get_rules(ch_id)
+                if rules and (
+                    rules.get("breakeven_lock_pips", 0) > 0
+                    or rules.get("trailing_stop_pips", 0) > 0
+                    or rules.get("partial_close_percent", 0) > 0
+                ):
+                    return True
+
+        return False
 
     async def start(self) -> None:
         """Start the background poll loop."""
@@ -207,6 +228,7 @@ class PositionManager:
         self._rebuild_cache()
 
         self._poll_task = asyncio.create_task(self._poll_loop())
+        self._cleanup_task = asyncio.create_task(self._daily_cleanup_loop())
         log_event(
             "position_manager_started",
             breakeven_trigger_pips=self._breakeven_trigger_pips,
@@ -219,13 +241,15 @@ class PositionManager:
 
     async def stop(self) -> None:
         """Stop the background poll loop."""
-        if self._poll_task:
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            self._poll_task = None
+        for task in (self._poll_task, getattr(self, '_cleanup_task', None)):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._poll_task = None
+        self._cleanup_task = None
         log_event("position_manager_stopped")
 
     async def _poll_loop(self) -> None:
@@ -342,6 +366,93 @@ class PositionManager:
             group_open = [t for t in group.tickets if t in open_tickets]
             if not group_open:
                 self._complete_group(group)
+
+        # Cleanup is scheduled daily at 1 AM — see _daily_cleanup_loop()
+
+    # ── Daily Cleanup (memory leak prevention) ────────────────────
+
+    _CLEANUP_HOUR = 1  # 1 AM local time (UTC+7)
+    _TZ_LOCAL = timezone(timedelta(hours=7))
+    _GROUP_COMPLETED_TTL = 3600  # 1 hour before removing completed groups
+
+    async def _daily_cleanup_loop(self) -> None:
+        """Run full cleanup once daily at 1 AM (UTC+7)."""
+        while True:
+            try:
+                now = datetime.now(self._TZ_LOCAL)
+                target = now.replace(
+                    hour=self._CLEANUP_HOUR, minute=0, second=0, microsecond=0,
+                )
+                if target <= now:
+                    target += timedelta(days=1)
+                wait_secs = (target - now).total_seconds()
+                log_event(
+                    "position_manager_cleanup_scheduled",
+                    next_run=target.isoformat(),
+                    wait_hours=round(wait_secs / 3600, 1),
+                )
+                await asyncio.sleep(wait_secs)
+                self._run_full_cleanup()
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("position_manager_cleanup_error", error=str(exc))
+                await asyncio.sleep(60)  # retry after 1 min on error
+
+    def _run_full_cleanup(self) -> None:
+        """Full sweep: prune all tracking dicts + completed groups."""
+        try:
+            import MetaTrader5 as mt5
+        except ImportError:
+            return
+        positions = mt5.positions_get()
+        if positions is None:
+            open_tickets: set[int] = set()
+        else:
+            open_tickets = {p.ticket for p in positions if p.magic == self._magic}
+        self._cleanup_closed_tickets(open_tickets)
+        log_event(
+            "position_manager_cleanup_done",
+            open_tickets=len(open_tickets),
+            remaining_tracked=len(self._ticket_to_channel),
+            remaining_groups=len(self._groups),
+        )
+
+    def _cleanup_closed_tickets(self, open_tickets: set[int]) -> None:
+        """Remove entries for closed positions from all tracking dicts.
+
+        Called once daily at 1 AM by _daily_cleanup_loop().
+        Prevents unbounded memory growth over weeks of operation.
+        """
+        # Prune ticket-keyed dicts
+        for ticket in list(self._ticket_to_channel):
+            if ticket not in open_tickets:
+                self._ticket_to_channel.pop(ticket, None)
+
+        self._breakeven_applied -= self._breakeven_applied - open_tickets
+        self._partially_closed -= self._partially_closed - open_tickets
+
+        for ticket in list(self._last_trailing_sl):
+            if ticket not in open_tickets:
+                self._last_trailing_sl.pop(ticket, None)
+
+        # Prune alert throttle: remove entries for closed tickets
+        for key in list(self._last_alert_time):
+            ticket, _ = key
+            if ticket not in open_tickets:
+                self._last_alert_time.pop(key, None)
+
+        # Prune completed groups after TTL
+        now = _time.time()
+        for fp in list(self._groups):
+            group = self._groups[fp]
+            if group.status == GroupStatus.COMPLETED:
+                # Use a simple heuristic: if no tickets are open, remove after TTL
+                age = now - self._last_alert_time.get(
+                    (group.tickets[0] if group.tickets else 0, "group_completed"), 0.0,
+                )
+                if age > self._GROUP_COMPLETED_TTL:
+                    self._groups.pop(fp, None)
 
     def _manage_individual(self, mt5, pos) -> None:
         """Legacy per-position management: breakeven, trailing, partial close.
@@ -1153,6 +1264,149 @@ class PositionManager:
                 be_target=be_target,
                 remaining_orders=len(open_positions),
             )
+
+    # ── G4: Secure Profit Group Action ────────────────────────────
+
+    def secure_profit_group(
+        self,
+        fingerprint: str,
+        reply_executor=None,
+        dry_run: bool = False,
+    ) -> dict | None:
+        """Secure profit across a group when admin replies +pip (G4).
+
+        Logic:
+        - If >1 open order: close WORST entry, set BE on remaining.
+            SELL: worst = lowest entry (least profit).
+            BUY:  worst = highest entry (least profit).
+        - If 1 open order: just set BE on that order.
+        - If 0 open orders: return no_open_orders.
+
+        Returns dict with action result info.
+        """
+        group = self._groups.get(fingerprint)
+        if not group or group.status != GroupStatus.ACTIVE:
+            return {"status": "no_group", "group_fp": fingerprint}
+
+        if not reply_executor:
+            return None
+
+        try:
+            import MetaTrader5 as mt5
+        except ImportError:
+            return None
+
+        # Find open tickets
+        open_tickets: list[int] = []
+        for ticket in group.tickets:
+            positions = mt5.positions_get(ticket=ticket)
+            if positions and len(positions) > 0:
+                open_tickets.append(ticket)
+
+        if not open_tickets:
+            return {"status": "no_open_orders", "group_fp": fingerprint}
+
+        is_buy = group.side == Side.BUY or (
+            isinstance(group.side, str) and group.side.upper() == "BUY"
+        )
+
+        closed_ticket = None
+        be_tickets: list[int] = []
+
+        if len(open_tickets) > 1:
+            # Close WORST entry (least profitable)
+            if is_buy:
+                # BUY: worst = highest entry (bought expensive)
+                worst_ticket = max(
+                    open_tickets,
+                    key=lambda t: group.entry_prices.get(t, 0),
+                )
+            else:
+                # SELL: worst = lowest entry (sold cheap)
+                worst_ticket = min(
+                    open_tickets,
+                    key=lambda t: group.entry_prices.get(t, float("inf")),
+                )
+
+            # Close worst
+            from core.reply_action_parser import ReplyAction, ReplyActionType
+            close_action = ReplyAction(action=ReplyActionType.CLOSE)
+            summary = reply_executor.execute(
+                worst_ticket, close_action, dry_run=dry_run,
+            )
+            closed_ticket = worst_ticket
+            worst_entry = group.entry_prices.get(closed_ticket, 0)
+            remaining = [t for t in open_tickets if t != worst_ticket]
+
+            # Set BE on remaining: use CLOSED entry as floor + lock
+            # SELL: SL = closed_entry - lock (below worst entry = profit zone)
+            # BUY:  SL = closed_entry + lock (above worst entry = profit zone)
+            symbol_info = mt5.symbol_info(group.symbol)
+            pip_size = symbol_info.point * 10 if symbol_info and symbol_info.point > 0 else 0.1
+            digits = symbol_info.digits if symbol_info else 5
+            lock_pips = getattr(reply_executor, '_reply_be_lock_pips', 1.0)
+            lock_distance = lock_pips * pip_size
+
+            if is_buy:
+                floor_sl = worst_entry + lock_distance
+            else:
+                floor_sl = worst_entry - lock_distance
+            floor_sl = round(floor_sl, digits)
+
+            for ticket in remaining:
+                positions = mt5.positions_get(ticket=ticket)
+                if not positions:
+                    continue
+                pos = positions[0]
+                # Guard: only move SL if favorable
+                if is_buy and pos.sl > 0 and floor_sl <= pos.sl:
+                    continue  # BUY: don't move SL down
+                if not is_buy and pos.sl > 0 and floor_sl >= pos.sl:
+                    continue  # SELL: don't move SL up
+                request = {
+                    "action": mt5.TRADE_ACTION_SLTP,
+                    "position": ticket,
+                    "symbol": pos.symbol,
+                    "sl": floor_sl,
+                    "tp": pos.tp,
+                }
+                result = mt5.order_send(request)
+                if result and result.retcode in (10008, 10009):
+                    be_tickets.append(ticket)
+
+            log_event(
+                "secure_profit_multi",
+                fingerprint=fingerprint,
+                closed_ticket=closed_ticket,
+                closed_entry=worst_entry,
+                floor_sl=floor_sl,
+                be_tickets=be_tickets,
+            )
+
+        else:
+            # Only 1 order: just set BE
+            ticket = open_tickets[0]
+            from core.reply_action_parser import ReplyAction, ReplyActionType
+            be_action = ReplyAction(action=ReplyActionType.BREAKEVEN)
+            reply_executor.execute(ticket, be_action, dry_run=dry_run)
+            be_tickets.append(ticket)
+
+            log_event(
+                "secure_profit_single",
+                fingerprint=fingerprint,
+                be_ticket=ticket,
+            )
+
+        return {
+            "status": "secured",
+            "closed_ticket": closed_ticket,
+            "closed_entry": group.entry_prices.get(closed_ticket) if closed_ticket else None,
+            "be_tickets": be_tickets,
+            "remaining_count": len(be_tickets),
+            "total_count": len(open_tickets),
+            "group_fp": fingerprint,
+            "symbol": group.symbol,
+        }
 
     # ── P10.1: Edit/Delete Group Support ──────────────────────────
 

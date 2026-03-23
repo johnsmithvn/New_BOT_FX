@@ -1,4 +1,4 @@
-# 🔄 FLOW & SETUP GUIDE — telegram-mt5-bot v0.9.0
+# 🔄 FLOW & SETUP GUIDE — telegram-mt5-bot v0.16.6
 
 > Tài liệu gốc cho user: vẽ chi tiết luồng hoạt động, cấu hình thay đổi luồng, và hướng dẫn setup.
 
@@ -250,7 +250,7 @@ flowchart LR
 | `MAX_ENTRY_DISTANCE_PIPS` | `50.0` | Reject nếu entry xa giá hiện tại > 50 pips. Tăng → chấp nhận signal "cũ" hơn. |
 | `MAX_ENTRY_DRIFT_PIPS` | `10.0` | **Chỉ cho MARKET order.** Nếu signal có entry=2935, giá đã 2937 → drift=20 pips > 10 → REJECT. |
 | `MAX_SPREAD_PIPS` | `5.0` | ⚠️ **Hiện tại đang bị comment out trong code.** Signal sẽ KHÔNG bị reject bởi spread. |
-| `MARKET_TOLERANCE_POINTS` | `30.0` | Nếu `|entry - price| ≤ tolerance × point` → order = MARKET thay vì LIMIT. XAUUSD: 30 × 0.01 = $0.30. |
+| `MARKET_TOLERANCE_POINTS` | `5.0` | Nếu `|entry - price| ≤ tolerance × point` → order = MARKET thay vì LIMIT. XAUUSD: 5 × 0.01 = $0.05. |
 | `DEVIATION_POINTS` | `20` | Max slippage cho MARKET orders. |
 | `PENDING_ORDER_TTL_MINUTES` | `15` | Tự hủy pending order (LIMIT/STOP) sau 15 phút. **Áp dụng cho cả multi-order.** |
 | `SIGNAL_AGE_TTL_SECONDS` | `60` | Signal cũ hơn 60s → reject + cũng là dedup window. |
@@ -402,7 +402,7 @@ venv\Scripts\python.exe main.py
 
 # Bạn sẽ thấy:
 # =======================================================
-#   telegram-mt5-bot  v0.9.0  [DRY RUN]
+#   telegram-mt5-bot  v0.16.6  [DRY RUN]
 # =======================================================
 #   Risk mode    : RISK_MODE.FIXED_LOT
 #   Max spread   : 5.0 pips
@@ -467,7 +467,7 @@ DEBUG_SIGNAL_DECISION=true      # Giữ debug để monitor
 
 ```
 Forex/
-├── main.py                     # Bot orchestration (1401 dòng)
+├── main.py                     # Bot orchestration
 ├── .env                        # Environment variables (BẮT BUỘC)
 ├── .env.example                # Template
 ├── config/

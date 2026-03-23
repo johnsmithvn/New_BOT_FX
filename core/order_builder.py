@@ -120,6 +120,17 @@ class OrderBuilder:
                 tp=signal.tp[0] if signal.tp else None,
             )
 
+        # P1: "Now" keyword + price within entry zone → force MARKET
+        if getattr(signal, 'is_now', False) and signal.entry_range:
+            low, high = min(signal.entry_range), max(signal.entry_range)
+            if low <= ask <= high:
+                return TradeDecision(
+                    order_kind=OrderKind.MARKET,
+                    price=None,
+                    sl=signal.sl,
+                    tp=signal.tp[0] if signal.tp else None,
+                )
+
         # Within tolerance of current ASK → treat as market
         if abs(signal.entry - ask) <= tolerance:
             return TradeDecision(
@@ -191,6 +202,17 @@ class OrderBuilder:
                 sl=signal.sl,
                 tp=signal.tp[0] if signal.tp else None,
             )
+
+        # P1: "Now" keyword + price within entry zone → force MARKET
+        if getattr(signal, 'is_now', False) and signal.entry_range:
+            low, high = min(signal.entry_range), max(signal.entry_range)
+            if low <= bid <= high:
+                return TradeDecision(
+                    order_kind=OrderKind.MARKET,
+                    price=None,
+                    sl=signal.sl,
+                    tp=signal.tp[0] if signal.tp else None,
+                )
 
         # Within tolerance of current BID → treat as market
         if abs(signal.entry - bid) <= tolerance:

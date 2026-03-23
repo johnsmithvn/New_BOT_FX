@@ -10,7 +10,9 @@
             "group_be_on_partial_close": false,
             "reply_close_strategy": "all",
             "sl_mode": "signal",
-            "sl_max_pips_from_zone": 50
+            "sl_max_pips_from_zone": 50,
+            "secure_profit_action": "close_worst_be_rest",
+            "reply_be_lock_pips": 1
         },
         "strategy": {
             "mode": "single",
@@ -19,7 +21,12 @@
             "reentry_step_pips": 0,
             "signal_ttl_minutes": 15,
             "volume_split": "equal",
-            "order_types_allowed": ["MARKET", "LIMIT", "STOP"]
+            "execute_all_immediately": false,
+            "order_types_allowed": ["MARKET", "LIMIT", "STOP"],
+            "min_sl_distance_pips": 0,
+            "default_sl_pips_from_zone": 0,
+            "reentry_tolerance_pips": 0,
+            "max_reentry_distance_pips": 0
         },
         "risk": {},
         "validation": {}
@@ -36,20 +43,27 @@
                 "group_be_on_partial_close": true,
                 "reply_close_strategy": "highest_entry",
                 "sl_mode": "zone",
-                "sl_max_pips_from_zone": 50
+                "sl_max_pips_from_zone": 50,
+                "secure_profit_action": "close_worst_be_rest",
+                "reply_be_lock_pips": 10
             },
             "strategy": {
                 "mode": "range",
                 "max_entries": 3,
                 "reentry_enabled": true,
-                "reentry_step_pips": 30,
+                "reentry_step_pips": 20,
                 "signal_ttl_minutes": 60,
-                "volume_split": "risk_based",
-                "order_types_allowed": ["MARKET", "LIMIT"]
+                "volume_split": "per_entry",
+                "execute_all_immediately": false,
+                "order_types_allowed": ["MARKET", "LIMIT"],
+                "min_sl_distance_pips": 20,
+                "default_sl_pips_from_zone": 50,
+                "reentry_tolerance_pips": 5,
+                "max_reentry_distance_pips": 10
             },
             "risk": {
                 "mode": "FIXED_LOT",
-                "fixed_lot_size": 0.05,
+                "fixed_lot_size": 0.01,
                 "risk_percent": 1.0
             },
             "validation": {

@@ -557,6 +557,7 @@
 - 30-second debounce per level
 - Symbol-grouped tick requests
 - Emit events to Pipeline via callback
+- **G11**: SL breach cancels all pending plans
 
 ### 25. Signal State Manager
 - State machine: PENDING → PARTIAL → COMPLETED → EXPIRED
@@ -564,6 +565,131 @@
 - Query pending re-entry levels
 - Only tracks range/scale_in (not single)
 - Expire signals past TTL
+
+---
+
+## 26. Noval Channel Config (G7-G12)
+
+**Module:** `tests/test_noval_config.py`
+**Purpose:** Comprehensive tests for Noval channel config and G7-G12 features with Gold (XAUUSD).
+
+### 26.1 G9: Step-based P2/P3 Levels (`reentry_step_pips=20`)
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 1 | SELL 3 levels step=20pip | P1=3340, P2=3342, P3=3344 | Level calculation |
+| 2 | SELL levels ascending | P1 < P2 < P3 | Direction correctness |
+| 3 | P1=initial, P2/P3=range_N labels | Correct labels | Plan identification |
+| 4 | BUY 3 levels step=20pip | P1=3347, P2=3345, P3=3343 | BUY direction |
+| 5 | BUY levels descending | P1 > P2 > P3 | Direction correctness |
+| 6 | step=0 → zone-spread fallback | Legacy spread behavior | Fallback guard |
+| 7 | No entry_range → single | 1 plan only | Missing data guard |
+| 8 | max_entries=1 → single | 1 plan only | Config override |
+| 9 | Narrow zone: steps exceed zone | P3 goes beyond zone_high | Expected behavior |
+
+### 26.2 G12a: `per_entry` Volume Split
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 10 | 3 plans × 0.01 → each 0.01 | [0.01, 0.01, 0.01] | Core per_entry logic |
+| 11 | 1 plan × 0.01 | [0.01] | Single plan |
+| 12 | 5 plans × 0.02 → total 0.10 | Each 0.02, sum=0.10 | Total exposure check |
+| 13 | equal: 0.03 / 3 → 0.01 each | Divides, not copies | Contrast with per_entry |
+| 14 | equal: lot too small → lot_min | Each ≥ 0.01 | Minimum enforcement |
+| 15 | Empty plans → empty | [] | Guard |
+
+### 26.3 Noval Full Integration
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 16 | SELL 3 entries + per_entry volumes | 3 plans, each 0.01 | End-to-end SELL |
+| 17 | BUY 3 entries + per_entry volumes | 3 plans, each 0.01 | End-to-end BUY |
+| 18 | Level IDs sequential [0,1,2] | Proper tracking IDs | Re-entry tracking |
+
+### 26.4 G1: Min SL Distance Boundary (`min_sl_distance_pips=20`)
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 19 | Price far from SL (120pip) → OK | ≥ 20 → accept | Normal case |
+| 20 | Price close to SL (10pip) → REJECT | < 20 → reject | Guard fires |
+| 21 | Price exactly at boundary (20pip) | ≥ 20 → accept | Boundary: exact |
+| 22 | Price 1 pip inside (19pip) → REJECT | < 20 → reject | Boundary: just under |
+| 23 | BUY distance check (190pip) → OK | ≥ 20 → accept | BUY side |
+
+### 26.5 G7: Max Re-entry Distance Boundary (`max_reentry_distance_pips=10`)
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 24 | Price at level → drift=0 → OK | ≤ 10 → accept | Exact match |
+| 25 | Price 5pip past → OK | ≤ 10 → accept | Within range |
+| 26 | Price exactly at max (10pip) → OK | ≤ 10 → accept | Boundary: exact |
+| 27 | Price 11pip past → REJECT | > 10 → reject | Boundary: just over |
+| 28 | Price 80pip past → REJECT | >> 10 → reject | Far exceeded |
+| 29 | Disabled (0) → skip check | No rejection | Feature toggle |
+
+### 26.6 G5: Re-entry Tolerance (`reentry_tolerance_pips=5`)
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 30 | SELL eff_level = level - 0.50 | 3342→3341.5 | Calculation check |
+| 31 | BUY eff_level = level + 0.50 | 3345→3345.5 | BUY direction |
+| 32 | SELL price 3341.6 ≥ eff → TRIGGER | Early trigger | Within tolerance |
+| 33 | SELL price 3341.4 < eff → NO | Not yet reached | Below tolerance |
+| 34 | tolerance=0 → exact required | Level = eff_level | Disabled check |
+| 35 | SELL P3 tolerance | 3343.7 ≥ 3343.5 → trigger | P3 validation |
+
+### 26.7 G11: SL Breach → Cancel All
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 36 | SELL price=SL → BREACHED | price ≥ SL | Exact SL hit |
+| 37 | SELL price < SL → not breached | In profit zone | No breach |
+| 38 | SELL price > SL → BREACHED | Past SL | Beyond SL |
+| 39 | BUY price=SL → BREACHED | price ≤ SL | Exact SL hit |
+| 40 | BUY price > SL → not breached | In profit zone | No breach |
+| 41 | SELL price far below SL → OK | In profit | False positive guard |
+
+### 26.8 G12b: Reply BE Lock Pips (`reply_be_lock_pips=10`)
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 42 | BUY entry=3345 → SL=3346.0 | +$1.00 lock | BUY offset |
+| 43 | SELL entry=3340 → SL=3339.0 | -$1.00 lock | SELL offset |
+| 44 | lock=0 → SL=entry | No offset | Disabled |
+| 45 | lock=1 (default) → SL=entry+0.1 | $0.10 offset | Default config |
+| 46 | Lock distance math | 10×0.1=1.0 | Calculation |
+
+### 26.9 Full Scenario: SELL XAUUSD 3340-3347 SL 3352
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 47 | Plan levels [3340, 3342, 3344] | Correct step calc | Integration |
+| 48 | Volumes [0.01, 0.01, 0.01] | per_entry mode | Volume |
+| 49 | P1 SL distance 120pip ≥ 20 | ACCEPT | Guard pass |
+| 50 | P2 SL distance 100pip ≥ 20 | ACCEPT | Guard pass |
+| 51 | P3 SL distance 80pip ≥ 20 | ACCEPT | Guard pass |
+| 52 | P2 tolerance trigger (3341.6) | TRIGGER (≥3341.5) | Early trigger |
+| 53 | P2 max distance boundary | 10→OK, 15→REJECT | Distance guard |
+| 54 | SL breach at 3352 | Cancel all pending | SL guard |
+| 55 | Reply BE lock SELL P1 | SL=3339.0 | Offset calc |
+| 56 | P3 still inside zone | 3344 < 3347 | Zone check |
+
+### 26.10 Full Scenario: BUY XAUUSD 3340-3347 SL 3328
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 57 | Plan levels [3347, 3345, 3343] | Correct step calc | Integration |
+| 58 | All levels above SL=3328 | level > 3328 | Safety check |
+| 59 | Reply BE lock BUY P1 | SL=3348.0 | Offset calc |
+| 60 | SL breach at 3327 | price ≤ SL | BUY breach |
+
+### 26.11 Guard Combinations
+
+| # | Test Case | Expected | Purpose |
+|---|-----------|----------|---------|
+| 61 | Crossed + too far → REJECT | max_distance wins | Guard priority |
+| 62 | Crossed + within distance + SL OK → TRIGGER | All pass | Happy path |
+| 63 | Crossed + within distance + SL too close → REJECT | SL guard wins | SL priority |
 
 ---
 
@@ -583,13 +709,14 @@
 | Background | trade_tracker, position_manager, range_monitor | ~15 | ~20 |
 | Telegram | listener, alerter | ~8 | ~7 |
 | Infrastructure | lifecycle_mgr, watchdog, update_handler, state_mgr | ~10 | ~5 |
-| **Total** | **~27 modules** | **~120+** | **~254** |
+| **Noval Config (G7-G12)** | **entry_strategy, pipeline guards, reply executor** | **~15** | **~63** |
+| **Total** | **~28 modules** | **~135+** | **~317** |
 
 ```
 tests/
 ├── conftest.py                      # Shared fixtures
 ├── __init__.py
-├── TEST_CASES.md                    # Test case docs (đã có)
+├── TEST_CASES.md                    # Test case docs
 ├── signal_parser/
 │   ├── test_cleaner.py              # 13 tests
 │   ├── test_side_detector.py        # 12 tests
@@ -606,5 +733,6 @@ tests/
 ├── test_models.py                   # 17 tests
 ├── test_entry_strategy.py           # 24 tests
 ├── test_channel_manager.py          # 11 tests
-└── test_exposure_guard.py           # 8 tests
+├── test_exposure_guard.py           # 8 tests
+└── test_noval_config.py             # 63 tests (G7-G12)
 ```

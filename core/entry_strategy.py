@@ -113,7 +113,11 @@ class EntryStrategy:
         if n == 1:
             return [total_volume]
 
-        if split_mode == "pyramid":
+        if split_mode == "per_entry":
+            # Each plan gets the full calculated volume (no splitting)
+            # Use case: FIXED_LOT=0.01, max_entries=3 → each gets 0.01
+            volumes = [total_volume] * n
+        elif split_mode == "pyramid":
             volumes = self._split_pyramid(total_volume, n)
         elif split_mode == "risk_based" and sl is not None:
             volumes = self._split_risk_based(total_volume, plans, sl)
@@ -173,15 +177,12 @@ class EntryStrategy:
     ) -> list[EntryPlan]:
         """Range mode: spread N orders across entry_range.
 
-        BUY range [2020, 2030]:
-            Entry 0: 2030 (upper bound — near market, possibly MARKET)
-            Entry 1: 2025 (mid — BUY_LIMIT)
-            Entry 2: 2020 (lower bound — BUY_LIMIT)
+        When reentry_step_pips > 0 (G9):
+            P1 = zone edge (SELL: zone_low, BUY: zone_high)
+            P2 = P1 ± 1×step, P3 = P1 ± 2×step, etc.
 
-        SELL range [2020, 2030]:
-            Entry 0: 2020 (lower bound — near market, possibly MARKET)
-            Entry 1: 2025 (mid — SELL_LIMIT)
-            Entry 2: 2030 (upper bound — SELL_LIMIT)
+        When reentry_step_pips == 0 (legacy):
+            Spread levels evenly across zone.
 
         Falls back to single mode if no entry_range available.
         """
@@ -197,17 +198,28 @@ class EntryStrategy:
         if max_entries <= 1:
             return self._plan_single(signal, bid, ask, point, tolerance_points)
 
-        # Generate levels spread across range
-        if max_entries == 2:
-            levels = [high, low] if signal.side == Side.BUY else [low, high]
-        else:
-            step = (high - low) / (max_entries - 1) if max_entries > 1 else 0
+        # G9: Check if step_pips mode is active
+        step_pips = config.get("reentry_step_pips", 0)
+        if step_pips > 0:
+            pip_size = self._estimate_pip_size(point)
+            step_price = step_pips * pip_size
+
             if signal.side == Side.BUY:
-                # BUY: start from upper bound (closer to market), descend
-                levels = [high - i * step for i in range(max_entries)]
+                p1 = high  # BUY: start at zone_high (near market)
+                levels = [p1 - i * step_price for i in range(max_entries)]
             else:
-                # SELL: start from lower bound (closer to market), ascend
-                levels = [low + i * step for i in range(max_entries)]
+                p1 = low   # SELL: start at zone_low (near market)
+                levels = [p1 + i * step_price for i in range(max_entries)]
+        else:
+            # Legacy: spread evenly across zone
+            if max_entries == 2:
+                levels = [high, low] if signal.side == Side.BUY else [low, high]
+            else:
+                step = (high - low) / (max_entries - 1) if max_entries > 1 else 0
+                if signal.side == Side.BUY:
+                    levels = [high - i * step for i in range(max_entries)]
+                else:
+                    levels = [low + i * step for i in range(max_entries)]
 
         # Build plans
         plans = []

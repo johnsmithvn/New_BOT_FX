@@ -38,7 +38,9 @@ from core.models import (
     EntryPlan,
     OrderKind,
     ParsedSignal,
+    Side,
     SignalState,
+    TradeDecision,
     order_fingerprint,
 )
 from utils.logger import log_event
@@ -127,6 +129,23 @@ class SignalPipeline:
         # Get channel strategy config
         strategy_config = self._channel_mgr.get_strategy(chat_id)
         mode = strategy_config.get("mode", "single")
+
+        # ── G2: Default SL from zone when signal has no SL ───────
+        default_sl_pips = strategy_config.get("default_sl_pips_from_zone", 0)
+        if signal.sl is None and signal.entry_range and default_sl_pips > 0:
+            pip_size = point * 10
+            zone_low = min(signal.entry_range)
+            zone_high = max(signal.entry_range)
+            if signal.side == Side.SELL:
+                signal.sl = round(zone_high + default_sl_pips * pip_size, 5)
+            else:
+                signal.sl = round(zone_low - default_sl_pips * pip_size, 5)
+            log_event(
+                "default_sl_generated",
+                fingerprint=fp, symbol=signal.symbol,
+                sl=signal.sl, source="zone",
+                default_sl_pips=default_sl_pips,
+            )
 
         # ── Single mode: delegate to classic single-order path ───
         if mode == "single":
@@ -263,6 +282,51 @@ class SignalPipeline:
 
         bid, ask = tick.bid, tick.ask
 
+        # ── G1: Min SL distance guard for re-entries ─────────────
+        strategy_config = self._channel_mgr.get_strategy(signal_state.channel_id)
+        min_sl_dist_pips = strategy_config.get("min_sl_distance_pips", 0)
+        if min_sl_dist_pips > 0 and signal_state.sl is not None:
+            try:
+                import MetaTrader5 as mt5
+                sym_info = mt5.symbol_info(signal_state.symbol)
+                pip_size = sym_info.point * 10 if sym_info else 0.1
+            except Exception:
+                pip_size = 0.1
+            ref_price = ask if signal_state.side == Side.BUY else bid
+            sl_dist = abs(ref_price - signal_state.sl) / pip_size
+            if sl_dist < min_sl_dist_pips:
+                self._state_mgr.mark_level_cancelled(fp, plan.level_id)
+                log_event(
+                    "reentry_rejected", fingerprint=fp,
+                    level_id=plan.level_id,
+                    reason="sl_too_close",
+                    sl_distance_pips=round(sl_dist, 1),
+                    min_required=min_sl_dist_pips,
+                )
+                return None
+
+        # ── G7: Max re-entry distance guard ──────────────────────
+        max_reentry_dist = strategy_config.get("max_reentry_distance_pips", 0)
+        if max_reentry_dist > 0:
+            try:
+                import MetaTrader5 as mt5
+                _sym = mt5.symbol_info(signal_state.symbol)
+                pip_sz = _sym.point * 10 if _sym and _sym.point > 0 else 0.1
+            except Exception:
+                pip_sz = 0.1
+            ref_price = ask if signal_state.side == Side.BUY else bid
+            level_dist = abs(ref_price - plan.level) / pip_sz
+            if level_dist > max_reentry_dist:
+                self._state_mgr.mark_level_cancelled(fp, plan.level_id)
+                log_event(
+                    "reentry_rejected", fingerprint=fp,
+                    level_id=plan.level_id,
+                    reason="price_too_far_from_level",
+                    distance_pips=round(level_dist, 1),
+                    max_allowed=max_reentry_dist,
+                )
+                return None
+
         # ── Calculate volume for this re-entry level ─────────────
         account = self._executor.account_info()
         balance = account["balance"] if account else 0.0
@@ -320,8 +384,16 @@ class SignalPipeline:
         except Exception:
             point = 0.00001
 
-        decision = self._order_builder.decide_order_type(
-            reentry_signal, bid, ask, point,
+        # ── G8: Force MARKET for re-entries ────────────────────
+        # Re-entries are triggered by RangeMonitor when price reaches
+        # the level. At trigger time, price IS at/near the level, so
+        # MARKET is always correct. Avoids conflict with
+        # MARKET_TOLERANCE_POINTS which could wrongly place a LIMIT.
+        decision = TradeDecision(
+            order_kind=OrderKind.MARKET,
+            price=None,
+            sl=reentry_signal.sl,
+            tp=reentry_signal.tp[0] if reentry_signal.tp else None,
         )
         request = self._order_builder.build_request(
             reentry_signal, decision, volume, bid, ask,
@@ -505,8 +577,29 @@ class SignalPipeline:
         results: list[dict[str, Any]] = []
         deferred_plans: list[EntryPlan] = []
 
+        # P2: Option to execute all plans immediately (e.g. place all LIMITs at once)
+        execute_all = strategy_config.get("execute_all_immediately", False)
+
+        # G1: Min SL distance guard config
+        min_sl_dist_pips = strategy_config.get("min_sl_distance_pips", 0)
+        pip_size = point * 10
+
         for plan, vol in zip(plans, volumes):
-            if plan.order_kind == OrderKind.MARKET or plan.level_id == 0:
+            # G1: Skip if price too close to SL
+            if min_sl_dist_pips > 0 and signal.sl is not None:
+                ref_price = ask if signal.side == Side.BUY else bid
+                sl_distance_pips = abs(ref_price - signal.sl) / pip_size
+                if sl_distance_pips < min_sl_dist_pips:
+                    log_event(
+                        "entry_skipped_sl_too_close",
+                        fingerprint=fp, level_id=plan.level_id,
+                        level=plan.level, sl_distance_pips=round(sl_distance_pips, 1),
+                        min_required=min_sl_dist_pips,
+                    )
+                    plan.status = "cancelled"  # Prevent RangeMonitor trigger
+                    continue  # Skip this plan entirely
+
+            if execute_all or plan.order_kind == OrderKind.MARKET or plan.level_id == 0:
                 # Execute immediately
                 result = self._execute_one_plan(
                     signal, plan, vol, bid, ask, point,

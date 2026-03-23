@@ -24,17 +24,21 @@ def generate_fingerprint(
     sl: float | None,
     tp_list: list[float],
     source_chat_id: str = "",
+    source_message_id: str = "",
 ) -> str:
     """Generate a deterministic fingerprint from normalized signal fields.
 
     Uses SHA-256 hash of concatenated fields.
     Includes source_chat_id to isolate dedup per channel (v0.6.0).
+    Includes source_message_id to distinguish identical signals
+    from different messages (v0.17.0).
 
-    BREAKING CHANGE: fingerprints from v0.5.x are NOT compatible
-    with v0.6.0 due to the added source_chat_id prefix.
+    BREAKING CHANGE: fingerprints from v0.6.x are NOT compatible
+    with v0.17.0 due to the added source_message_id field.
     """
     parts = [
         source_chat_id,
+        source_message_id,
         symbol,
         side,
         str(entry) if entry is not None else "MARKET",
@@ -136,7 +140,7 @@ class SignalParser:
         side = Side(side_str)
 
         # Step 4: Detect entry
-        entry, entry_range, is_market = entry_detector.detect(cleaned, side)
+        entry, entry_range, is_market, is_now = entry_detector.detect(cleaned, side)
 
         # Reject if entry cannot be determined AND there is no explicit market intent
         if entry is None and not is_market:
@@ -151,7 +155,7 @@ class SignalParser:
         # Step 6: Detect TPs
         tp_list = tp_detector.detect(cleaned)
 
-        # Step 7: Generate fingerprint (includes source_chat_id for channel isolation)
+        # Step 7: Generate fingerprint (includes source_chat_id + message_id for isolation)
         fingerprint = generate_fingerprint(
             symbol=symbol,
             side=side_str,
@@ -159,6 +163,7 @@ class SignalParser:
             sl=sl,
             tp_list=tp_list,
             source_chat_id=common.get("source_chat_id", ""),
+            source_message_id=common.get("source_message_id", ""),
         )
 
         return ParsedSignal(
@@ -169,5 +174,6 @@ class SignalParser:
             sl=sl,
             tp=tp_list,
             fingerprint=fingerprint,
+            is_now=is_now,
             **common,
         )

@@ -36,18 +36,23 @@ _MARKET_KEYWORDS = re.compile(
 )
 
 
-def detect(text: str, side: Side | None = None) -> tuple[float | None, list[float] | None, bool]:
+def detect(text: str, side: Side | None = None) -> tuple[float | None, list[float] | None, bool, bool]:
     """Detect entry price and range from cleaned text.
 
     Returns:
-        tuple (entry, entry_range, is_market):
+        tuple (entry, entry_range, is_market, is_now):
         - entry: float | None (Explicit entry price)
         - entry_range: list[float] | None ([low, high] if range detected)
-        - is_market: bool (True if explicit market keywords found)
+        - is_market: bool (True if explicit market keywords found AND no entry)
+        - is_now: bool (True if NOW/MARKET keyword found, even alongside entry)
     """
     try:
         if not text:
-            return None, None, False
+            return None, None, False, False
+
+        # Detect NOW/MARKET keywords early — used by order_builder
+        # to force MARKET when price is within zone.
+        has_now = bool(_MARKET_KEYWORDS.search(text))
 
         # Try explicit entry range first
         for pattern in _ENTRY_RANGE_PATTERNS:
@@ -67,7 +72,7 @@ def detect(text: str, side: Side | None = None) -> tuple[float | None, list[floa
                         entry = high
                     else:
                         entry = low  # fallback
-                    return entry, entry_range, False
+                    return entry, entry_range, False, has_now
 
         # Try explicit entry patterns first
         for pattern in _ENTRY_PATTERNS:
@@ -76,7 +81,7 @@ def detect(text: str, side: Side | None = None) -> tuple[float | None, list[floa
                 value = match.group(1)
                 price = float(value)
                 if price > 0:
-                    return price, None, False
+                    return price, None, False, has_now
 
         # Try to find a standalone price near BUY/SELL keyword.
         # Pattern: BUY <price> or SELL <price> (allows multiple words in between)
@@ -87,14 +92,12 @@ def detect(text: str, side: Side | None = None) -> tuple[float | None, list[floa
         if side_price:
             price = float(side_price.group(1))
             if price > 0:
-                return price, None, False
+                return price, None, False, has_now
 
-        # Check for market keywords LAST
-        # This ensures that "BUY GOLD zone 4963 - 4961 now" picks up
-        # the range first, and only falls back to market if nothing found.
-        if _MARKET_KEYWORDS.search(text):
-            return None, None, True
+        # No entry found — if NOW keyword present, treat as pure MARKET
+        if has_now:
+            return None, None, True, True
 
-        return None, None, False
+        return None, None, False, False
     except Exception:
-        return None, None, False
+        return None, None, False, False

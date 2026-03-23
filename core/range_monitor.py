@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Callable
 
 from core.models import EntryPlan, Side, SignalState
@@ -60,15 +61,19 @@ class RangeMonitor:
         on_reentry: ReentryCallback,
         poll_seconds: int = 5,
         debounce_seconds: int = 30,
+        reentry_tolerance_pips: float = 0.0,
     ) -> None:
         self._executor = executor
         self._state_mgr = state_manager
         self._on_reentry = on_reentry
         self._poll_seconds = poll_seconds
         self._debounce_seconds = debounce_seconds
+        self._reentry_tolerance_pips = reentry_tolerance_pips  # G5
         self._last_trigger: dict[str, float] = {}  # "fp:level_id" → epoch
+        self._pip_size_cache: dict[str, float] = {}  # symbol → pip_size
         self._running = False
         self._task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
 
     @property
     def is_running(self) -> bool:
@@ -84,22 +89,26 @@ class RangeMonitor:
             return
         self._running = True
         self._task = asyncio.create_task(self._monitor_loop())
+        self._cleanup_task = asyncio.create_task(self._daily_cleanup_loop())
         log_event(
             "range_monitor_started",
             poll_seconds=self._poll_seconds,
             debounce_seconds=self._debounce_seconds,
+            reentry_tolerance_pips=self._reentry_tolerance_pips,
         )
 
     async def stop(self) -> None:
         """Stop the background monitoring loop."""
         self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for task in (self._task, getattr(self, '_cleanup_task', None)):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._task = None
+        self._cleanup_task = None
         log_event("range_monitor_stopped")
 
     async def _monitor_loop(self) -> None:
@@ -118,6 +127,7 @@ class RangeMonitor:
                 if expired > 0:
                     log_event("range_monitor_expired", count=expired)
 
+
             except asyncio.CancelledError:
                 break
             except Exception as exc:
@@ -128,8 +138,47 @@ class RangeMonitor:
                 # Don't crash the monitor on transient errors
                 await asyncio.sleep(1)
 
+        # Cleanup is scheduled daily at 1 AM — see _daily_cleanup_loop()
+
+    # ── Daily Cleanup (1 AM UTC+7) ─────────────────────────────
+
+    _CLEANUP_HOUR = 1
+    _TZ_LOCAL = timezone(timedelta(hours=7))
+
+    async def _daily_cleanup_loop(self) -> None:
+        """Run full cleanup once daily at 1 AM (UTC+7)."""
+        while True:
+            try:
+                now = datetime.now(self._TZ_LOCAL)
+                target = now.replace(
+                    hour=self._CLEANUP_HOUR, minute=0, second=0, microsecond=0,
+                )
+                if target <= now:
+                    target += timedelta(days=1)
+                await asyncio.sleep((target - now).total_seconds())
+                self._cleanup_triggers()
+                log_event("range_monitor_cleanup_done")
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                log_event("range_monitor_cleanup_error", error=str(exc))
+                await asyncio.sleep(60)
+
+    def _cleanup_triggers(self) -> None:
+        """Remove expired debounce entries from _last_trigger."""
+        now = time.time()
+        max_age = self._debounce_seconds * 2
+        for key in list(self._last_trigger):
+            if (now - self._last_trigger[key]) > max_age:
+                del self._last_trigger[key]
+
+
     def _check_reentries(self) -> None:
-        """Check all pending re-entry levels against current prices."""
+        """Check all pending re-entry levels against current prices.
+
+        G11: SL breach — if price crossed SL, cancel all pending plans.
+        Each plan is checked individually via cross detection.
+        """
         pending = self._state_mgr.get_pending_reentries()
         if not pending:
             return
@@ -144,40 +193,63 @@ class RangeMonitor:
             if not tick:
                 continue
 
+            # G11: Group by fingerprint for SL breach check
+            by_fp: dict[str, list[tuple[SignalState, EntryPlan]]] = {}
             for state, plan in entries:
+                by_fp.setdefault(state.fingerprint, []).append((state, plan))
+
+            for fp, fp_entries in by_fp.items():
+                state = fp_entries[0][0]  # Same signal state for all
                 ref_price = tick.ask if state.side == Side.BUY else tick.bid
 
-                if self._is_price_crossing(state, plan, ref_price):
-                    debounce_key = f"{state.fingerprint}:{plan.level_id}"
-
-                    if self._is_debounced(debounce_key):
-                        continue
-
-                    # Record trigger time for debounce
-                    self._last_trigger[debounce_key] = time.time()
-
-                    log_event(
-                        "range_monitor_trigger",
-                        fingerprint=state.fingerprint,
-                        level_id=plan.level_id,
-                        level=plan.level,
-                        price=ref_price,
-                        symbol=symbol,
+                # G11: Check SL breach BEFORE checking plans
+                if state.sl is not None:
+                    sl_breached = (
+                        (state.side == Side.SELL and ref_price >= state.sl) or
+                        (state.side == Side.BUY and ref_price <= state.sl)
                     )
-
-                    # Emit → Pipeline.handle_reentry()
-                    try:
-                        self._on_reentry(state, plan)
-                    except Exception as exc:
+                    if sl_breached:
+                        cancelled = self._state_mgr.cancel_all_pending(fp)
                         log_event(
-                            "range_monitor_callback_error",
-                            fingerprint=state.fingerprint,
-                            level_id=plan.level_id,
-                            error=str(exc),
+                            "sl_breach_cancel_all",
+                            fingerprint=fp,
+                            symbol=symbol,
+                            sl=state.sl,
+                            price=ref_price,
+                            cancelled_plans=cancelled,
                         )
-                else:
-                    # Update last_price for next cross detection
-                    state.last_price = ref_price
+                        continue  # Skip to next signal
+
+                # Check each plan individually
+                for st, plan in fp_entries:
+                    if self._is_price_crossing(st, plan, ref_price):
+                        debounce_key = f"{st.fingerprint}:{plan.level_id}"
+                        if self._is_debounced(debounce_key):
+                            continue
+
+                        self._last_trigger[debounce_key] = time.time()
+
+                        log_event(
+                            "range_monitor_trigger",
+                            fingerprint=st.fingerprint,
+                            level_id=plan.level_id,
+                            level=plan.level,
+                            price=ref_price,
+                            symbol=symbol,
+                        )
+
+                        try:
+                            self._on_reentry(st, plan)
+                        except Exception as exc:
+                            log_event(
+                                "range_monitor_callback_error",
+                                fingerprint=st.fingerprint,
+                                level_id=plan.level_id,
+                                error=str(exc),
+                            )
+                    else:
+                        # Update last_price for next cross detection
+                        st.last_price = ref_price
 
     def _is_price_crossing(
         self,
@@ -190,13 +262,15 @@ class RangeMonitor:
         Cross = price was on one side of level, now on the other.
         Uses state.last_price as previous reference.
 
+        G5: With tolerance, cross detection uses effective_level:
+            effective = level + tol (BUY) or level - tol (SELL)
+            This fires slightly before exact cross.
+
         BUY re-entry: trigger when price drops THROUGH level
-            (previous > level and current ≤ level)
-            → Price entered buy zone / got cheaper
+            (previous > eff_level and current <= eff_level)
 
         SELL re-entry: trigger when price rises THROUGH level
-            (previous < level and current ≥ level)
-            → Price entered sell zone / got more expensive
+            (previous < eff_level and current >= eff_level)
         """
         prev = state.last_price
         if prev is None:
@@ -206,13 +280,38 @@ class RangeMonitor:
 
         level = plan.level
 
+        # G5: Apply tolerance to widen trigger zone
+        tol = 0.0
+        if self._reentry_tolerance_pips > 0:
+            pip_size = self._get_pip_size(state.symbol)
+            tol = self._reentry_tolerance_pips * pip_size
+
         # Update stored price BEFORE returning
         state.last_price = current_price
 
         if state.side == Side.BUY:
-            return prev > level and current_price <= level
+            eff_level = level + tol  # BUY: trigger slightly above level
+            return prev > eff_level and current_price <= eff_level
         else:
-            return prev < level and current_price >= level
+            eff_level = level - tol  # SELL: trigger slightly below level
+            return prev < eff_level and current_price >= eff_level
+
+    def _get_pip_size(self, symbol: str) -> float:
+        """Get pip size for symbol, with caching (G5)."""
+        if symbol in self._pip_size_cache:
+            return self._pip_size_cache[symbol]
+
+        pip_size = 0.1  # default (XAUUSD)
+        try:
+            import MetaTrader5 as mt5
+            info = mt5.symbol_info(symbol)
+            if info and info.point > 0:
+                pip_size = info.point * 10
+        except Exception:
+            pass
+
+        self._pip_size_cache[symbol] = pip_size
+        return pip_size
 
     def _is_debounced(self, key: str) -> bool:
         """Check if this level was triggered recently."""

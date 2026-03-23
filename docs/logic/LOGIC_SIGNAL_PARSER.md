@@ -2,7 +2,7 @@
 
 > Mục đích: Giải thích CHI TIẾT cách tin nhắn Telegram được parse thành cấu trúc `ParsedSignal`.
 > File này giúp bạn tự sửa đổi logic parse khi cần hỗ trợ format tín hiệu mới.
-> **Version**: v0.9.0 | **Last updated**: 2026-03-21
+> **Version**: v0.16.6 | **Last updated**: 2026-03-22
 
 ---
 
