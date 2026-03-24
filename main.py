@@ -709,18 +709,21 @@ class Bot:
                 pip_size = 0.0001
         else:
             # Live: get point from MT5, derive pip_size
+            # Symbol-based pip_size (reliable regardless of broker digit count)
+            # XAUUSDm on Exness: digits=3, point=0.001, but pip is still 0.1
             try:
                 import MetaTrader5 as mt5
                 symbol_info = mt5.symbol_info(signal_obj.symbol)
                 if symbol_info and symbol_info.point > 0:
                     point = symbol_info.point
-                    # pip_size = point * 10 for 5-digit brokers,
-                    # point itself for metals/JPY (2-3 digit)
-                    digits = symbol_info.digits
-                    if digits <= 3:
-                        pip_size = point * 10  # XAU: 0.01*10=0.1
+                    # Derive pip_size from symbol name (not digits alone)
+                    sym_upper = signal_obj.symbol.upper()
+                    if "XAU" in sym_upper or "GOLD" in sym_upper or "XAG" in sym_upper or "SILVER" in sym_upper:
+                        pip_size = 0.1  # Metals: 1 pip = $0.10 always
+                    elif "JPY" in sym_upper:
+                        pip_size = 0.01  # JPY pairs: 1 pip = 0.01
                     else:
-                        pip_size = point * 10  # EUR: 0.00001*10=0.0001
+                        pip_size = 0.0001  # Forex: 1 pip = 0.0001
             except Exception as exc:
                 log_event(
                     "pip_size_lookup_failed",

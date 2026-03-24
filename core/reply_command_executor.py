@@ -10,6 +10,7 @@ targets a single ticket — used when channel admin replies to a signal.
 from __future__ import annotations
 
 from utils.logger import log_event
+from utils.symbol_mapper import estimate_pip_size
 
 try:
     import MetaTrader5 as mt5
@@ -208,7 +209,7 @@ class ReplyCommandExecutor:
         lock_distance = 0.0
         if lock_pips > 0:
             sym_info = mt5.symbol_info(pos.symbol)
-            pip_size = sym_info.point * 10 if sym_info and sym_info.point > 0 else 0.1
+            pip_size = estimate_pip_size(pos.symbol)
             lock_distance = lock_pips * pip_size
 
         if pos.type == 0:  # BUY

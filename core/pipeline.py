@@ -44,6 +44,7 @@ from core.models import (
     order_fingerprint,
 )
 from utils.logger import log_event
+from utils.symbol_mapper import estimate_pip_size
 
 if TYPE_CHECKING:
     from core.channel_manager import ChannelManager
@@ -133,7 +134,7 @@ class SignalPipeline:
         # ── G2: Default SL from zone when signal has no SL ───────
         default_sl_pips = strategy_config.get("default_sl_pips_from_zone", 0)
         if signal.sl is None and signal.entry_range and default_sl_pips > 0:
-            pip_size = point * 10
+            pip_size = estimate_pip_size(signal.symbol)
             zone_low = min(signal.entry_range)
             zone_high = max(signal.entry_range)
             if signal.side == Side.SELL:
@@ -289,7 +290,7 @@ class SignalPipeline:
             try:
                 import MetaTrader5 as mt5
                 sym_info = mt5.symbol_info(signal_state.symbol)
-                pip_size = sym_info.point * 10 if sym_info else 0.1
+                pip_size = estimate_pip_size(signal_state.symbol)
             except Exception:
                 pip_size = 0.1
             ref_price = ask if signal_state.side == Side.BUY else bid
@@ -311,7 +312,7 @@ class SignalPipeline:
             try:
                 import MetaTrader5 as mt5
                 _sym = mt5.symbol_info(signal_state.symbol)
-                pip_sz = _sym.point * 10 if _sym and _sym.point > 0 else 0.1
+                pip_sz = estimate_pip_size(signal_state.symbol)
             except Exception:
                 pip_sz = 0.1
             ref_price = ask if signal_state.side == Side.BUY else bid
@@ -582,7 +583,7 @@ class SignalPipeline:
 
         # G1: Min SL distance guard config
         min_sl_dist_pips = strategy_config.get("min_sl_distance_pips", 0)
-        pip_size = point * 10
+        pip_size = estimate_pip_size(signal.symbol)
 
         for plan, vol in zip(plans, volumes):
             # G1: Skip if price too close to SL

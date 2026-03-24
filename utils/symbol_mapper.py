@@ -102,3 +102,27 @@ class SymbolMapper:
     def known_aliases(self) -> list[str]:
         """Return sorted list of all known aliases."""
         return sorted(self._map.keys())
+
+
+def estimate_pip_size(symbol: str) -> float:
+    """Estimate pip size from symbol name.
+
+    Symbol-based detection is MORE RELIABLE than digits-based heuristic
+    because brokers use different digit counts for the same instrument:
+        - 2-digit gold (XAUUSD):  point=0.01,  pip=0.1
+        - 3-digit gold (XAUUSDm): point=0.001, pip=0.1  ← SAME pip!
+        - 5-digit forex (EURUSD): point=0.00001, pip=0.0001
+        - 3-digit JPY (USDJPY):   point=0.001, pip=0.01
+
+    The old ``point * 10`` heuristic FAILS for 3-digit gold because
+    0.001 * 10 = 0.01 (wrong — should be 0.1).
+
+    Returns:
+        Pip size as a float.
+    """
+    sym = symbol.upper()
+    if "XAU" in sym or "GOLD" in sym or "XAG" in sym or "SILVER" in sym:
+        return 0.1   # Metals: 1 pip = $0.10 price movement
+    if "JPY" in sym:
+        return 0.01  # JPY pairs: 1 pip = 0.01
+    return 0.0001    # Standard forex: 1 pip = 0.0001

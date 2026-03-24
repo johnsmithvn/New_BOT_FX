@@ -25,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from utils.logger import log_event
+from utils.symbol_mapper import estimate_pip_size
 from core.models import GroupStatus, OrderGroup, Side
 
 if TYPE_CHECKING:
@@ -466,7 +467,7 @@ class PositionManager:
 
         point = symbol_info.point
         digits = symbol_info.digits
-        pip_size = point * 10  # 1 pip = 10 points for 5-digit/3-digit brokers
+        pip_size = estimate_pip_size(pos.symbol)
 
         # Current profit in pips
         if pos.type == 0:  # BUY
@@ -620,7 +621,7 @@ class PositionManager:
                 profit_pips=round(profit_pips, 1),
             )
             # Only alert if SL moved significantly
-            pip_size = point * 10
+            pip_size = estimate_pip_size(pos.symbol)
             last_sl = self._last_trailing_sl.get(pos.ticket)
             if last_sl is None or abs(new_sl - last_sl) / pip_size >= self._TRAILING_ALERT_MIN_PIPS:
                 self._last_trailing_sl[pos.ticket] = new_sl
@@ -646,7 +647,7 @@ class PositionManager:
         tp_distance_pips = abs(pos.tp - (mt5.symbol_info_tick(pos.symbol).bid
                               if pos.type == 0 else
                               mt5.symbol_info_tick(pos.symbol).ask))
-        pip_size = symbol_info.point * 10
+        pip_size = estimate_pip_size(pos.symbol)
         if tp_distance_pips / pip_size > 1.0:
             # Not near TP yet
             return
@@ -878,7 +879,7 @@ class PositionManager:
 
         point = symbol_info.point
         digits = symbol_info.digits
-        pip_size = point * 10  # 1 pip = 10 points
+        pip_size = estimate_pip_size(group.symbol)
 
         # ── Get current price ────────────────────────────────────
         tick = mt5.symbol_info_tick(group.symbol)
@@ -1039,7 +1040,7 @@ class PositionManager:
                     pass  # Non-critical, in-memory state is authoritative
 
             # Alert on significant SL movement
-            pip_size = mt5.symbol_info(group.symbol).point * 10
+            pip_size = estimate_pip_size(group.symbol)
             if old_sl is None or abs(new_sl - old_sl) / pip_size >= self._TRAILING_ALERT_MIN_PIPS:
                 self._send_group_alert(
                     group,
@@ -1342,7 +1343,7 @@ class PositionManager:
             # SELL: SL = closed_entry - lock (below worst entry = profit zone)
             # BUY:  SL = closed_entry + lock (above worst entry = profit zone)
             symbol_info = mt5.symbol_info(group.symbol)
-            pip_size = symbol_info.point * 10 if symbol_info and symbol_info.point > 0 else 0.1
+            pip_size = estimate_pip_size(group.symbol)
             digits = symbol_info.digits if symbol_info else 5
             lock_pips = getattr(reply_executor, '_reply_be_lock_pips', 1.0)
             lock_distance = lock_pips * pip_size

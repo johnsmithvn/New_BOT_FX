@@ -28,6 +28,7 @@ from core.models import (
     Side,
 )
 from utils.logger import log_event
+from utils.symbol_mapper import estimate_pip_size as _estimate_pip_size_by_symbol
 
 
 class EntryStrategy:
@@ -201,7 +202,7 @@ class EntryStrategy:
         # G9: Check if step_pips mode is active
         step_pips = config.get("reentry_step_pips", 0)
         if step_pips > 0:
-            pip_size = self._estimate_pip_size(point)
+            pip_size = _estimate_pip_size_by_symbol(signal.symbol)
             step_price = step_pips * pip_size
 
             if signal.side == Side.BUY:
@@ -263,10 +264,7 @@ class EntryStrategy:
         if max_entries <= 1 or step_pips <= 0:
             return self._plan_single(signal, bid, ask, point, tolerance_points)
 
-        # Determine pip_size from point (pip_size = 10 * point for 5-digit, or point for 3-digit)
-        # For XAUUSD: point=0.01, pip_size=0.1
-        # For EURUSD: point=0.00001, pip_size=0.0001
-        pip_size = self._estimate_pip_size(point)
+        pip_size = _estimate_pip_size_by_symbol(signal.symbol)
         step_price = step_pips * pip_size
 
         entry = signal.entry
@@ -366,15 +364,3 @@ class EntryStrategy:
                 return OrderKind.SELL_LIMIT
             return OrderKind.SELL_STOP
 
-    @staticmethod
-    def _estimate_pip_size(point: float) -> float:
-        """Estimate pip size from symbol point value.
-
-        Common patterns:
-            XAUUSD: point=0.01, pip=0.1 (10 points)
-            EURUSD: point=0.00001, pip=0.0001 (10 points)
-            USDJPY: point=0.001, pip=0.01 (10 points)
-
-        General rule: pip = 10 * point for 5-digit/3-digit brokers.
-        """
-        return point * 10

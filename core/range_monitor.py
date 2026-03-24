@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Callable
 
 from core.models import EntryPlan, Side, SignalState
 from utils.logger import log_event
+from utils.symbol_mapper import estimate_pip_size
 
 if TYPE_CHECKING:
     from core.signal_state_manager import SignalStateManager
@@ -301,15 +302,7 @@ class RangeMonitor:
         if symbol in self._pip_size_cache:
             return self._pip_size_cache[symbol]
 
-        pip_size = 0.1  # default (XAUUSD)
-        try:
-            import MetaTrader5 as mt5
-            info = mt5.symbol_info(symbol)
-            if info and info.point > 0:
-                pip_size = info.point * 10
-        except Exception:
-            pass
-
+        pip_size = estimate_pip_size(symbol)
         self._pip_size_cache[symbol] = pip_size
         return pip_size
 

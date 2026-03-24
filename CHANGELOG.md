@@ -1,4 +1,20 @@
 # CHANGELOG
+## 0.20.1 - 2026-03-24
+
+### Fixed
+- **Critical: pip_size calculation broken for 3-digit gold brokers** (Exness XAUUSDm). All 12 instances of `point * 10` heuristic replaced with centralized `estimate_pip_size(symbol)` that uses symbol-name detection. The old heuristic gave `0.001 * 10 = 0.01` for 3-digit gold, but correct pip is `0.1`.
+  - This caused valid signals to be rejected (e.g. 86 pip distance reported as 865 pips)
+  - Also affected: breakeven, trailing stop, partial close, group SL, range monitor, entry strategy, pipeline guards
+
+### Files Modified
+- `utils/symbol_mapper.py` — new `estimate_pip_size(symbol)` function (single source of truth)
+- `main.py` — use `estimate_pip_size` for live pip detection
+- `core/position_manager.py` — 6 sites fixed (individual + group management)
+- `core/pipeline.py` — 4 sites fixed (default SL, SL guard, re-entry guard, multi-order guard)
+- `core/reply_command_executor.py` — 1 site fixed (breakeven reply)
+- `core/entry_strategy.py` — removed broken `_estimate_pip_size(point)`, use centralized function
+- `core/range_monitor.py` — 1 site fixed (re-entry tolerance)
+
 ## 0.20.0 - 2026-03-24
 
 ### Added
