@@ -70,17 +70,29 @@ _DEFAULT_ALIASES: dict[str, str] = {
 class SymbolMapper:
     """Resolve signal symbol aliases to broker-recognized symbols."""
 
-    def __init__(self, custom_aliases: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        custom_aliases: dict[str, str] | None = None,
+        symbol_suffix: str = "",
+    ) -> None:
         self._map: dict[str, str] = {**_DEFAULT_ALIASES}
         if custom_aliases:
             # custom overrides default
             self._map.update(
                 {k.upper(): v.upper() for k, v in custom_aliases.items()}
             )
+        self._suffix = symbol_suffix
 
     def resolve(self, alias: str) -> str | None:
-        """Return broker symbol for a given alias, or None if unknown."""
-        return self._map.get(alias.upper().strip())
+        """Return broker symbol for a given alias, or None if unknown.
+
+        If symbol_suffix is configured (e.g. 'm' for Exness), it is
+        appended to the resolved symbol: XAUUSD → XAUUSDm.
+        """
+        base = self._map.get(alias.upper().strip())
+        if base is None:
+            return None
+        return f"{base}{self._suffix}" if self._suffix else base
 
     def is_known(self, alias: str) -> bool:
         """Check if an alias is in the map."""

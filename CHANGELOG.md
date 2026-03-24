@@ -1,4 +1,14 @@
 # CHANGELOG
+## 0.20.0 - 2026-03-24
+
+### Added
+- **SYMBOL_SUFFIX** env var — append broker-specific suffix to all resolved symbols (e.g. `m` for Exness: `XAUUSD` → `XAUUSDm`). Set in `.env`, applied transparently by `SymbolMapper`.
+
+### Files Modified
+- `utils/symbol_mapper.py` — `symbol_suffix` parameter in constructor, applied in `resolve()`
+- `main.py` — pass `SYMBOL_SUFFIX` env var to `SymbolMapper`
+- `.env.example` — documented `SYMBOL_SUFFIX` key
+
 ## 0.19.1 - 2026-03-23
 
 ### Fixed

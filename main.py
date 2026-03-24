@@ -156,7 +156,9 @@ class Bot:
         self.storage = Storage()
 
         # Parser
-        mapper = SymbolMapper()
+        mapper = SymbolMapper(
+            symbol_suffix=os.getenv("SYMBOL_SUFFIX", ""),
+        )
         self.parser = SignalParser(
             symbol_mapper=mapper,
             max_message_length=s.parser.max_message_length,
