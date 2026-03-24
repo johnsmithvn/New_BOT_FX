@@ -1,0 +1,32 @@
+[Unit]
+Description=MT5 rpyc Bridge Server (Wine)
+Documentation=https://github.com/nickoala/mt5linux
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=botuser
+Group=botuser
+WorkingDirectory=/home/botuser
+
+# Virtual framebuffer for headless MT5
+Environment=DISPLAY=:99
+ExecStartPre=/usr/bin/Xvfb :99 -screen 0 1024x768x16 &
+
+# Start rpyc server inside Wine Python
+# Adjust python path if Wine Python is installed elsewhere
+ExecStart=/usr/bin/wine /home/botuser/.wine/drive_c/Python311/python.exe -m mt5linux
+
+Restart=always
+RestartSec=15
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mt5-rpyc-server
+
+[Install]
+WantedBy=multi-user.target

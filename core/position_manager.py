@@ -123,7 +123,7 @@ class PositionManager:
             return
 
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return
 
@@ -329,7 +329,7 @@ class PositionManager:
         Non-group positions use legacy per-position rules.
         """
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return
 
@@ -402,7 +402,7 @@ class PositionManager:
     def _run_full_cleanup(self) -> None:
         """Full sweep: prune all tracking dicts + completed groups."""
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return
         positions = mt5.positions_get()
@@ -1110,7 +1110,7 @@ class PositionManager:
 
         # Find open tickets in this group
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return None
 
@@ -1196,7 +1196,7 @@ class PositionManager:
             return
 
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return
 
@@ -1292,7 +1292,7 @@ class PositionManager:
             return None
 
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return None
 
@@ -1446,7 +1446,7 @@ class PositionManager:
         result["found"] = True
 
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return result
 

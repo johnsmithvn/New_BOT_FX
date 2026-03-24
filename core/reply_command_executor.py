@@ -11,10 +11,7 @@ from __future__ import annotations
 
 from utils.logger import log_event
 
-try:
-    import MetaTrader5 as mt5
-except ImportError:
-    mt5 = None  # type: ignore[assignment]
+from core.mt5_bridge import mt5
 
 from core.reply_action_parser import ReplyAction, ReplyActionType
 

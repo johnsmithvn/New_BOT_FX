@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-import MetaTrader5 as mt5
+from core.mt5_bridge import mt5
 
 from core.models import ExecutionResult
 from utils.logger import log_event

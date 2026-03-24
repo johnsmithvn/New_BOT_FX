@@ -10,7 +10,7 @@ Build MT5-compatible request payload.
 
 from __future__ import annotations
 
-import MetaTrader5 as mt5
+from core.mt5_bridge import mt5
 
 from core.models import ParsedSignal, TradeDecision, OrderKind, Side
 

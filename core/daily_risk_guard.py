@@ -185,7 +185,7 @@ class DailyRiskGuard:
           - consecutive_losses: leading streak of losing deals (sorted desc by time)
         """
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             log_event("daily_risk_guard_mt5_import_error")
             return

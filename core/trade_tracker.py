@@ -167,7 +167,7 @@ class TradeTracker:
     async def _poll_deals(self) -> None:
         """Poll MT5 for new deals and process them."""
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return
 
@@ -368,7 +368,7 @@ class TradeTracker:
 
         # Determine side
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
             side = "SELL" if deal.type == mt5.DEAL_TYPE_SELL else "BUY"
         except ImportError:
             side = "?"

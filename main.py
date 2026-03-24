@@ -708,7 +708,7 @@ class Bot:
         else:
             # Live: get point from MT5, derive pip_size
             try:
-                import MetaTrader5 as mt5
+                from core.mt5_bridge import mt5
                 symbol_info = mt5.symbol_info(signal_obj.symbol)
                 if symbol_info and symbol_info.point > 0:
                     point = symbol_info.point
@@ -910,7 +910,7 @@ class Bot:
         group = self.position_mgr.get_group(original_fp) if self.position_mgr else None
         if group:
             try:
-                import MetaTrader5 as mt5
+                from core.mt5_bridge import mt5
                 for ticket in group.tickets:
                     positions = mt5.positions_get(ticket=ticket)
                     if positions and len(positions) > 0:

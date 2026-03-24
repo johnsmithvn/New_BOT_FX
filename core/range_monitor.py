@@ -303,7 +303,7 @@ class RangeMonitor:
 
         pip_size = 0.1  # default (XAUUSD)
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
             info = mt5.symbol_info(symbol)
             if info and info.point > 0:
                 pip_size = info.point * 10

@@ -287,7 +287,7 @@ class SignalPipeline:
         min_sl_dist_pips = strategy_config.get("min_sl_distance_pips", 0)
         if min_sl_dist_pips > 0 and signal_state.sl is not None:
             try:
-                import MetaTrader5 as mt5
+                from core.mt5_bridge import mt5
                 sym_info = mt5.symbol_info(signal_state.symbol)
                 pip_size = sym_info.point * 10 if sym_info else 0.1
             except Exception:
@@ -309,7 +309,7 @@ class SignalPipeline:
         max_reentry_dist = strategy_config.get("max_reentry_distance_pips", 0)
         if max_reentry_dist > 0:
             try:
-                import MetaTrader5 as mt5
+                from core.mt5_bridge import mt5
                 _sym = mt5.symbol_info(signal_state.symbol)
                 pip_sz = _sym.point * 10 if _sym and _sym.point > 0 else 0.1
             except Exception:
@@ -378,7 +378,7 @@ class SignalPipeline:
 
         # Get symbol info for point
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
             symbol_info = mt5.symbol_info(signal_state.symbol)
             point = symbol_info.point if symbol_info else 0.00001
         except Exception:

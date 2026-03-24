@@ -29,7 +29,7 @@ class CommandExecutor:
             Summary string describing what was done.
         """
         try:
-            import MetaTrader5 as mt5
+            from core.mt5_bridge import mt5
         except ImportError:
             return "❌ MetaTrader5 not available"
 

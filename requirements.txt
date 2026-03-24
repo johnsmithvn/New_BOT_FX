@@ -1,5 +1,6 @@
 telethon==1.37.0
-MetaTrader5==5.0.4200
+MetaTrader5==5.0.4200; sys_platform == "win32"
+mt5linux>=0.0.15; sys_platform != "win32"
 python-dotenv==1.1.0
 loguru==0.7.3
 numpy<2
