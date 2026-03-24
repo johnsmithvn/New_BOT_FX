@@ -255,7 +255,6 @@ class Bot:
         )
 
         # Health check server (port from env or default 8080)
-        import os
         health_port = int(os.getenv("HEALTH_CHECK_PORT", "8080"))
         self._health_server = HealthCheckServer(
             stats=self._health,
