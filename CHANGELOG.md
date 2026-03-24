@@ -1,4 +1,31 @@
 # CHANGELOG
+## 0.20.0 - 2026-03-24
+
+### Added
+- **Linux VPS Support** — bot now runs on Ubuntu 22.04 via Wine + rpyc bridge
+- `core/mt5_bridge.py` — platform-aware MT5 abstraction
+  - **Windows**: uses native `MetaTrader5` package (existing behavior, zero changes)
+  - **Linux**: uses `mt5linux` rpyc bridge to Wine-hosted MT5 terminal
+  - Configurable via `MT5_RPYC_HOST` / `MT5_RPYC_PORT` env vars
+- `deploy/mt5-rpyc-server.service` — systemd unit for Wine + MT5 + rpyc bridge
+- `requirements.txt` — platform-conditional dependencies (`MetaTrader5` on win32, `mt5linux` on Linux)
+
+### Changed
+- **All 10 MT5-importing modules** now use `from core.mt5_bridge import mt5` instead of `import MetaTrader5 as mt5`:
+  - `core/trade_executor.py`, `core/order_builder.py`, `core/reply_command_executor.py`
+  - `core/command_executor.py`, `core/trade_tracker.py`, `core/position_manager.py`
+  - `core/pipeline.py`, `core/range_monitor.py`, `core/daily_risk_guard.py`, `main.py`
+- `deploy/telegram-mt5-bot.service` — added dependency on `mt5-rpyc-server.service`
+- `docs/DEPLOY.md` — rewritten with rpyc bridge architecture, Wine Python setup, dual systemd services
+
+### Files Modified
+- `core/mt5_bridge.py` (NEW)
+- `deploy/mt5-rpyc-server.service` (NEW)
+- `core/trade_executor.py`, `core/order_builder.py`, `core/reply_command_executor.py`
+- `core/command_executor.py`, `core/trade_tracker.py`, `core/position_manager.py`
+- `core/pipeline.py`, `core/range_monitor.py`, `core/daily_risk_guard.py`, `main.py`
+- `requirements.txt`, `deploy/telegram-mt5-bot.service`, `docs/DEPLOY.md`
+
 ## 0.19.1 - 2026-03-23
 
 ### Fixed
