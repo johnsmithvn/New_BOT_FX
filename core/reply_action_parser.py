@@ -25,6 +25,7 @@ class ReplyActionType(str, Enum):
     MOVE_TP = "move_tp"
     BREAKEVEN = "breakeven"
     SECURE_PROFIT = "secure_profit"  # G3: +pip reply
+    CANCEL = "cancel"  # Cancel pending orders from this signal
 
 
 @dataclass
@@ -46,6 +47,7 @@ _MOVE_SL = r"^(?:sl|move\s+sl|stoploss|stop\s+loss)\s+([\d]+(?:\.[\d]+)?)$"
 _MOVE_TP = r"^(?:tp|move\s+tp|take\s+profit)\s+([\d]+(?:\.[\d]+)?)$"
 _BREAKEVEN = r"^(be|breakeven|break\s+even|sl\s+entry)$"
 _SECURE_PROFIT = r"^\+\s*(\d+)\s*(?:pip|pips|p)?$"  # G3: +30, +50 pip, +120 pips
+_CANCEL = r"^(cancell?|cancel\s*all|hủy|huy|miss|bỏ|bo|skip)$"  # Cancel pending orders
 
 
 class ReplyActionParser:
@@ -135,6 +137,13 @@ class ReplyActionParser:
             return ReplyAction(
                 action=ReplyActionType.MOVE_TP,
                 price=price,
+                raw_text=cleaned,
+            )
+
+        # CANCEL — "cancel", "cancell", "hủy", "miss", "bỏ", "skip"
+        if re.match(_CANCEL, match_lower, re.IGNORECASE):
+            return ReplyAction(
+                action=ReplyActionType.CANCEL,
                 raw_text=cleaned,
             )
 

@@ -3,7 +3,8 @@ core/command_executor.py
 
 Execute parsed management commands against MT5.
 
-Handles: CLOSE_ALL, CLOSE_SYMBOL, CLOSE_HALF, MOVE_SL, BREAKEVEN.
+Handles: CLOSE_ALL, CLOSE_SYMBOL, CLOSE_HALF, MOVE_SL, BREAKEVEN,
+         CANCEL_ALL, CANCEL_SYMBOL.
 """
 
 from __future__ import annotations
@@ -39,6 +40,8 @@ class CommandExecutor:
             CommandType.CLOSE_HALF: self._close_half,
             CommandType.MOVE_SL: self._move_sl,
             CommandType.BREAKEVEN: self._breakeven,
+            CommandType.CANCEL_ALL: self._cancel_all,
+            CommandType.CANCEL_SYMBOL: self._cancel_symbol,
         }
 
         handler = handlers.get(command.command_type)
@@ -293,4 +296,78 @@ class CommandExecutor:
         return (
             f"✅ Breakeven: {moved} moved, {skipped} skipped (not in profit)"
             f"{f', {failed} failed' if failed else ''}"
+        )
+
+    # ── Cancel Pending Orders ────────────────────────────────────
+
+    def _get_bot_orders(self, mt5, symbol: str | None = None) -> list:
+        """Get pending orders placed by this bot, optionally filtered by symbol."""
+        if symbol:
+            orders = mt5.orders_get(symbol=symbol)
+        else:
+            orders = mt5.orders_get()
+
+        if orders is None:
+            return []
+
+        return [o for o in orders if o.magic == self._magic]
+
+    def _cancel_order(self, mt5, order) -> bool:
+        """Cancel a single pending order."""
+        request = {
+            "action": mt5.TRADE_ACTION_REMOVE,
+            "order": order.ticket,
+        }
+
+        result = mt5.order_send(request)
+        success = result is not None and result.retcode in (10008, 10009)
+
+        log_event(
+            "command_cancel_order",
+            ticket=order.ticket,
+            symbol=order.symbol,
+            order_type=order.type,
+            volume=order.volume_current,
+            success=success,
+            retcode=result.retcode if result else -1,
+        )
+        return success
+
+    def _cancel_all(self, mt5, command: ManagementCommand) -> str:
+        """Cancel all pending orders placed by this bot."""
+        orders = self._get_bot_orders(mt5)
+        if not orders:
+            return "ℹ️ No pending orders to cancel."
+
+        cancelled = 0
+        failed = 0
+        for order in orders:
+            if self._cancel_order(mt5, order):
+                cancelled += 1
+            else:
+                failed += 1
+
+        return (
+            f"✅ Cancelled {cancelled}/{len(orders)} pending orders"
+            f"{f' ({failed} failed)' if failed else ''}"
+        )
+
+    def _cancel_symbol(self, mt5, command: ManagementCommand) -> str:
+        """Cancel pending orders for a specific symbol."""
+        symbol = command.symbol
+        orders = self._get_bot_orders(mt5, symbol=symbol)
+        if not orders:
+            return f"ℹ️ No pending orders for {symbol}."
+
+        cancelled = 0
+        failed = 0
+        for order in orders:
+            if self._cancel_order(mt5, order):
+                cancelled += 1
+            else:
+                failed += 1
+
+        return (
+            f"✅ Cancelled {cancelled}/{len(orders)} {symbol} pending orders"
+            f"{f' ({failed} failed)' if failed else ''}"
         )

@@ -1,4 +1,19 @@
 # CHANGELOG
+## 0.21.0 - 2026-03-24
+
+### Added
+- **CANCEL ALL** management command — cancels all pending limit/stop orders placed by the bot
+- **CANCEL \<SYMBOL\>** — cancels pending orders for a specific symbol
+- **Reply CANCEL** — reply "cancel", "hủy", "miss", "bỏ", "skip" to a signal message to cancel its pending orders + re-entry plans
+- Parser matches: `CANCEL ALL`, `CANCELL ALL` (common typo), `HỦY ALL`, `HỦY TẤT CẢ`
+- Executor uses `mt5.orders_get()` + `TRADE_ACTION_REMOVE` for clean order removal
+
+### Files Modified
+- `core/command_parser.py` — added `CANCEL_ALL`, `CANCEL_SYMBOL` enum + regex patterns
+- `core/command_executor.py` — added `_cancel_all`, `_cancel_symbol`, `_cancel_order`, `_get_bot_orders`
+- `core/reply_action_parser.py` — added `CANCEL` action type + regex pattern
+- `main.py` — added CANCEL reply handler (cancel MT5 orders + re-entry plans by fingerprint)
+
 ## 0.20.1 - 2026-03-24
 
 ### Fixed

@@ -1153,6 +1153,69 @@ class Bot:
         )
 
         # Step 4: Execute on each order
+        # ── CANCEL reply — cancel pending orders + re-entry plans ─
+        if action.action == ReplyActionType.CANCEL:
+            import MetaTrader5 as _mt5
+
+            first_fp = orders[0]["fingerprint"]
+            base_fp = first_fp.split(":L")[0] if ":L" in first_fp else first_fp
+
+            parts: list[str] = []
+
+            # 1. Cancel pending MT5 orders (limits/stops)
+            cancelled_mt5 = 0
+            failed_mt5 = 0
+            for order in orders:
+                ticket = order["ticket"]
+                # Check if this ticket is a pending order (not position)
+                mt5_orders = _mt5.orders_get(ticket=ticket)
+                if mt5_orders and len(mt5_orders) > 0:
+                    req = {
+                        "action": _mt5.TRADE_ACTION_REMOVE,
+                        "order": ticket,
+                    }
+                    result = _mt5.order_send(req)
+                    if result and result.retcode in (10008, 10009):
+                        cancelled_mt5 += 1
+                        log_event("reply_cancel_order", ticket=ticket, symbol=order["symbol"])
+                    else:
+                        failed_mt5 += 1
+
+            if cancelled_mt5 > 0:
+                parts.append(f"✅ Cancelled {cancelled_mt5} pending orders")
+            if failed_mt5 > 0:
+                parts.append(f"⚠️ {failed_mt5} cancel failed")
+
+            # 2. Cancel re-entry plans in SignalStateManager
+            cancelled_plans = 0
+            if hasattr(self, "_state_mgr") and self._state_mgr:
+                cancelled_plans = self._state_mgr.cancel_all_pending(base_fp)
+                if cancelled_plans > 0:
+                    parts.append(f"🚫 Cancelled {cancelled_plans} pending re-entries")
+
+            # 3. Cancel group pending orders via PositionManager
+            if hasattr(self, "position_mgr") and self.position_mgr:
+                cr = self.position_mgr.cancel_group_pending_orders(
+                    base_fp, executor=self.executor,
+                )
+                mt5_c = cr.get("cancelled", [])
+                if mt5_c:
+                    parts.append(f"🚫 {len(mt5_c)} group pending orders cancelled")
+
+            if not parts:
+                parts.append("ℹ️ No pending orders found to cancel")
+
+            msg = f"📋 **CANCEL**\n" + "\n".join(parts)
+            try:
+                msg_id_int = int(message_id) if message_id else None
+                if msg_id_int:
+                    self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
+            except (ValueError, TypeError):
+                pass
+            self.alerter.send_alert_sync("reply_command", msg)
+            print(f"  [REPLY] cancel → mt5={cancelled_mt5} plans={cancelled_plans}")
+            return
+
         # ── G4: SECURE_PROFIT reply (+pip) — group-aware ─────────
         if (
             action.action == ReplyActionType.SECURE_PROFIT

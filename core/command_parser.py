@@ -4,11 +4,13 @@ core/command_parser.py
 Parse Telegram management commands.
 
 Supported commands:
-  CLOSE ALL        — close all open positions
-  CLOSE <SYMBOL>   — close all positions for a specific symbol
-  CLOSE HALF       — close 50% of each open position
-  MOVE SL <PRICE>  — move SL to a specific price on all positions
-  BREAKEVEN        — move SL to entry on all profitable positions
+  CLOSE ALL          — close all open positions
+  CLOSE <SYMBOL>     — close all positions for a specific symbol
+  CLOSE HALF         — close 50% of each open position
+  MOVE SL <PRICE>    — move SL to a specific price on all positions
+  BREAKEVEN          — move SL to entry on all profitable positions
+  CANCEL ALL         — cancel all pending orders (limits/stops)
+  CANCEL <SYMBOL>    — cancel pending orders for a specific symbol
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ class CommandType(str, Enum):
     CLOSE_HALF = "CLOSE_HALF"
     MOVE_SL = "MOVE_SL"
     BREAKEVEN = "BREAKEVEN"
+    CANCEL_ALL = "CANCEL_ALL"
+    CANCEL_SYMBOL = "CANCEL_SYMBOL"
 
 
 @dataclass
@@ -103,6 +107,33 @@ class CommandParser:
                 price=price,
                 raw_text=text,
             )
+
+        # CANCEL ALL — cancel all pending orders (limits/stops)
+        # Match: CANCEL ALL, CANCELL ALL (common typo), HỦY ALL, HỦY TẤT CẢ
+        cancel_all_pattern = re.match(
+            r"^(?:CANCELL?|HỦY|HUY)\s+(?:ALL|TẤT\s*CẢ|TAT\s*CA)$",
+            text.strip(),
+            re.IGNORECASE,
+        )
+        if cancel_all_pattern:
+            return ManagementCommand(
+                command_type=CommandType.CANCEL_ALL,
+                raw_text=text,
+            )
+
+        # CANCEL <SYMBOL>
+        cancel_sym_match = re.match(
+            r"^(?:CANCELL?|HỦY|HUY)\s+([A-Z]{3,10})$",
+            cleaned,
+        )
+        if cancel_sym_match:
+            symbol = cancel_sym_match.group(1)
+            if symbol not in ("ALL", "EVERYTHING"):
+                return ManagementCommand(
+                    command_type=CommandType.CANCEL_SYMBOL,
+                    symbol=symbol,
+                    raw_text=text,
+                )
 
         # Not a management command
         return None
