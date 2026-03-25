@@ -1,4 +1,24 @@
 # CHANGELOG
+## 0.22.0 - 2026-03-26
+
+### Added
+- **Peak profit tracking** — position_manager now tracks the highest unrealized P&L per signal group during its lifetime
+- DB migration V6: `signal_groups` and `trades` tables gain `peak_pips`, `peak_price`, `peak_time` columns; `trades` gains `entry_price`
+- `Storage.update_group_peak()` persists peak data periodically (every +10p) and on group completion
+- `PositionManager.get_group_peak()` exposes peak data for trade_tracker integration
+- `trade_tracked` log event now includes `peak_pips` field
+
+### Changed
+- **Log spam reduction** — removed `daily_risk_guard_no_deals` log (was 270×/day), trailing log now only fires when SL moves ≥ 10 pips (was every movement, ~54×/day)
+- `TradeTracker` now accepts `position_manager` param for peak data access
+- `_TRAILING_ALERT_MIN_PIPS` increased from 5 to 10
+
+### Files Modified
+- `core/storage.py` — migration V6, `store_trade()` expanded, `update_group_peak()` added
+- `core/position_manager.py` — `_group_peak` dict, `_update_group_peak()`, `get_group_peak()`, trailing log throttle
+- `core/trade_tracker.py` — peak data + entry_price integration in `_process_closing_deal()`
+- `core/daily_risk_guard.py` — removed noisy `daily_risk_guard_no_deals` log
+- `main.py` — wire `position_manager` into `TradeTracker`
 ## 0.21.5 - 2026-03-25
 
 ### Changed

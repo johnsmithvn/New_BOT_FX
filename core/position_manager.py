@@ -92,7 +92,11 @@ class PositionManager:
         # Alert throttle: (ticket, event_type) -> last_alert_epoch
         self._last_alert_time: dict[tuple[int, str], float] = {}
         self._ALERT_COOLDOWN = 60  # seconds per (ticket, event_type)
-        self._TRAILING_ALERT_MIN_PIPS = 5.0  # only alert if SL moved >= 5 pips
+        self._TRAILING_ALERT_MIN_PIPS = 10.0  # only alert if SL moved >= 10 pips
+
+        # ── Peak profit tracking per group ───────────────────────
+        # {fingerprint: {"pips": float, "price": float, "time": str}}
+        self._group_peak: dict[str, dict] = {}
 
         # P10g: Restore groups from DB on startup
         # NOTE: Do NOT call _restore_groups_from_db() here — MT5 is not yet
@@ -501,6 +505,11 @@ class PositionManager:
         else:
             return
 
+        # ── Peak profit tracking ─────────────────────────────────
+        fp = self._ticket_to_group.get(pos.ticket)
+        if fp and profit_pips > 0:
+            self._update_group_peak(fp, profit_pips, current_price)
+
         # Get per-channel rules for this position
         rules = self._get_rules_for_ticket(pos.ticket)
 
@@ -637,10 +646,12 @@ class PositionManager:
                 new_sl=new_sl,
                 profit_pips=round(profit_pips, 1),
             )
-            # Only alert if SL moved significantly
+            # Only send Telegram alert if SL moved significantly
             pip_size = estimate_pip_size(pos.symbol)
             last_sl = self._last_trailing_sl.get(pos.ticket)
-            if last_sl is None or abs(new_sl - last_sl) / pip_size >= self._TRAILING_ALERT_MIN_PIPS:
+            sl_moved_pips = abs(new_sl - last_sl) / pip_size if last_sl else float("inf")
+
+            if sl_moved_pips >= self._TRAILING_ALERT_MIN_PIPS:
                 self._last_trailing_sl[pos.ticket] = new_sl
                 self._send_position_alert(
                     pos.ticket, "trailing_alert", pos.symbol,
@@ -1081,6 +1092,37 @@ class PositionManager:
                     f"SL → {new_sl}",
                 )
 
+    # ── Peak Profit Tracking ────────────────────────────────────────
+
+    def _update_group_peak(
+        self, fingerprint: str, profit_pips: float, current_price: float,
+    ) -> None:
+        """Update peak profit for a group if current profit exceeds it."""
+        from datetime import datetime, timezone
+
+        existing = self._group_peak.get(fingerprint)
+        if existing is None or profit_pips > existing["pips"]:
+            self._group_peak[fingerprint] = {
+                "pips": round(profit_pips, 1),
+                "price": current_price,
+                "time": datetime.now(timezone.utc).isoformat(),
+            }
+            # Persist periodically (only when new peak exceeds by ≥ 10 pips)
+            if self._storage and (
+                existing is None or profit_pips - existing["pips"] >= 10
+            ):
+                try:
+                    peak = self._group_peak[fingerprint]
+                    self._storage.update_group_peak(
+                        fingerprint, peak["pips"], peak["price"], peak["time"],
+                    )
+                except Exception:
+                    pass  # Non-critical — will persist on group completion
+
+    def get_group_peak(self, fingerprint: str) -> dict | None:
+        """Get peak profit data for a group (used by trade_tracker)."""
+        return self._group_peak.get(fingerprint)
+
     def _complete_group(self, group: OrderGroup) -> None:
         """Mark a group as completed when all tickets are closed.
 
@@ -1089,31 +1131,46 @@ class PositionManager:
         """
         group.status = GroupStatus.COMPLETED
 
+        # ── Peak profit data ─────────────────────────────────────
+        peak = self._group_peak.pop(group.fingerprint, None)
+        peak_pips = peak["pips"] if peak else None
+        peak_time = peak["time"] if peak else None
+
         log_event(
             "group_completed",
             fingerprint=group.fingerprint,
             symbol=group.symbol,
             side=group.side.value if isinstance(group.side, Side) else group.side,
             total_orders=len(group.tickets),
+            peak_pips=round(peak_pips, 1) if peak_pips else None,
+            peak_time=peak_time,
         )
 
         # Clean up reverse lookup
         for ticket in group.tickets:
             self._ticket_to_group.pop(ticket, None)
 
-        # Send completion alert
+        # Send completion alert with peak info
+        peak_info = f"\nPeak: +{peak_pips:.0f}p" if peak_pips else ""
         self._send_group_alert(
             group,
             "group_completed",
             f"📊 **Group completed** `{group.symbol}`\n"
             f"Orders: {len(group.tickets)} | "
-            f"FP: {group.fingerprint[:8]}",
+            f"FP: {group.fingerprint[:8]}{peak_info}",
         )
 
-        # P10g: Mark completed in DB
+        # P10g: Mark completed in DB + persist peak
         if self._storage:
             try:
                 self._storage.complete_group_db(group.fingerprint)
+                if peak:
+                    self._storage.update_group_peak(
+                        group.fingerprint,
+                        peak["pips"],
+                        peak["price"],
+                        peak["time"],
+                    )
             except Exception as e:
                 log_event("group_db_complete_error", fingerprint=group.fingerprint, error=str(e))
 

@@ -199,6 +199,16 @@ _MIGRATIONS: dict[int, str] = {
         -- V5: Add symbol column to orders (fixes reply-command lookup)
         ALTER TABLE orders ADD COLUMN symbol TEXT;
     """,
+    6: """
+        -- V6: Peak profit tracking per group and per trade
+        ALTER TABLE signal_groups ADD COLUMN peak_pips REAL;
+        ALTER TABLE signal_groups ADD COLUMN peak_price REAL;
+        ALTER TABLE signal_groups ADD COLUMN peak_time TEXT;
+        ALTER TABLE trades ADD COLUMN peak_pips REAL;
+        ALTER TABLE trades ADD COLUMN peak_price REAL;
+        ALTER TABLE trades ADD COLUMN peak_time TEXT;
+        ALTER TABLE trades ADD COLUMN entry_price REAL;
+    """,
 }
 
 
@@ -528,6 +538,10 @@ class Storage:
         close_reason: str = "",
         source_chat_id: str = "",
         source_message_id: str = "",
+        entry_price: float | None = None,
+        peak_pips: float | None = None,
+        peak_price: float | None = None,
+        peak_time: str | None = None,
     ) -> int | None:
         """Persist a trade outcome (closing deal).
 
@@ -540,20 +554,40 @@ class Storage:
                     (ticket, deal_ticket, fingerprint, channel_id,
                      close_volume, close_price, close_time, pnl,
                      commission, swap, close_reason,
-                     source_chat_id, source_message_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_chat_id, source_message_id,
+                     entry_price, peak_pips, peak_price, peak_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ticket, deal_ticket, fingerprint, channel_id,
                     close_volume, close_price, close_time, pnl,
                     commission, swap, close_reason,
                     source_chat_id, source_message_id,
+                    entry_price, peak_pips, peak_price, peak_time,
                 ),
             )
             return cursor.lastrowid
         except sqlite3.IntegrityError:
             # deal_ticket UNIQUE constraint — already processed
             return None
+
+    def update_group_peak(
+        self,
+        fingerprint: str,
+        peak_pips: float,
+        peak_price: float,
+        peak_time: str,
+    ) -> None:
+        """Update peak profit data for a signal group."""
+        self._execute_with_retry(
+            """
+            UPDATE signal_groups
+            SET peak_pips = ?, peak_price = ?, peak_time = ?
+            WHERE fingerprint = ?
+            """,
+            (peak_pips, peak_price, peak_time, fingerprint),
+        )
+        self._conn.commit()
 
     def get_signal_reply_info(
         self, fingerprint: str,

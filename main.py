@@ -308,6 +308,7 @@ class Bot:
                 alerter=self.alerter,
                 magic_number=s.execution.bot_magic_number,
                 poll_seconds=s.execution.trade_tracker_poll_seconds,
+                position_manager=self.position_mgr,
             )
 
         # Command Parser + Executor

@@ -194,8 +194,7 @@ class DailyRiskGuard:
         deals = mt5.history_deals_get(midnight)
 
         if deals is None:
-            # No deals or MT5 unavailable
-            log_event("daily_risk_guard_no_deals")
+            # No deals or MT5 unavailable — normal, no need to log
             self._daily_trades = 0
             self._daily_loss_usd = 0.0
             self._consecutive_losses = 0

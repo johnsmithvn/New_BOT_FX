@@ -42,11 +42,13 @@ class TradeTracker:
         alerter: TelegramAlerter,
         magic_number: int,
         poll_seconds: int = 30,
+        position_manager=None,
     ) -> None:
         self._storage = storage
         self._alerter = alerter
         self._magic = magic_number
         self._poll_seconds = poll_seconds
+        self._position_manager = position_manager
         self._poll_task: asyncio.Task | None = None
         self._cleanup_task: asyncio.Task | None = None
         # Throttle partial close replies: {position_id: last_reply_epoch}
@@ -247,6 +249,28 @@ class TradeTracker:
         # Determine close reason
         close_reason = self._infer_close_reason(deal)
 
+        # Get entry price from deal
+        entry_price = None
+        try:
+            import MetaTrader5 as mt5
+            # Look up the opening deal for this position
+            order_price = order.get("price")
+            if order_price:
+                entry_price = float(order_price)
+        except Exception:
+            pass
+
+        # Get peak profit data from position_manager
+        peak_pips = None
+        peak_price = None
+        peak_time = None
+        if self._position_manager and base_fp:
+            peak = self._position_manager.get_group_peak(base_fp)
+            if peak:
+                peak_pips = peak["pips"]
+                peak_price = peak["price"]
+                peak_time = peak["time"]
+
         # Store trade in DB (deal_ticket UNIQUE prevents double-processing)
         row_id = self._storage.store_trade(
             ticket=deal.position_id,
@@ -262,6 +286,10 @@ class TradeTracker:
             close_reason=close_reason,
             source_chat_id=source_chat_id,
             source_message_id=source_message_id,
+            entry_price=entry_price,
+            peak_pips=peak_pips,
+            peak_price=peak_price,
+            peak_time=peak_time,
         )
 
         if row_id is None:
@@ -276,6 +304,7 @@ class TradeTracker:
             pnl=deal.profit,
             volume=deal.volume,
             channel_id=channel_id,
+            peak_pips=peak_pips,
         )
 
         # Suppress PnL reply if ticket was closed via reply command

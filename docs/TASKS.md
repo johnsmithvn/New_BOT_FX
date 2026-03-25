@@ -1,6 +1,18 @@
 # TASKS
 
 ## Current Phase
+- `Peak Profit Tracking + Log Cleanup` ✅ COMPLETE (v0.22.0)
+
+### v0.22.0 — Peak Profit Tracking + Log Cleanup
+- [x] DB Migration V6: `peak_pips`, `peak_price`, `peak_time` on `signal_groups` + `trades`; `entry_price` on `trades`
+- [x] `PositionManager._group_peak` dict tracks peak P&L per group during poll loop
+- [x] `_complete_group()` persists peak to DB + includes peak in log/alert
+- [x] `TradeTracker._process_closing_deal()` passes peak + entry_price to `store_trade()`
+- [x] Removed `daily_risk_guard_no_deals` log (270×/day spam)
+- [x] Trailing log throttled: only log when SL moves ≥ 10 pips
+- [x] Update CHANGELOG
+
+## Previous Phase
 - `Reply Parser Expansion` ✅ COMPLETE (v0.21.5)
 
 ### v0.21.5 — Reply Parser Expansion
