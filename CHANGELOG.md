@@ -1,4 +1,14 @@
 # CHANGELOG
+## 0.21.5 - 2026-03-25
+
+### Changed
+- **Reply parser expanded** — `_SECURE_PROFIT` regex now matches `done Npips` and `near N pips` formats (previously only `+N` prefix)
+- **New `_CLOSE_PROFIT` pattern** — `+Npips close all` and `+Npips close entry XXXX` replies now correctly trigger CLOSE action instead of SECURE_PROFIT
+- Parse priority: CLOSE_PROFIT checked before SECURE_PROFIT to prevent partial match
+
+### Files Modified
+- `core/reply_action_parser.py`
+
 ## 0.21.4 - 2026-03-25
 
 ### Fixed

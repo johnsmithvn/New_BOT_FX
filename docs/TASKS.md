@@ -1,6 +1,17 @@
 # TASKS
 
 ## Current Phase
+- `Reply Parser Expansion` ✅ COMPLETE (v0.21.5)
+
+### v0.21.5 — Reply Parser Expansion
+- [x] Expand `_SECURE_PROFIT` regex to match `done Npips`, `near N pips` formats
+- [x] Add `_CLOSE_PROFIT` pattern for `+Npips close all/entry` → CLOSE action
+- [x] Parse priority: CLOSE_PROFIT before SECURE_PROFIT
+- [x] Test 21/21 cases pass
+- [x] Typo audit across codebase — no issues found
+- [x] Update CHANGELOG
+
+## Previous Phase
 - `Bug Fixes` ✅ COMPLETE (v0.21.2)
 
 ### v0.21.2 — Premature Group Completion Fix
