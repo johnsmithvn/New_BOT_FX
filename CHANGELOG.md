@@ -1,4 +1,44 @@
 # CHANGELOG
+## 0.21.4 - 2026-03-25
+
+### Fixed
+- Fixed bug where `PositionManager` failed to resurrect a `COMPLETED` group when a re-entry order triggered after the original base order had expired or closed. `add_order_to_group()` now properly sets `GroupStatus.ACTIVE` and calls `Storage.reactivate_group_db()`. This ensures group reply commands (`+30pips`, `close`, etc.) work correctly for re-entry orders even if the base order was missed.
+
+### Files Modified
+- `core/position_manager.py`
+- `core/storage.py`
+
+## 0.21.3 - 2026-03-25
+
+### Changed
+- Removed all reply-to-source-channel logic — bot no longer tries to post messages in source signal channels (requires admin privileges). All trade outcomes and reply command results are now sent to admin chat only.
+
+### Files Modified
+- `main.py` — removed 6 `reply_to_message_sync()` calls
+- `core/trade_tracker.py` — PnL reply now uses `send_debug()` (admin chat) instead of `reply_to_message()`
+
+## 0.21.2 - 2026-03-25
+
+### Fixed
+- **Critical: Premature group completion** — `_check_positions()` only checked `mt5.positions_get()` (filled positions) when determining if a group is complete. Pending LIMIT/STOP orders (from `mt5.orders_get()`) were not checked, causing groups to be marked COMPLETED within seconds of registration. This stopped ALL auto SL management (breakeven, trailing) for positions that started as pending orders.
+- Same fix applied to `_restore_groups_from_db()` — pending orders now count as alive during restart recovery.
+
+### Files Modified
+- `core/position_manager.py` — `_check_positions()` and `_restore_groups_from_db()` now check both `positions_get()` AND `orders_get()` before completing a group
+
+## 0.21.1 - 2026-03-25
+
+### Fixed
+- **Critical: Reply handler crash** — `main.py:1346` called `get_channel_rules()` but `ChannelManager` only has `get_rules()`. Crashed ALL reply command execution (SL, close, BE, TP actions) with `AttributeError`.
+- **SECURE_PROFIT regex** — `_SECURE_PROFIT` pattern used `$` anchor which rejected messages with trailing emojis/text (e.g. `+60pips🔼🔼🔼`). Changed to `\b` word boundary.
+- **Trade outcome reply failure** — `telegram_alerter.py` passed string chat_id to Telethon `get_entity()` which requires `int` for numeric peer IDs. Added string→int conversion.
+
+### Files Modified
+- `main.py` — `get_channel_rules()` → `get_rules()`
+- `core/reply_action_parser.py` — `_SECURE_PROFIT` regex `$` → `\b`
+- `core/telegram_alerter.py` — chat_id string→int conversion in `reply_to_message()`
+- `tests/test_reply_action_parser.py` — 5 new SECURE_PROFIT test cases
+
 ## 0.21.0 - 2026-03-24
 
 ### Added

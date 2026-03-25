@@ -127,3 +127,39 @@ class TestReplyActionParser:
     def test_raw_text_preserved(self):
         r = self.parser.parse("  SL 2035  ")
         assert r.raw_text == "SL 2035"
+
+    # ── SECURE_PROFIT ─────────────────────────────────────────────
+
+    def test_secure_profit_basic(self):
+        r = self.parser.parse("+30")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 30
+
+    def test_secure_profit_with_pips_word(self):
+        r = self.parser.parse("+ 45 pips")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 45
+
+    def test_secure_profit_with_emoji(self):
+        """Bug fix: trailing emojis should not prevent parsing."""
+        r = self.parser.parse("+60pips🔼🔼🔼")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 60
+
+    def test_secure_profit_with_trailing_text(self):
+        """Bug fix: trailing text like 'close all' should not prevent parsing."""
+        r = self.parser.parse("+300pips close all🔼🔼🔼")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 300
+
+    def test_secure_profit_emoji_no_pips_word(self):
+        """Bug fix: +100pips💫💫💫 should parse."""
+        r = self.parser.parse("+100pips💫💫💫")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 100
+

@@ -46,7 +46,7 @@ _CLOSE_PARTIAL = r"^close\s+(\d+)\s*%$"
 _MOVE_SL = r"^(?:sl|move\s+sl|stoploss|stop\s+loss)\s+([\d]+(?:\.[\d]+)?)$"
 _MOVE_TP = r"^(?:tp|move\s+tp|take\s+profit)\s+([\d]+(?:\.[\d]+)?)$"
 _BREAKEVEN = r"^(be|breakeven|break\s+even|sl\s+entry)$"
-_SECURE_PROFIT = r"^\+\s*(\d+)\s*(?:pip|pips|p)?$"  # G3: +30, +50 pip, +120 pips
+_SECURE_PROFIT = r"^\+\s*(\d+)\s*(?:pip|pips|p)?\b"  # G3: +30, +50 pip, +120pips🔼
 _CANCEL = r"^(cancell?|cancel\s*all|hủy|huy|miss|bỏ|bo|skip)$"  # Cancel pending orders
 
 

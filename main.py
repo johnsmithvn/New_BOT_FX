@@ -556,16 +556,6 @@ class Bot:
                 return
             summary = self.command_executor.execute(cmd)
             log_event("command_executed", command=cmd.command_type.value, summary=summary)
-            # Reply to user in source chat
-            try:
-                msg_id_int = int(message_id) if message_id else None
-                if msg_id_int:
-                    self.alerter.reply_to_message_sync(
-                        chat_id, msg_id_int,
-                        f"📋 **{cmd.command_type.value}**\n{summary}",
-                    )
-            except (ValueError, TypeError):
-                pass
             # Admin log
             self.alerter.send_alert_sync(
                 "command_response",
@@ -1106,15 +1096,6 @@ class Bot:
                 source_chat_id=chat_id,
                 reply_to=reply_to_msg_id,
             )
-            try:
-                msg_id_int = int(message_id) if message_id else None
-                if msg_id_int:
-                    self.alerter.reply_to_message_sync(
-                        chat_id, msg_id_int,
-                        "⚠️ No active trade found for this message",
-                    )
-            except (ValueError, TypeError):
-                pass
             return
 
         # Step 2: Channel guard + success filter
@@ -1206,12 +1187,6 @@ class Bot:
                 parts.append("ℹ️ No pending orders found to cancel")
 
             msg = f"📋 **CANCEL**\n" + "\n".join(parts)
-            try:
-                msg_id_int = int(message_id) if message_id else None
-                if msg_id_int:
-                    self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
-            except (ValueError, TypeError):
-                pass
             self.alerter.send_alert_sync("reply_command", msg)
             print(f"  [REPLY] cancel → mt5={cancelled_mt5} plans={cancelled_plans}")
             return
@@ -1261,12 +1236,6 @@ class Bot:
                         parts.append(f"🚫 {len(mt5_c)} pending MT5 orders cancelled")
 
                 msg = f"📋 **SECURE PROFIT** (+{action.pips}p)\n" + "\n".join(parts)
-                try:
-                    msg_id_int = int(message_id) if message_id else None
-                    if msg_id_int:
-                        self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
-                except (ValueError, TypeError):
-                    pass
                 self.alerter.send_alert_sync("reply_command", msg)
                 print(f"  [REPLY] secure_profit → {result.get('status')}")
                 return
@@ -1323,12 +1292,6 @@ class Bot:
                         msg += f"\n🚫 Cancelled {cancelled} pending re-entries"
                     if mt5_c:
                         msg += f"\n🚫 {len(mt5_c)} pending MT5 orders cancelled"
-                    try:
-                        msg_id_int = int(message_id) if message_id else None
-                        if msg_id_int:
-                            self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
-                    except (ValueError, TypeError):
-                        pass
                     self.alerter.send_alert_sync("reply_command", msg)
                     print(f"  [REPLY] selective_close → #{ticket}, {remaining} remaining")
                     return
@@ -1343,7 +1306,7 @@ class Bot:
         # Get per-channel reply_be_lock_pips config
         be_lock_pips = 1.0  # default
         if hasattr(self, "channel_mgr") and self.channel_mgr:
-            ch_rules = self.channel_mgr.get_channel_rules(chat_id)
+            ch_rules = self.channel_mgr.get_rules(chat_id)
             be_lock_pips = ch_rules.get("reply_be_lock_pips", 1.0)
 
         for order in orders:
@@ -1428,13 +1391,6 @@ class Bot:
 
         if parts:
             msg = f"📋 **{action.action.value.upper()}**\n" + "\n".join(parts)
-            try:
-                msg_id_int = int(message_id) if message_id else None
-                if msg_id_int:
-                    self.alerter.reply_to_message_sync(chat_id, msg_id_int, msg)
-            except (ValueError, TypeError):
-                pass
-            # Admin log
             self.alerter.send_alert_sync("reply_command", msg)
             print(f"  [REPLY] {action.action.value} → {len(success_results)} ok, {len(skipped_tickets)} skipped")
 

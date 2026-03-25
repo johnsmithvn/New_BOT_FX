@@ -135,11 +135,16 @@ class PositionManager:
             fp = row["fingerprint"]
             tickets = row.get("tickets", [])
 
-            # Verify at least one ticket is still open
+            # Verify at least one ticket is still open (position or pending order)
             has_open = False
             for ticket in tickets:
                 positions = mt5.positions_get(ticket=ticket)
                 if positions and len(positions) > 0:
+                    has_open = True
+                    break
+                # Also check pending orders (LIMIT/STOP not yet filled)
+                orders = mt5.orders_get(ticket=ticket)
+                if orders and len(orders) > 0:
                     has_open = True
                     break
 
@@ -342,6 +347,7 @@ class PositionManager:
         bot_positions = [p for p in positions if p.magic == self._magic]
         open_tickets = {p.ticket for p in bot_positions}
 
+
         # ── P10: Process groups first (once per group) ───────────
         processed_groups: set[str] = set()
 
@@ -360,12 +366,22 @@ class PositionManager:
             self._manage_individual(mt5, pos)
 
         # ── P10: Detect completed groups (all tickets closed) ────
+        # Must also check pending orders — tickets may be LIMIT/STOP
+        # that haven't filled yet. Only complete group when ticket is
+        # in NEITHER positions_get() NOR orders_get().
+        pending_orders = mt5.orders_get()
+        pending_tickets: set[int] = set()
+        if pending_orders:
+            pending_tickets = {o.ticket for o in pending_orders if o.magic == self._magic}
+
+        all_known_tickets = open_tickets | pending_tickets
+
         for fp in list(self._groups):
             group = self._groups[fp]
             if group.status != GroupStatus.ACTIVE:
                 continue
-            group_open = [t for t in group.tickets if t in open_tickets]
-            if not group_open:
+            group_alive = [t for t in group.tickets if t in all_known_tickets]
+            if not group_alive:
                 self._complete_group(group)
 
         # Cleanup is scheduled daily at 1 AM — see _daily_cleanup_loop()
@@ -487,6 +503,7 @@ class PositionManager:
 
         # Get per-channel rules for this position
         rules = self._get_rules_for_ticket(pos.ticket)
+
 
         # Breakeven
         be_trigger = rules["breakeven_trigger_pips"]
@@ -837,6 +854,20 @@ class PositionManager:
         group.entry_prices[ticket] = entry_price
         self._ticket_to_group[ticket] = fingerprint
         self.register_ticket(ticket, group.channel_id)
+
+        # Resurrect group if it was completed (e.g. L0 pending expired, but L1 triggered later)
+        if group.status == GroupStatus.COMPLETED:
+            group.status = GroupStatus.ACTIVE
+            if self._storage:
+                try:
+                    self._storage.reactivate_group_db(fingerprint)
+                except Exception as e:
+                    log_event("group_db_reactivate_error", fingerprint=fingerprint, error=str(e))
+            log_event(
+                "group_resurrected",
+                fingerprint=fingerprint,
+                ticket=ticket,
+            )
 
         log_event(
             "group_order_added",

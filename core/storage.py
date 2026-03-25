@@ -774,6 +774,15 @@ class Storage:
             (fingerprint,),
         )
 
+    def reactivate_group_db(self, fingerprint: str) -> None:
+        """Mark a signal group as active in DB (resurrection on re-entry)."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET status = 'active', updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (fingerprint,),
+        )
+
     # ── Cleanup ──────────────────────────────────────────────────
 
     def cleanup_old_records(self, retention_days: int = 30) -> dict:

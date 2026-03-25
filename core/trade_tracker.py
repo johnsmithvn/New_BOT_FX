@@ -390,13 +390,8 @@ class TradeTracker:
         )
 
         try:
-            msg_id = int(source_message_id) if source_message_id else None
-            if msg_id:
-                await self._alerter.reply_to_message(
-                    source_chat_id, msg_id, message,
-                )
-            else:
-                await self._alerter.send_debug(message)
+            # Send PnL to admin chat (bot has no posting rights in source channel)
+            await self._alerter.send_debug(message)
         except Exception as exc:
             log_event(
                 "trade_tracker_reply_failed",

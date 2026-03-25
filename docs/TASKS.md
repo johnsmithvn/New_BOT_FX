@@ -1,6 +1,21 @@
 # TASKS
 
 ## Current Phase
+- `Bug Fixes` ✅ COMPLETE (v0.21.2)
+
+### v0.21.2 — Premature Group Completion Fix
+- [x] Fix `_check_positions()` — check `orders_get()` (pending) alongside `positions_get()` (filled)
+- [x] Fix `_restore_groups_from_db()` — same pending order check
+- [x] Update CHANGELOG
+
+### v0.21.1 — Reply Handler Bug Fixes
+- [x] Fix `get_channel_rules()` → `get_rules()` typo in `main.py:1346`
+- [x] Fix `_SECURE_PROFIT` regex to handle trailing emojis (`reply_action_parser.py`)
+- [x] Fix `reply_to_message()` chat_id string→int for Telethon (`telegram_alerter.py`)
+- [x] Add 5 new SECURE_PROFIT test cases
+- [x] Update CHANGELOG
+
+## Previous Phase
 - `Codebase Stability Audit` ✅ COMPLETE (v0.19.1)
 
 ### v0.19.1 — Stability Audit (C1-C6, M1-M5)

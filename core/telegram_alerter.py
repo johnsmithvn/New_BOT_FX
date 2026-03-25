@@ -140,7 +140,9 @@ class TelegramAlerter:
 
         try:
             # reply_to uses per-chat entity (not cached admin)
-            entity = await self._client.get_entity(chat_id)
+            # Telethon needs int for numeric chat IDs
+            resolved_id = int(chat_id) if isinstance(chat_id, str) and chat_id.lstrip("-").isdigit() else chat_id
+            entity = await self._client.get_entity(resolved_id)
             await self._client.send_message(
                 entity, text, reply_to=message_id, parse_mode="md",
             )
