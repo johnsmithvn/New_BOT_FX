@@ -1626,6 +1626,52 @@ class PositionManager:
             "reply_close_strategy": group.reply_close_strategy,
         }
 
+    # ── Peak profit tracking ─────────────────────────────────────
+
+    def _update_group_peak(
+        self, fingerprint: str, profit_pips: float, current_price: float,
+    ) -> None:
+        """Update peak unrealized profit for a group.
+
+        Called every poll cycle from _check_position() when profit > 0.
+        Only updates if current profit exceeds previous peak.
+        Persists to DB for post-trade analysis.
+        """
+        existing = self._group_peak.get(fingerprint)
+        if existing and profit_pips <= existing["pips"]:
+            return  # Not a new peak
+
+        now = datetime.now(timezone.utc).isoformat()
+        self._group_peak[fingerprint] = {
+            "pips": round(profit_pips, 1),
+            "price": current_price,
+            "time": now,
+        }
+
+        # Persist to DB
+        if self._storage:
+            try:
+                self._storage.update_group_peak(
+                    fingerprint, round(profit_pips, 1), current_price, now,
+                )
+            except Exception as exc:
+                log_event(
+                    "peak_persist_error",
+                    fingerprint=fingerprint,
+                    error=str(exc),
+                )
+
+    def get_group_peak(self, fingerprint: str) -> dict | None:
+        """Get peak profit data for a group.
+
+        Called by TradeTracker when recording a closing deal to store
+        the peak unrealized profit alongside the trade record.
+
+        Returns:
+            {"pips": float, "price": float, "time": str} or None
+        """
+        return self._group_peak.get(fingerprint)
+
     def _send_group_alert(
         self, group: OrderGroup, alert_type: str, message: str,
     ) -> None:

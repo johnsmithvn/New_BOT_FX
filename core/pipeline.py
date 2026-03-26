@@ -133,6 +133,7 @@ class SignalPipeline:
 
         # ── G2: Default SL from zone when signal has no SL ───────
         default_sl_pips = strategy_config.get("default_sl_pips_from_zone", 0)
+        sl_is_synthetic = False  # True if SL was generated/capped (not original signal SL)
         if signal.sl is None and signal.entry_range and default_sl_pips > 0:
             pip_size = estimate_pip_size(signal.symbol)
             zone_low = min(signal.entry_range)
@@ -141,11 +142,64 @@ class SignalPipeline:
                 signal.sl = round(zone_high + default_sl_pips * pip_size, 5)
             else:
                 signal.sl = round(zone_low - default_sl_pips * pip_size, 5)
+            sl_is_synthetic = True
             log_event(
                 "default_sl_generated",
                 fingerprint=fp, symbol=signal.symbol,
                 sl=signal.sl, source="zone",
                 default_sl_pips=default_sl_pips,
+            )
+
+        # ── Max SL distance cap: if SL too far, use default ──────
+        max_sl_dist_pips = strategy_config.get("max_sl_distance_pips", 0)
+        if max_sl_dist_pips > 0 and signal.sl is not None and default_sl_pips > 0:
+            pip_size = estimate_pip_size(signal.symbol)
+            # Reference price: use entry, or zone mid if no entry
+            ref_price = signal.entry
+            if ref_price is None and signal.entry_range:
+                ref_price = (min(signal.entry_range) + max(signal.entry_range)) / 2
+            if ref_price is not None:
+                sl_distance = abs(ref_price - signal.sl) / pip_size
+                if sl_distance > max_sl_dist_pips:
+                    original_sl = signal.sl
+                    # Cap SL to default_sl_pips_from_zone from zone edge
+                    if signal.entry_range:
+                        zone_low = min(signal.entry_range)
+                        zone_high = max(signal.entry_range)
+                    else:
+                        zone_low = zone_high = ref_price
+                    if signal.side == Side.SELL:
+                        signal.sl = round(zone_high + default_sl_pips * pip_size, 5)
+                    else:
+                        signal.sl = round(zone_low - default_sl_pips * pip_size, 5)
+                    sl_is_synthetic = True
+                    log_event(
+                        "sl_distance_capped",
+                        fingerprint=fp, symbol=signal.symbol,
+                        original_sl=original_sl, capped_sl=signal.sl,
+                        original_distance_pips=round(sl_distance, 1),
+                        max_allowed=max_sl_dist_pips,
+                        capped_to=default_sl_pips,
+                    )
+
+        # ── SL buffer: widen SL to avoid spike-triggered hits ─────
+        # Only applies to ORIGINAL signal SL, not generated/capped SL
+        sl_buffer_pips = strategy_config.get("sl_buffer_pips", 0)
+        if sl_buffer_pips > 0 and signal.sl is not None and not sl_is_synthetic:
+            pip_size = estimate_pip_size(signal.symbol)
+            buffer_distance = sl_buffer_pips * pip_size
+            original_sl = signal.sl
+            if signal.side == Side.BUY:
+                # BUY: SL is below entry → move SL further down
+                signal.sl = round(signal.sl - buffer_distance, 5)
+            else:
+                # SELL: SL is above entry → move SL further up
+                signal.sl = round(signal.sl + buffer_distance, 5)
+            log_event(
+                "sl_buffer_applied",
+                fingerprint=fp, symbol=signal.symbol,
+                original_sl=original_sl, buffered_sl=signal.sl,
+                buffer_pips=sl_buffer_pips,
             )
 
         # ── Single mode: delegate to classic single-order path ───
@@ -366,11 +420,22 @@ class SignalPipeline:
         order_fp = order_fingerprint(fp, plan.level_id)
 
         # Build a minimal ParsedSignal-like for order_builder
+        reentry_sl = signal_state.sl
+        # Apply SL buffer if configured
+        sl_buffer_pips = strategy_config.get("sl_buffer_pips", 0)
+        if sl_buffer_pips > 0 and reentry_sl is not None:
+            pip_size = estimate_pip_size(signal_state.symbol)
+            buffer_distance = sl_buffer_pips * pip_size
+            if signal_state.side == Side.BUY:
+                reentry_sl = round(reentry_sl - buffer_distance, 5)
+            else:
+                reentry_sl = round(reentry_sl + buffer_distance, 5)
+
         reentry_signal = ParsedSignal(
             symbol=signal_state.symbol,
             side=signal_state.side,
             entry=plan.level,
-            sl=signal_state.sl,
+            sl=reentry_sl,
             tp=signal_state.tp,
             source_chat_id=signal_state.source_chat_id,
             source_message_id=signal_state.source_message_id,
@@ -424,6 +489,8 @@ class SignalPipeline:
                 channel_id=signal_state.channel_id,
                 source_chat_id=signal_state.source_chat_id,
                 source_message_id=signal_state.source_message_id,
+                symbol=signal_state.symbol, volume=volume,
+                bid=request.get("price"), ask=request.get("price"),
             )
             if self._position_mgr and exec_result.ticket:
                 self._position_mgr.register_ticket(
@@ -451,6 +518,7 @@ class SignalPipeline:
                 channel_id=signal_state.channel_id,
                 source_chat_id=signal_state.source_chat_id,
                 source_message_id=signal_state.source_message_id,
+                symbol=signal_state.symbol, volume=volume,
             )
             log_event(
                 "reentry_failed", fingerprint=order_fp,
@@ -523,6 +591,7 @@ class SignalPipeline:
                 source_chat_id=signal.source_chat_id,
                 source_message_id=signal.source_message_id,
                 symbol=signal.symbol,
+                volume=volume, bid=bid, ask=ask,
             )
 
             # Register ticket for position tracking
@@ -728,6 +797,8 @@ class SignalPipeline:
                     channel_id=signal.source_chat_id,
                     source_chat_id=signal.source_chat_id,
                     source_message_id=signal.source_message_id,
+                    symbol=signal.symbol, volume=volume,
+                    bid=bid, ask=ask,
                 )
                 if self._position_mgr and exec_result.ticket:
                     self._position_mgr.register_ticket(
@@ -749,6 +820,7 @@ class SignalPipeline:
                     channel_id=signal.source_chat_id,
                     source_chat_id=signal.source_chat_id,
                     source_message_id=signal.source_message_id,
+                    symbol=signal.symbol, volume=volume,
                 )
                 log_event(
                     "multi_order_failed",

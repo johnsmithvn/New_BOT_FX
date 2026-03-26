@@ -359,16 +359,46 @@ class TradeTracker:
     def _resolve_order(self, position_id: int) -> dict | None:
         """Resolve MT5 position_id to a DB order.
 
-        Two-step lookup:
+        Three-step lookup:
         1. Direct match: orders.ticket == position_id (MARKET orders)
         2. Position ticket match: orders.position_ticket == position_id (filled pending)
+        3. Fallback: Query MT5 history for the opening order and match by order ticket
         """
         order = self._storage.get_order_by_ticket(position_id)
         if order:
             return order
 
         order = self._storage.get_order_by_position_ticket(position_id)
-        return order
+        if order:
+            return order
+
+        # Fallback: look up the original order via MT5 history
+        try:
+            import MetaTrader5 as mt5
+            history = mt5.history_orders_get(position=position_id)
+            if history:
+                for h_order in history:
+                    if h_order.magic == self._magic:
+                        db_order = self._storage.get_order_by_ticket(h_order.ticket)
+                        if db_order:
+                            # Update mapping for future lookups
+                            self._storage.update_position_ticket(
+                                h_order.ticket, position_id,
+                            )
+                            log_event(
+                                "trade_tracker_resolved_via_history",
+                                order_ticket=h_order.ticket,
+                                position_id=position_id,
+                            )
+                            return db_order
+        except Exception as exc:
+            log_event(
+                "trade_tracker_history_lookup_error",
+                position_id=position_id,
+                error=str(exc),
+            )
+
+        return None
 
     def _infer_close_reason(self, deal) -> str:
         """Infer why this deal was executed."""

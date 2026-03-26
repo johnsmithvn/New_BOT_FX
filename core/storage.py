@@ -209,6 +209,12 @@ _MIGRATIONS: dict[int, str] = {
         ALTER TABLE trades ADD COLUMN peak_time TEXT;
         ALTER TABLE trades ADD COLUMN entry_price REAL;
     """,
+    7: """
+        -- V7: Market snapshot at order entry (bid/ask/spread + volume)
+        ALTER TABLE orders ADD COLUMN volume REAL;
+        ALTER TABLE orders ADD COLUMN bid REAL;
+        ALTER TABLE orders ADD COLUMN ask REAL;
+    """,
 }
 
 
@@ -369,6 +375,9 @@ class Storage:
         source_chat_id: str = "",
         source_message_id: str = "",
         symbol: str = "",
+        volume: float | None = None,
+        bid: float | None = None,
+        ask: float | None = None,
     ) -> int:
         """Persist an order execution record.
 
@@ -377,18 +386,21 @@ class Storage:
             source_chat_id: Telegram chat ID for reply threading.
             source_message_id: Telegram message ID for reply threading.
             symbol: Trading symbol (e.g. XAUUSD).
+            volume: Lot size executed.
+            bid: Market bid price at order time.
+            ask: Market ask price at order time.
         """
         cursor = self._execute_with_retry(
             """
             INSERT INTO orders
                 (ticket, fingerprint, order_kind, price, sl, tp,
                  retcode, success, channel_id, source_chat_id,
-                 source_message_id, symbol)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 source_message_id, symbol, volume, bid, ask)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ticket, fingerprint, order_kind, price, sl, tp,
              retcode, int(success), channel_id, source_chat_id,
-             source_message_id, symbol),
+             source_message_id, symbol, volume, bid, ask),
         )
         return cursor.lastrowid
 

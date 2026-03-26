@@ -1,4 +1,24 @@
 # CHANGELOG
+## 0.22.1 - 2026-03-26
+
+### Fixed
+- **Peak profit tracking** — `_update_group_peak()` and `get_group_peak()` were never implemented in `position_manager.py` despite being called at line 511 and referenced by `trade_tracker.py`. All 17 trades had `peak_pips: NULL`. Now properly tracks and persists peak unrealized P&L per group.
+- **Phantom trades** — `trade_tracker._resolve_order()` now has 3-step lookup (ticket → position_ticket → MT5 history). Previously LIMIT orders that filled created orphan trades with `position_ticket: None` (50% of all orders).
+
+### Added
+- **SL buffer** — `strategy.sl_buffer_pips` widens SL by N pips away from entry to avoid spike-triggered SL hits. BUY: SL moves lower, SELL: SL moves higher. Uses `estimate_pip_size()` for consistent pip units. Applied in both `execute_signal_plans()` and `handle_reentry()` paths. Default: 0 (disabled). Logged as `sl_buffer_applied` event.
+- **Max SL distance cap** — `strategy.max_sl_distance_pips` caps SL when signal SL is too far from entry. If SL distance > N pips, replaces SL with `default_sl_pips_from_zone`. Applied BEFORE `sl_buffer_pips`. Default: 0 (disabled). Logged as `sl_distance_capped` event.
+- DB migration V7: `orders.volume`, `orders.bid`, `orders.ask` columns for market snapshot at entry time
+- `store_order()` now accepts `volume`, `bid`, `ask` params — all 5 pipeline call sites updated
+- MT5 `history_orders_get(position=)` fallback in `_resolve_order()` with auto position_ticket backfill
+
+### Files Modified
+- `core/position_manager.py` — added `_update_group_peak()`, `get_group_peak()`
+- `core/storage.py` — V7 migration, `store_order()` expanded
+- `core/pipeline.py` — 5 `store_order()` calls updated, `sl_buffer_pips` logic in 2 paths
+- `core/trade_tracker.py` — 3-step `_resolve_order()` with MT5 history fallback
+- `config/channels.json` — added `sl_buffer_pips: 0` to defaults
+
 ## 0.22.0 - 2026-03-26
 
 ### Added
