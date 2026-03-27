@@ -1475,15 +1475,21 @@ class PositionManager:
         else:
             # Only 1 order: just set BE
             ticket = open_tickets[0]
+            tick = mt5.symbol_info_tick(group.symbol)
+            bid = tick.bid if tick else 0.0
+            ask = tick.ask if tick else 0.0
             from core.reply_action_parser import ReplyAction, ReplyActionType
             be_action = ReplyAction(action=ReplyActionType.BREAKEVEN)
-            reply_executor.execute(ticket, be_action, dry_run=dry_run)
+            be_result = reply_executor.execute(ticket, be_action, dry_run=dry_run)
             be_tickets.append(ticket)
 
             log_event(
                 "secure_profit_single",
                 fingerprint=fingerprint,
                 be_ticket=ticket,
+                be_result=be_result,
+                bid=bid,
+                ask=ask,
             )
 
         return {

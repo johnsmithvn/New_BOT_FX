@@ -1,4 +1,20 @@
 # CHANGELOG
+## 0.22.2 - 2026-03-27
+
+### Changed
+- **Breakeven diagnostic logging** — `reply_breakeven_fail` and `reply_breakeven_ok` log events now include `entry`, `new_sl`, `bid`, `ask`, `lock_pips` fields for post-mortem analysis. Previously only logged `ticket` and `retcode`, making it impossible to determine why MT5 rejected the SL modification (e.g. retcode 10016 INVALID_STOPS).
+- **Secure profit diagnostics** — `secure_profit_single` log event now includes `be_result` (success/fail string from executor), `bid`, `ask` so breakeven failures during `+pip` reply are immediately visible without cross-referencing logs.
+
+### Fixed
+- **Critical: Emoji-adjacent keywords not parsed** — `_strip_emoji()` in `cleaner.py` deleted emoji characters, merging adjacent words (e.g. `Now🔼BUY` → `NowBUY`). `\bBUY\b` regex then failed to match. Fix: replace emoji with space instead of empty string (`Now🔼BUY` → `Now BUY`).
+- **Typo-tolerant side detection** — Added fuzzy matching for common BUY/SELL typos: `SEL`, `SELLL`, `SEEL`, `SSEL`, `SSELL`, `SEELL` → SELL; `BBUY`, `BUUY`, `BYU` → BUY. Intentionally excludes `BY`/`BU` to avoid false positives.
+
+### Files Modified
+- `core/reply_command_executor.py` — `_breakeven()` method enhanced logging
+- `core/position_manager.py` — `secure_profit_group()` single-order branch enhanced logging
+- `core/signal_parser/cleaner.py` — `_strip_emoji()` replaces with space instead of empty string
+- `core/signal_parser/side_detector.py` — Added `SEL` alias for `SELL`
+
 ## 0.22.1 - 2026-03-26
 
 ### Fixed

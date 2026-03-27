@@ -205,6 +205,11 @@ class ReplyCommandExecutor:
         """
         entry = pos.price_open
 
+        # Snapshot current market price for diagnostics
+        tick = mt5.symbol_info_tick(pos.symbol)
+        bid = tick.bid if tick else 0.0
+        ask = tick.ask if tick else 0.0
+
         # Calculate lock offset
         lock_distance = 0.0
         if lock_pips > 0:
@@ -239,8 +244,11 @@ class ReplyCommandExecutor:
         result = mt5.order_send(request)
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
             log_event("reply_breakeven_ok", ticket=pos.ticket, sl=new_sl,
-                      lock_pips=self._reply_be_lock_pips)
+                      lock_pips=self._reply_be_lock_pips,
+                      entry=entry, bid=bid, ask=ask)
             return f"\u2705 BE \u2192 SL={new_sl} on {pos.symbol} #{pos.ticket}"
         retcode = result.retcode if result else -1
-        log_event("reply_breakeven_fail", ticket=pos.ticket, retcode=retcode)
+        log_event("reply_breakeven_fail", ticket=pos.ticket, retcode=retcode,
+                  entry=entry, new_sl=new_sl, bid=bid, ask=ask,
+                  lock_pips=lock_pips)
         return f"\u274c Breakeven failed (retcode={retcode})"

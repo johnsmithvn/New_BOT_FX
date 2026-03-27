@@ -1,9 +1,18 @@
 # TASKS
 
 ## Current Phase
-- `Data Logging Fixes` ✅ COMPLETE (v0.22.1)
+- `Breakeven Diagnostic Logging` ✅ COMPLETE (v0.22.2)
 
-### v0.22.1 — Data Logging Fixes
+### v0.22.2 — Breakeven Diagnostic Logging + Parse Fixes
+- [x] Add bid/ask/entry/new_sl/lock_pips to `reply_breakeven_fail` and `reply_breakeven_ok` log events (`reply_command_executor.py`)
+- [x] Add be_result/bid/ask to `secure_profit_single` log event (`position_manager.py`)
+- [x] Fix `_strip_emoji()` — replace emoji with space instead of empty string to prevent word merging (`cleaner.py`)
+- [x] Add typo-tolerant side detection: `SEL/SELLL/SEEL/SSEL/SEELL` → SELL, `BBUY/BUUY/BYU` → BUY (`side_detector.py`)
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phase
+- `Data Logging Fixes` ✅ COMPLETE (v0.22.1)
 - [x] Fix `_update_group_peak()` and `get_group_peak()` — methods were called but never defined in `position_manager.py`
 - [x] DB Migration V7: `orders.volume`, `orders.bid`, `orders.ask` for market snapshot
 - [x] Update all 5 `store_order()` calls in `pipeline.py` with volume/bid/ask/symbol
