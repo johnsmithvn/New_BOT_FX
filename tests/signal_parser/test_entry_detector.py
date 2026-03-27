@@ -140,3 +140,34 @@ class TestEntryDetector:
         entry, rng, is_market, is_now = detect("SELL GOLD ZONE 4664 - 4666", Side.SELL)
         assert entry == 4666.0
         assert is_now is False
+
+    # ── v0.22.2: Typo side keywords in entry patterns ─────────────
+
+    def test_sel_typo_range(self):
+        """Real case: 'SEL GOLD zone 4427 - 4429' failed entry detection."""
+        entry, rng, _, _ = detect("SEL GOLD ZONE 4427 - 4429", Side.SELL)
+        assert entry == 4429.0  # SELL picks high
+        assert rng == [4427.0, 4429.0]
+
+    def test_sel_typo_single_price(self):
+        entry, _, _, _ = detect("SEL GOLD 4450")
+        assert entry == 4450.0
+
+    def test_bbuy_typo_range(self):
+        entry, rng, _, _ = detect("BBUY GOLD 2030 - 2035", Side.BUY)
+        assert entry == 2030.0  # BUY picks low
+        assert rng == [2030.0, 2035.0]
+
+    def test_buuy_typo_single_price(self):
+        entry, _, _, _ = detect("BUUY GOLD 2030")
+        assert entry == 2030.0
+
+    def test_byu_typo_range(self):
+        entry, rng, _, _ = detect("BYU GOLD 4455 - 4453", Side.BUY)
+        assert entry == 4453.0  # BUY picks low
+        assert rng == [4453.0, 4455.0]
+
+    def test_seel_typo_range(self):
+        entry, rng, _, _ = detect("SEEL GOLD 4450 - 4452", Side.SELL)
+        assert entry == 4452.0  # SELL picks high
+        assert rng == [4450.0, 4452.0]

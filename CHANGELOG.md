@@ -8,12 +8,16 @@
 ### Fixed
 - **Critical: Emoji-adjacent keywords not parsed** — `_strip_emoji()` in `cleaner.py` deleted emoji characters, merging adjacent words (e.g. `Now🔼BUY` → `NowBUY`). `\bBUY\b` regex then failed to match. Fix: replace emoji with space instead of empty string (`Now🔼BUY` → `Now BUY`).
 - **Typo-tolerant side detection** — Added fuzzy matching for common BUY/SELL typos: `SEL`, `SELLL`, `SEEL`, `SSEL`, `SSELL`, `SEELL` → SELL; `BBUY`, `BUUY`, `BYU` → BUY. Intentionally excludes `BY`/`BU` to avoid false positives.
+- **Cancel reply with trailing text** — `_CANCEL` regex used `$` (full string match) so `Cancel wait😍😍` was ignored as `reply_not_action`. Changed to `\b` (word boundary) to allow trailing words.
+- **Entry detector didn't recognize typo side keywords** — `entry_detector.py` had its own `BUY|SELL` regex that didn't include `SEL` and other typos. Side was detected correctly but entry price extraction failed. Unified side keywords via shared `_SIDE_KW` constant.
 
 ### Files Modified
 - `core/reply_command_executor.py` — `_breakeven()` method enhanced logging
 - `core/position_manager.py` — `secure_profit_group()` single-order branch enhanced logging
 - `core/signal_parser/cleaner.py` — `_strip_emoji()` replaces with space instead of empty string
 - `core/signal_parser/side_detector.py` — Added `SEL` alias for `SELL`
+- `core/signal_parser/entry_detector.py` — Unified side keywords via `_SIDE_KW` constant
+- `core/reply_action_parser.py` — `_CANCEL` regex relaxed to allow trailing text
 
 ## 0.22.1 - 2026-03-26
 

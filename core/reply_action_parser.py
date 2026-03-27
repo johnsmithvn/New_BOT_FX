@@ -50,7 +50,7 @@ _BREAKEVEN = r"^(be|breakeven|break\s+even|sl\s+entry)$"
 _SECURE_PROFIT = r"^(?:\+|done|near)\s*(\d+)\s*(?:pip|pips|p)?\b"
 # G3+close: "+300pips close all", "+50pips close entry 4578"
 _CLOSE_PROFIT = r"^\+\s*(\d+)\s*(?:pip|pips|p)?\s+close(?:\s+(?:all|entry\s+[\d.]+))?\b"
-_CANCEL = r"^(cancell?|cancel\s*all|hủy|huy|miss|bỏ|bo|skip)$"  # Cancel pending orders
+_CANCEL = r"^(cancell?|cancel\s*all|hủy|huy|miss|bỏ|bo|skip)\b"  # Cancel pending orders; allows trailing text like "cancel wait"
 
 
 class ReplyActionParser:

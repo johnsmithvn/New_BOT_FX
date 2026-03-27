@@ -8,6 +8,8 @@
 - [x] Add be_result/bid/ask to `secure_profit_single` log event (`position_manager.py`)
 - [x] Fix `_strip_emoji()` — replace emoji with space instead of empty string to prevent word merging (`cleaner.py`)
 - [x] Add typo-tolerant side detection: `SEL/SELLL/SEEL/SSEL/SEELL` → SELL, `BBUY/BUUY/BYU` → BUY (`side_detector.py`)
+- [x] Fix `_CANCEL` regex — allow trailing text like `Cancel wait😍😍` (`reply_action_parser.py`)
+- [x] Fix `entry_detector.py` — unify side keywords so `SEL GOLD zone 4427 - 4429` extracts price range correctly
 - [x] Update CHANGELOG
 - [x] Update TASKS.md
 

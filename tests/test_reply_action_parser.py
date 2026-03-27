@@ -163,3 +163,46 @@ class TestReplyActionParser:
         assert r.action == ReplyActionType.SECURE_PROFIT
         assert r.pips == 100
 
+    # ── CANCEL ────────────────────────────────────────────────────
+
+    def test_cancel_exact(self):
+        r = self.parser.parse("cancel")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancel_uppercase(self):
+        r = self.parser.parse("CANCEL")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancel_with_trailing_text(self):
+        """v0.22.2: 'Cancel wait😍😍' was not parsed — regex used $ anchor."""
+        r = self.parser.parse("Cancel wait")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancel_all(self):
+        r = self.parser.parse("cancel all")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_miss_as_cancel(self):
+        r = self.parser.parse("miss")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_skip_as_cancel(self):
+        r = self.parser.parse("skip")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancell_double_l(self):
+        r = self.parser.parse("cancell")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancelled_not_matched(self):
+        """'cancelled' should NOT match — word boundary after 'cancel' excludes it."""
+        r = self.parser.parse("cancelled the order")
+        assert r is None
+
