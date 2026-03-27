@@ -94,6 +94,13 @@ class ReplyCommandExecutor:
         elif action.action == ReplyActionType.BREAKEVEN:
             lock = reply_be_lock_pips if reply_be_lock_pips is not None else self._reply_be_lock_pips
             return self._breakeven(pos, lock)
+        elif action.action == ReplyActionType.SECURE_PROFIT:
+            # SECURE_PROFIT on individual ticket → breakeven (same as single-order path)
+            lock = reply_be_lock_pips if reply_be_lock_pips is not None else self._reply_be_lock_pips
+            return self._breakeven(pos, lock)
+        elif action.action == ReplyActionType.CANCEL:
+            # CANCEL only affects pending orders; open positions are handled at group level
+            return f"⏭️ Cancel N/A for open position #{pos.ticket}"
         else:
             return f"❌ Unknown action: {action.action}"
 

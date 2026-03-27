@@ -10,6 +10,7 @@
 - **Typo-tolerant side detection** — Added fuzzy matching for common BUY/SELL typos: `SEL`, `SELLL`, `SEEL`, `SSEL`, `SSELL`, `SEELL` → SELL; `BBUY`, `BUUY`, `BYU` → BUY. Intentionally excludes `BY`/`BU` to avoid false positives.
 - **Cancel reply with trailing text** — `_CANCEL` regex used `$` (full string match) so `Cancel wait😍😍` was ignored as `reply_not_action`. Changed to `\b` (word boundary) to allow trailing words.
 - **Entry detector didn't recognize typo side keywords** — `entry_detector.py` had its own `BUY|SELL` regex that didn't include `SEL` and other typos. Side was detected correctly but entry price extraction failed. Unified side keywords via shared `_SIDE_KW` constant.
+- **SECURE_PROFIT/CANCEL unhandled in executor** — `reply_command_executor.execute()` had no case for `SECURE_PROFIT` or `CANCEL`, falling through to `Unknown action`. Added handlers: `SECURE_PROFIT` → breakeven, `CANCEL` → no-op for open positions.
 
 ### Files Modified
 - `core/reply_command_executor.py` — `_breakeven()` method enhanced logging

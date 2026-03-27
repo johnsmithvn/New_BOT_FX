@@ -10,6 +10,7 @@
 - [x] Add typo-tolerant side detection: `SEL/SELLL/SEEL/SSEL/SEELL` → SELL, `BBUY/BUUY/BYU` → BUY (`side_detector.py`)
 - [x] Fix `_CANCEL` regex — allow trailing text like `Cancel wait😍😍` (`reply_action_parser.py`)
 - [x] Fix `entry_detector.py` — unify side keywords so `SEL GOLD zone 4427 - 4429` extracts price range correctly
+- [x] Fix `reply_command_executor.py` — add `SECURE_PROFIT` (→ breakeven) and `CANCEL` handlers to `execute()`
 - [x] Update CHANGELOG
 - [x] Update TASKS.md
 
