@@ -18,14 +18,12 @@ All alerts are sent to `TELEGRAM_ADMIN_CHAT` via the Telegram Alerter. Each aler
 | `daily_loss_limit` | ⛔ Block | `daily_loss >= MAX_DAILY_LOSS` | Trading paused until midnight UTC |
 | `consecutive_loss_limit` | ⛔ Block | `consec_losses >= MAX_CONSECUTIVE_LOSSES` | Trading paused until a winning trade |
 | `startup_position_warning` | ⚠️ Warning | Boot with positions >= MAX_OPEN_TRADES | Bot will refuse new signals |
-| `bot_started` | 🟢 Info | Bot startup complete | Pipeline active |
-| `bot_stopped` | 🔴 Info | Graceful shutdown | — |
-| `trade_tracked` | 🟢 Info | Trade outcome detected from MT5 deals | PnL reply sent (v0.6.0) |
+| `trade_tracked` | 🟢 Info | Trade outcome detected from MT5 deals | PnL reply sent via admin chat (v0.6.0) |
 | `trade_tracker_partial_throttled` | ⚠️ Info | Partial close reply skipped | Within 60s cooldown (v0.7.0) |
 | `edit_decision` | ⚠️ Info | Edited signal processed | CANCEL_ORDER / IGNORE (v0.7.0) |
 | `command_response` | 📋 Info | Management command executed | Response sent to source chat + admin (v0.7.1) |
 | `breakeven_alert` | 🔒 Info | SL moved to breakeven | Throttled per-ticket 60s (v0.7.1) |
-| `trailing_alert` | 📐 Info | Trailing SL moved ≥5 pips | Throttled per-ticket 60s + delta (v0.7.1) |
+| `trailing_alert` | 📐 Info | Trailing SL moved ≥10 pips | Throttled per-ticket 60s + delta (v0.22.0, was ≥5 pips) |
 | `partial_close_alert` | ✂️ Info | Volume partially closed | Throttled per-ticket 60s (v0.7.1) |
 | `reply_command` | 📋 Info | Reply action executed on signal | Multi-order grouped results (v0.8.0) |
 | `reply_no_orders` | ⚠️ Info | Reply to non-signal message | "No active trade" response (v0.8.0) |
@@ -33,6 +31,14 @@ All alerts are sent to `TELEGRAM_ADMIN_CHAT` via the Telegram Alerter. Each aler
 | `range_monitor_trigger` | 🔄 Info | Price crossed re-entry level | Re-entry order triggered (v0.9.0) |
 | `range_monitor_expired` | ⏳ Info | Active signals expired | TTL exceeded, removed from monitoring (v0.9.0) |
 | `signal_state_registered` | 📋 Info | Multi-order signal registered | State machine tracking started (v0.9.0) |
+| `group_registered` | 📦 Info | Signal group created | All signals create a group (v0.10.0) |
+| `group_sl_moved` | 📐 Info | Group SL adjustment | SL applied across all group tickets (v0.10.0) |
+| `group_completed` | ✅ Info | Group fully closed | All tickets closed (v0.10.0) |
+| `group_selective_close` | ✂️ Info | Reply “close” on group | Selective close by strategy (v0.10.0) |
+| `secure_profit` | 💰 Info | Reply “+N pip” executed | Close worst + BE remaining (v0.19.0) |
+| `sl_breach_cancel` | ⚠️ Warning | SL crossed while plans pending | All pending plans cancelled (v0.19.0) |
+| `group_peak_updated` | 📈 Info | Peak profit milestone | Tracked every +10 pips (v0.22.0) |
+| `health_check` | 🏥 Info | HTTP /health served | JSON status on port 8080 (v0.14.0) |
 
 ---
 
@@ -119,7 +125,8 @@ Emitted every `HEARTBEAT_INTERVAL_MINUTES` (default 30, set 0 to disable).
 |------|---------|
 | `logs/bot.log` | Structured application logs (rotated at `LOG_ROTATION`) |
 | `journalctl -u telegram-mt5-bot` | Systemd stdout/stderr |
-| `data/bot.db` | SQLite: signals, orders, events (audit trail) |
+| `data/bot.db` | SQLite: signals, orders, events, trades, signal_groups, active_signals (audit trail) |
+| Health endpoint | `http://localhost:8080/health` — JSON status (uptime, MT5, circuit breaker, counters) |
 
 ### Useful Log Queries
 
@@ -130,9 +137,6 @@ grep "signal_executed" logs/bot.log | tail -5
 # All rejections today
 grep "signal_rejected" logs/bot.log | grep "$(date +%Y-%m-%d)"
 
-# Daily guard polls
-grep "daily_risk_guard_polled" logs/bot.log | tail -5
-
 # Circuit breaker events
 grep "circuit_breaker" logs/bot.log
 
@@ -141,6 +145,15 @@ grep "trade_tracked" logs/bot.log | tail -5
 
 # Message edit decisions
 grep "edit_decision" logs/bot.log | tail -5
+
+# Group SL movements
+grep "group_sl" logs/bot.log | tail -5
+
+# Peak profit tracking
+grep "group_peak" logs/bot.log | tail -5
+
+# Re-entry triggers
+grep "range_monitor_trigger" logs/bot.log | tail -5
 ```
 
 ---

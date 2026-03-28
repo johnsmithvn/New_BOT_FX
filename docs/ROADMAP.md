@@ -98,3 +98,21 @@ Expected outcomes:
   - 249 Python unit tests (pytest) across 17 files.
   - 130 JavaScript unit tests (Vitest) across 11 files.
   - Test case documentation (254 test cases across 25 modules).
+
+## Milestone R11 - Trading Logic Hardening & Observability ✅
+- Goal:
+  - Close all practical trading logic gaps discovered during live operation.
+  - Harden signal parsing and order execution for edge cases.
+  - Improve trade lifecycle observability (peak profit, entry snapshots).
+- Expected outcomes:
+  - 12 trading logic guards (G1–G12): min SL distance, default SL from zone, max re-entry distance, force MARKET re-entries, SL breach cancel, step-based levels, per_entry volume, reply BE lock, secure profit action.
+  - SL buffer and max SL distance cap for signal SL hardening (v0.22.1).
+  - Peak profit tracking per signal group with DB persistence (v0.22.0).
+  - Market snapshot at entry: volume, bid, ask stored per order (v0.22.1 — migration V7).
+  - 3-step ticket resolution in TradeTracker (ticket → position_ticket → MT5 history).
+  - Typo-tolerant parsing: SEL/SELLL/BBUY/BYU → correct side; emoji→space in cleaner.
+  - Reply actions expanded: SECURE_PROFIT, CANCEL, CLOSE_PROFIT with trailing text support.
+  - Centralized `estimate_pip_size()` replacing all `point * 10` heuristics (12 sites).
+  - SYMBOL_SUFFIX support for broker-specific symbol mapping.
+  - Cancel ALL / CANCEL SYMBOL management commands.
+  - Full documentation sync: ARCHITECTURE.md + OBSERVABILITY.md rewritten for v0.22.x.

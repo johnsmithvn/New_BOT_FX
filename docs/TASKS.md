@@ -1,6 +1,25 @@
 # TASKS
 
 ## Current Phase
+- `Documentation Audit` ✅ COMPLETE (v0.22.3)
+
+### v0.22.3 — Documentation Audit
+- [x] Read all 27+ core modules to identify documentation gaps
+- [x] Rewrite `docs/ARCHITECTURE.md` — added 6 missing modules, updated dashboard structure, expanded API endpoints (8→20), corrected data contracts, storage migrations (V1-V7)
+- [x] Rewrite `docs/OBSERVABILITY.md` — added 7 new event sections, corrected trailing alert threshold (5→10)
+- [x] Fix `docs/DASHBOARD_FEATURES.md` — corrected 7 API response formats, added missing response fields
+- [x] Verify `docs/DEBUG_SIGNAL.md` — confirmed accurate against source
+- [x] Rewrite `docs/ENV_BACKGROUND_TASKS.md` — added 3 missing background tasks, 10+ missing env vars, new sections
+- [x] Update `docs/FLOW_AND_SETUP_GUIDE.md` — version v0.16.6→v0.22.3, +7 strategy keys, +8 rules keys, +14 file structure entries
+- [x] Update `docs/MONITORING.md` — corrected trailing threshold, removed dead alerts, added 8 new alert types
+- [x] Update `docs/ROADMAP.md` — added R11 milestone (v0.19.0–v0.22.x)
+- [x] Update `docs/PLAN.md` — current phase to Documentation Audit, +7 Done entries (v0.19.1–v0.22.3)
+- [x] Update `docs/PROJECT.md` — version v0.16.6→v0.22.3, +20 feature lines, expanded tech stack
+- [x] Update `docs/logic/LOGIC_PIPELINE_DEEP_DIVE.md` — +4 ParsedSignal fields, v0.19.0+ guard notice
+- [x] Update CHANGELOG.md — v0.22.3
+- [x] Update TASKS.md
+
+## Previous Phase
 - `Breakeven Diagnostic Logging` ✅ COMPLETE (v0.22.2)
 
 ### v0.22.2 — Breakeven Diagnostic Logging + Parse Fixes

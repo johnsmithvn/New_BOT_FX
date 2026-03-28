@@ -1,4 +1,50 @@
 # CHANGELOG
+## 0.22.3 - 2026-03-27
+
+### Changed
+- **ARCHITECTURE.md rewrite** — entire document rewritten to match v0.22.2 codebase state:
+  - Added 6 undocumented modules: `core/models.py`, `core/health.py`, `core/circuit_breaker.py`, `core/telegram_alerter.py`, `core/reply_action_parser.py`, `run.py`
+  - Updated dashboard structure: `dashboard/` → `dashboard/api/routes.py` + `dashboard/db/queries.py`
+  - Expanded API endpoints table from 8 to 20 endpoints
+  - Corrected data contracts: added `entry_range`, `is_now`, `parse_confidence`, `parse_source` on `ParsedSignal`
+  - Updated data flow from 8 to 12 steps
+  - Updated storage migrations V1–V4 → V1–V7
+  - Updated position manager: trailing alert threshold 5→10, peak profit tracking, P10 group management details
+  - Added pipeline features: G2 default SL, SL buffer, SL cap, force MARKET re-entries
+  - Added reply action types: SECURE_PROFIT, CANCEL, CLOSE_PROFIT
+  - Added Dashboard V2 section with full page list, chart toggle, signal lifecycle, unit tests
+- **OBSERVABILITY.md rewrite** — added 7 new event sections:
+  - Message Delete events (v0.11.0)
+  - Pipeline Guard events (v0.19.0–v0.22.1): `default_sl_generated`, `sl_distance_capped`, `sl_buffer_applied`, `entry_skipped_sl_too_close`
+  - Peak Profit events (v0.22.0): `group_peak_updated`, `group_peak_final`
+  - Health & Infrastructure events: health server, circuit breaker state, position manager lifecycle, alert system, schema migrations
+  - Expanded existing sections with missing events
+  - Corrected trailing alert threshold documentation (5→10 pips)
+- **DASHBOARD_FEATURES.md** — fixed 7 outdated API response formats:
+  - `/api/overview` response: added `total_signals`, `total_swap`, `total_pnl`, `last_trade_time`
+  - `/api/active` response: added `fingerprint`, `entry_prices`, `current_group_sl`, `sl_mode`, `created_at`
+  - 4 DELETE endpoints: corrected response format to `{ok: true, deleted: {...}}`
+  - Settings version corrected (v0.16.6 → v0.16.2 hardcoded)
+- **ENV_BACKGROUND_TASKS.md** — added 3 missing background tasks (TradeTracker, Heartbeat, HealthCheckServer), 10+ missing env vars, new sections (Exposure Guard, Dashboard, Watchdog)
+- **FLOW_AND_SETUP_GUIDE.md** — version v0.16.6→v0.22.3, added 7 strategy keys (v0.19.0), 8 rules keys (v0.10.0–v0.19.0), `per_entry` volume split, expanded decision table (+5 rows), expanded file structure (+14 entries)
+- **MONITORING.md** — corrected trailing threshold 5→10 pips, removed dead alerts (`bot_started`/`bot_stopped`), added 8 new alerts (group, secure profit, SL breach, peak, health), expanded log queries, added health endpoint to data sources
+- **ROADMAP.md** — added R11 milestone (Trading Logic Hardening & Observability v0.19.0–v0.22.x)
+- **PLAN.md** — updated current phase to Documentation Audit, added v0.19.1–v0.22.3 to Done list (+7 entries)
+- **PROJECT.md** — version v0.16.6→v0.22.3, added 20+ feature lines (reply actions, pipeline guards, peak profit, dashboard, health endpoint), expanded tech stack
+- **LOGIC_PIPELINE_DEEP_DIVE.md** — added 4 missing ParsedSignal fields (`entry_range`, `is_now`, `parse_confidence`, `parse_source`), added v0.19.0+ pipeline guard notice (G1-G12)
+
+### Files Modified
+- `docs/ARCHITECTURE.md` — full rewrite
+- `docs/OBSERVABILITY.md` — full rewrite
+- `docs/DASHBOARD_FEATURES.md` — API response corrections
+- `docs/ENV_BACKGROUND_TASKS.md` — full rewrite
+- `docs/FLOW_AND_SETUP_GUIDE.md` — version + config key updates
+- `docs/MONITORING.md` — alert catalog + log queries update
+- `docs/ROADMAP.md` — R11 milestone added
+- `docs/PLAN.md` — phase + Done list update
+- `docs/PROJECT.md` — version + features + tech stack update
+- `docs/logic/LOGIC_PIPELINE_DEEP_DIVE.md` — ParsedSignal + guards update
+
 ## 0.22.2 - 2026-03-27
 
 ### Changed

@@ -33,6 +33,10 @@ class ParsedSignal:
     source_message_id: str  # (8) ID message Telegram
     received_at: datetime   # (9) Thời điểm nhận message (UTC)
     fingerprint: str        # (10) SHA256 hash 16 ký tự, dùng để dedupe
+    entry_range: tuple[float, float] | None  # (11) v0.9.0: range entry (low, high) cho multi-order
+    is_now: bool            # (12) v0.17.0: True nếu signal chứa keyword "NOW"/"MARKET" → force MARKET
+    parse_confidence: str   # (13) v0.17.0: "high" / "medium" / "low" — độ tin cậy parse
+    parse_source: str       # (14) v0.17.0: "multi_detector" / "legacy" — parser pipeline
 ```
 
 **Fingerprint** tạo từ: `SHA256("XAUUSD:BUY:2030.0:2020.0:2040.0|2050.0")[:16]`
@@ -315,6 +319,16 @@ BUY: SL(2940) >= entry(2935) = True
 > File: `main.py`, function `_do_process_signal()`
 > Pipeline v0.9.0: Steps 0–6 unchanged. Steps 7–9 now delegated to `SignalPipeline.execute_signal_plans()` (single/range/scale_in modes).
 > The step-by-step breakdown below describes the **pre-P9 logic** for reference. In v0.9.0, the Pipeline handles volume, order building, and execution internally.
+
+> ⚠️ **v0.19.0–v0.22.1 Update**: Inside `pipeline.execute_signal_plans()`, 12 additional guards (G1–G12) now run per-order:
+> - **G1**: Min SL distance guard — skip order if price too close to SL
+> - **G2**: Default SL from zone — auto-generate SL when signal has none
+> - **G7**: Max re-entry distance — skip if price too far from level
+> - **G8**: Force MARKET for re-entries (P2/P3)
+> - **G11**: SL breach cancel — cancel all pending plans when SL hit
+> - **SL buffer**: Widen SL by N pips to avoid spikes
+> - **SL cap**: Limit max SL distance from entry
+> - See `docs/ARCHITECTURE.md` for full guard list.
 
 ---
 
