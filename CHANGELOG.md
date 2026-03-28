@@ -1,4 +1,33 @@
 # CHANGELOG
+## 0.23.0 - 2026-03-28
+
+### Added
+- **Telegram Bot API admin panel** (`core/admin_bot.py`) — interactive inline keyboard for order management
+  - `/start` or `/menu` → 4-button admin panel
+  - 📋 List open positions (symbol, side, volume, PnL, ticket)
+  - ⏳ List pending orders (symbol, type, price, age, ticket)
+  - ❌ Cancel all pending orders (with confirmation step)
+  - 🔴 Close all orders (with confirmation step)
+  - Security: restricted to `TELEGRAM_BOT_ADMIN_ID` only
+- New env vars: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_ADMIN_ID`
+- New dependency: `python-telegram-bot>=20.0`
+
+### Changed
+- **`telegram_alerter.py` rewritten** — all alerts/debug/PnL now route through Bot API instead of Telethon user session
+  - Removed Telethon dependency from alerter
+  - `reply_to_message()` now sends to admin bot chat (flat message, no longer reply-under-signal)
+  - `set_client()` removed, replaced by `set_bot()`
+- **`main.py`** — AdminBot wired into component initialization, startup, and shutdown lifecycle
+- **`settings.py`** — added `bot_token` and `bot_admin_id` to `TelegramConfig`
+
+### Files Modified
+- `core/admin_bot.py` — NEW
+- `core/telegram_alerter.py` — rewritten (Bot API transport)
+- `main.py` — AdminBot wiring
+- `config/settings.py` — 2 new config fields
+- `.env.example` — 2 new env vars
+- `requirements.txt` — python-telegram-bot added
+
 ## 0.22.3 - 2026-03-27
 
 ### Changed

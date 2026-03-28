@@ -1,7 +1,7 @@
 # PLAN
 
 ## Current Phase
-- Phase: `Documentation Audit`
+- Phase: `Admin Bot Panel`
 - Status: `complete`
 
 ## Execution Phases
@@ -207,6 +207,7 @@
 - v0.22.1: SL buffer + max SL distance cap, market snapshot at entry (migration V7)
 - v0.22.2: Breakeven diagnostic logging, parse fix for `is_now` flag
 - v0.22.3: Full documentation audit — 8 docs rewritten/updated, R11 milestone added to ROADMAP
+- v0.23.0: Telegram Bot API admin panel — `core/admin_bot.py`, inline keyboard order management, alert/debug routing via Bot API, `telegram_alerter.py` rewritten
 
 
 

@@ -38,6 +38,7 @@ from core.mt5_watchdog import MT5Watchdog
 from core.message_update_handler import MessageUpdateHandler, UpdateAction
 from core.circuit_breaker import CircuitBreaker, BreakerState
 from core.telegram_alerter import TelegramAlerter
+from core.admin_bot import AdminBot
 from core.daily_risk_guard import DailyRiskGuard
 from core.exposure_guard import ExposureGuard
 from core.position_manager import PositionManager
@@ -134,6 +135,7 @@ class Bot:
         self._start_time: float = 0.0
         self._health = HealthStats()
         self._health_server: HealthCheckServer | None = None
+        self.admin_bot: AdminBot | None = None
 
     def _get_ch_metrics(self, chat_id: str) -> _SessionMetrics:
         """Lazy-init per-channel metrics."""
@@ -208,9 +210,17 @@ class Bot:
             cooldown_seconds=s.runtime.circuit_breaker_cooldown,
         )
 
-        # Telegram Alerter
+        # Admin Bot (Bot API)
+        self.admin_bot = AdminBot(
+            token=s.telegram.bot_token,
+            admin_id=s.telegram.bot_admin_id,
+            magic=s.execution.bot_magic_number,
+            command_executor=None,  # set after command_executor init
+        )
+
+        # Telegram Alerter — routes through Admin Bot
         self.alerter = TelegramAlerter(
-            admin_chat=s.telegram.admin_chat,
+            admin_bot=self.admin_bot,
             cooldown_seconds=s.runtime.alert_cooldown_seconds,
         )
 
@@ -316,6 +326,10 @@ class Bot:
         self.command_executor = CommandExecutor(
             magic=s.execution.bot_magic_number,
         )
+
+        # Wire command executor to admin bot (deferred from init)
+        if self.admin_bot:
+            self.admin_bot._command_executor = self.command_executor
 
         # Reply Parser + Executor
         self.reply_parser = ReplyActionParser()
@@ -1602,9 +1616,9 @@ class Bot:
         # Start Telegram listener
         await self.listener.start()
 
-        # Share Telethon client with alerter
-        if self.listener.client:
-            self.alerter.set_client(self.listener.client)
+        # Start Admin Bot (Bot API polling)
+        if self.admin_bot:
+            await self.admin_bot.start()
 
         # Start background services
         if not dry_run:
@@ -1715,6 +1729,8 @@ class Bot:
             await self.watchdog.stop()
         if self.lifecycle_mgr:
             await self.lifecycle_mgr.stop()
+        if self.admin_bot:
+            await self.admin_bot.stop()
         if self.listener:
             await self.listener.stop()
         if self.executor and not self.settings.runtime.dry_run:

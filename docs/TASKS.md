@@ -1,9 +1,20 @@
 # TASKS
 
 ## Current Phase
-- `Documentation Audit` ✅ COMPLETE (v0.22.3)
+- `Admin Bot Panel` ✅ COMPLETE (v0.23.0)
 
-### v0.22.3 — Documentation Audit
+### v0.23.0 — Telegram Bot API Admin Panel
+- [x] Create `core/admin_bot.py` — Bot API handler, inline keyboards, security guard
+- [x] Rewrite `core/telegram_alerter.py` — route all output through Bot API
+- [x] Modify `main.py` — wire AdminBot into startup/shutdown lifecycle
+- [x] Modify `config/settings.py` — add `bot_token`, `bot_admin_id`
+- [x] Update `.env.example` — add `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_ADMIN_ID`
+- [x] Update `requirements.txt` — add `python-telegram-bot>=20.0`
+- [x] Update CHANGELOG.md — v0.23.0
+- [x] Update TASKS.md
+
+## Previous Phase
+- `Documentation Audit` ✅ COMPLETE (v0.22.3)
 - [x] Read all 27+ core modules to identify documentation gaps
 - [x] Rewrite `docs/ARCHITECTURE.md` — added 6 missing modules, updated dashboard structure, expanded API endpoints (8→20), corrected data contracts, storage migrations (V1-V7)
 - [x] Rewrite `docs/OBSERVABILITY.md` — added 7 new event sections, corrected trailing alert threshold (5→10)

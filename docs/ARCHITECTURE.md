@@ -48,12 +48,23 @@
 > The system uses a Telethon user session rather than a Telegram Bot API
 > to ensure it can read messages from private groups and signal channels.
 
+### `core/admin_bot.py` (v0.23.0)
+- Telegram Bot API admin control panel using `python-telegram-bot` v20+.
+- `/start` or `/menu` → inline keyboard with 4 action buttons.
+- Actions: list open positions, list pending orders, cancel all pending, close all.
+- Destructive actions require confirmation step (⚠️ Confirm / ↩️ Abort).
+- Security: all handlers restricted to `TELEGRAM_BOT_ADMIN_ID`.
+- Background polling via `Application.start_polling()`.
+- Public API: `send_message(text)` — used by `TelegramAlerter` to route output.
+- Lifecycle: `start()` / `stop()` managed by `main.py`.
+
 ### `core/telegram_alerter.py`
-- Send critical alerts to admin Telegram chat.
+- Send critical alerts to admin via **Bot API** (through `AdminBot`).
 - Rate-limited per `alert_type` with configurable cooldown.
 - Methods: `send_alert()`, `send_debug()` (no rate limiting), `reply_to_message()`.
 - Sync wrappers: `send_alert_sync()`, `send_debug_sync()`, `reply_to_message_sync()`.
-- Admin entity cached (invalidated on client change).
+- v0.23.0: Telethon dependency removed. All output routed through `AdminBot.send_message()`.
+- `reply_to_message()` sends PnL as flat message to admin bot chat (no longer reply-under-signal).
 
 ### `core/circuit_breaker.py`
 - Circuit breaker pattern for trade execution safety.

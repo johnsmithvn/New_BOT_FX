@@ -58,6 +58,8 @@ class TelegramConfig:
     source_chats: list[str | int]
     admin_chat: str | int
     session_reset_hours: int
+    bot_token: str              # Bot API token from @BotFather
+    bot_admin_id: int           # Numeric Telegram user ID for security
 
 
 @dataclass(frozen=True)
@@ -181,6 +183,8 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         source_chats=source_chats,
         admin_chat=admin_chat,
         session_reset_hours=_env_int("SESSION_RESET_HOURS", 12),
+        bot_token=_env("TELEGRAM_BOT_TOKEN", ""),
+        bot_admin_id=_env_int("TELEGRAM_BOT_ADMIN_ID", 0),
     )
 
     mt5 = MT5Config(

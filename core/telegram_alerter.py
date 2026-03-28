@@ -1,45 +1,47 @@
 """
 core/telegram_alerter.py
 
-Send critical alerts to admin Telegram chat.
+Send critical alerts to admin via Telegram Bot API.
 Rate-limited to prevent spam.
+
+v0.23.0: Migrated from Telethon user session to Bot API (AdminBot).
+Telethon no longer needed for alert/debug/PnL.
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
-
-from telethon import TelegramClient
+from typing import TYPE_CHECKING
 
 from utils.logger import log_event
 
+if TYPE_CHECKING:
+    from core.admin_bot import AdminBot
+
 
 class TelegramAlerter:
-    """Send alerts to an admin Telegram chat.
+    """Send alerts to admin via Telegram Bot API.
 
     Features:
     - Rate limiting via cooldown to prevent spam.
     - Non-blocking: alerts queued and sent asynchronously.
     - Graceful degradation: alert failures don't crash the bot.
+    - Routes all messages through AdminBot (Bot API).
     """
 
     def __init__(
         self,
-        client: TelegramClient | None = None,
-        admin_chat: str | int = "",
+        admin_bot: AdminBot | None = None,
         cooldown_seconds: int = 300,
     ) -> None:
-        self._client = client
-        self._admin_chat = admin_chat
+        self._bot = admin_bot
         self._cooldown = cooldown_seconds
         self._last_alert_times: dict[str, float] = {}
-        self._admin_entity = None  # Cached entity for admin chat
 
-    def set_client(self, client: TelegramClient) -> None:
-        """Set the Telethon client (shared with listener)."""
-        self._client = client
-        self._admin_entity = None  # Invalidate cache on client change
+    def set_bot(self, bot: AdminBot) -> None:
+        """Set or update the AdminBot instance."""
+        self._bot = bot
 
     def _is_rate_limited(self, alert_type: str) -> bool:
         """Check if this alert type is rate-limited."""
@@ -51,15 +53,15 @@ class TelegramAlerter:
         return False
 
     async def send_alert(self, alert_type: str, message: str) -> None:
-        """Send an alert message to admin chat.
+        """Send an alert message to admin via Bot API.
 
         Rate-limited per alert_type.
         """
-        if not self._client or not self._admin_chat:
+        if not self._bot:
             log_event(
                 "alert_skipped",
                 alert_type=alert_type,
-                reason="no client or admin chat configured",
+                reason="no admin bot configured",
             )
             return
 
@@ -72,14 +74,8 @@ class TelegramAlerter:
             return
 
         try:
-            entity = await self._resolve_admin_entity()
-            if not entity:
-                return
-            await self._client.send_message(entity, message, parse_mode="md")
-            log_event(
-                "alert_sent",
-                alert_type=alert_type,
-            )
+            await self._bot.send_message(message)
+            log_event("alert_sent", alert_type=alert_type)
         except Exception as exc:
             log_event(
                 "alert_send_failed",
@@ -103,16 +99,13 @@ class TelegramAlerter:
     # ── Debug methods (no rate limiting) ─────────────────────────
 
     async def send_debug(self, message: str) -> None:
-        """Send a debug message to admin chat — NO rate limiting."""
-        if not self._client or not self._admin_chat:
-            log_event("debug_skipped", reason="no client or admin chat configured")
+        """Send a debug message to admin — NO rate limiting."""
+        if not self._bot:
+            log_event("debug_skipped", reason="no admin bot configured")
             return
 
         try:
-            entity = await self._resolve_admin_entity()
-            if not entity:
-                return
-            await self._client.send_message(entity, message, parse_mode="md")
+            await self._bot.send_message(message)
             log_event("debug_sent")
         except Exception as exc:
             log_event("debug_send_failed", error=str(exc))
@@ -125,27 +118,23 @@ class TelegramAlerter:
         except RuntimeError:
             log_event("debug_skipped", reason="no event loop")
 
-    # ── Reply-to methods (trade outcome) ─────────────────────────
+    # ── Reply-to methods (PnL tracking) ──────────────────────────
 
     async def reply_to_message(
         self, chat_id: str | int, message_id: int, text: str,
     ) -> None:
-        """Reply to a specific message in a chat. No rate limiting.
+        """Send PnL result to admin bot chat.
 
-        Used by TradeTracker to reply with PnL under the original signal.
+        Note: In v0.23.0+, this no longer replies under the original signal
+        in the source channel. Instead, the PnL message is sent as a flat
+        message to the admin bot chat.
         """
-        if not self._client:
-            log_event("reply_skipped", reason="no client")
+        if not self._bot:
+            log_event("reply_skipped", reason="no admin bot configured")
             return
 
         try:
-            # reply_to uses per-chat entity (not cached admin)
-            # Telethon needs int for numeric chat IDs
-            resolved_id = int(chat_id) if isinstance(chat_id, str) and chat_id.lstrip("-").isdigit() else chat_id
-            entity = await self._client.get_entity(resolved_id)
-            await self._client.send_message(
-                entity, text, reply_to=message_id, parse_mode="md",
-            )
+            await self._bot.send_message(text)
             log_event(
                 "reply_sent",
                 chat_id=str(chat_id),
@@ -168,20 +157,3 @@ class TelegramAlerter:
             loop.create_task(self.reply_to_message(chat_id, message_id, text))
         except RuntimeError:
             log_event("reply_skipped", reason="no event loop")
-
-    # ── Entity resolution (cached) ────────────────────────────────
-
-    async def _resolve_admin_entity(self):
-        """Resolve and cache the admin chat entity.
-
-        Avoids calling get_entity() on every alert.
-        Cache is invalidated on client change via set_client().
-        """
-        if self._admin_entity is not None:
-            return self._admin_entity
-        try:
-            self._admin_entity = await self._client.get_entity(self._admin_chat)
-            return self._admin_entity
-        except Exception as exc:
-            log_event("admin_entity_resolve_failed", error=str(exc))
-            return None

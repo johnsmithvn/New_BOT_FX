@@ -2,7 +2,7 @@
 
 ## Project Overview
 - Name: `telegram-mt5-bot`
-- Version: `v0.22.3`
+- Version: `v0.23.0`
 - Goal: Run a low-latency Python bot that reads Telegram trading signals and executes MT5 orders safely.
 - Scope: Single-process runtime, signal-to-trade automation, operational reliability, channel-driven multi-order strategy, web analytics dashboard.
 
@@ -97,6 +97,10 @@ Signal trace must be possible using a unique signal fingerprint across logs and 
 - Dashboard V1: FastAPI + Jinja2 (3 pages, 7 API endpoints) (v0.12.0)
 - Dashboard V2: React SPA (7 pages, 20 API endpoints, signal lifecycle, cascade delete) (v0.15.0–v0.16.2)
 - Unified launcher `run.py` (bot/dash/v2/combo modes) (v0.14.0)
+- Telegram Bot API admin panel with inline keyboard order management (v0.23.0):
+  - List open positions, list pending orders
+  - Cancel all pending / close all (with confirmation)
+  - All alerts/debug/PnL routed through Bot API
 
 ## Users
 - Primary: Solo or small-team discretionary traders using Telegram signal channels.
