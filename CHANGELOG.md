@@ -23,6 +23,7 @@
 - `.env` — 2 new env vars
 - `.env.example` — 2 new env vars
 - `docs/STRATEGY_CONFIG_GUIDE.md` — NEW: unified strategy configuration reference (replaces scattered config docs)
+- `docs/logic/BOT_FLOW_WITH_CURRENT_CONFIG.md` — NEW: exact bot flow trace for each channel with current config
 
 ## 0.23.0 - 2026-03-28
 
