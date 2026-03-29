@@ -147,6 +147,8 @@ Mọi cấu hình hệ thống đều được bóc tách từ Code Base ra File
 - `BREAKEVEN_LOCK_PIPS`: Quãng phí khóa cọc lãi (Dời về Entry + Lock pips dự phòng trả tiền Comm/Swap).
 - `TRAILING_STOP_PIPS`: Khoảng cách rượt đuổi lãi linh hoạt đằng sau đích của giá.
 - `PARTIAL_CLOSE_PERCENT`: Đụng TP1 chốt X % Volume thả cho nhịp khác nảy lộc.
+- `PARTIAL_CLOSE_TRIGGER_PIPS`: Số pips lãi để trigger auto partial close (0 = disabled, dùng logic TP1). Khi > 0, override logic TP1-based.
+- `PARTIAL_CLOSE_LOT`: Lot cố định để đóng khi trigger hit (VD: 0.02). Phần còn lại giữ TP + trailing SL bảo vệ.
 - `POSITION_MANAGER_POLL_SECONDS`: Độ nhạy bắt nhịp đập quản trị nuôi lệnh ở đoạn 1.
 
 ### 2.10 System Runtime

@@ -1,4 +1,23 @@
 # CHANGELOG
+## 0.24.0 - 2026-03-29
+
+### Added
+- **Auto partial close at N pips** — new position management mode that closes a fixed lot when unrealized profit reaches a configurable pip threshold
+  - `PARTIAL_CLOSE_TRIGGER_PIPS`: profit pips to trigger (0 = disabled, uses legacy TP1-based logic)
+  - `PARTIAL_CLOSE_LOT`: fixed lot to close when trigger hit (e.g. 0.02)
+  - After close: TP stays as-is, SL stays as-is, trailing SL continues protecting
+  - Each position only triggers once (same `_partially_closed` set)
+  - Guard: `PARTIAL_CLOSE_LOT >= pos.volume` → log warning + skip
+  - When `PARTIAL_CLOSE_TRIGGER_PIPS > 0` and `PARTIAL_CLOSE_LOT > 0`, overrides legacy `PARTIAL_CLOSE_PERCENT` (TP1-based)
+  - Telegram alert: `✂️ Auto Partial Close` with lot/remaining/pips info
+- New log events: `auto_partial_close_executed`, `auto_partial_close_failed`, `partial_close_lot_exceeds_volume`
+
+### Files Modified
+- `config/settings.py` — 2 new fields in SafetyConfig
+- `core/position_manager.py` — new `_apply_partial_close_by_pips()` method, routing logic in `_manage_individual()`
+- `.env` — 2 new env vars
+- `.env.example` — 2 new env vars
+
 ## 0.23.0 - 2026-03-28
 
 ### Added

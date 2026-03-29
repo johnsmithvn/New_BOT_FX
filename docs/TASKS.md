@@ -1,6 +1,20 @@
 # TASKS
 
 ## Current Phase
+- `Auto Partial Close at N Pips` ✅ COMPLETE (v0.24.0)
+
+### v0.24.0 — Auto Partial Close at N Pips
+- [x] `config/settings.py` — add `partial_close_trigger_pips`, `partial_close_lot` to SafetyConfig
+- [x] `core/position_manager.py` — add `_apply_partial_close_by_pips()`, wire into `_manage_individual()`
+- [x] `.env` — add `PARTIAL_CLOSE_TRIGGER_PIPS`, `PARTIAL_CLOSE_LOT`
+- [x] `.env.example` — add same 2 new env vars
+- [x] `docs/ARCHITECTURE.md` — add auto partial close bullet
+- [x] `docs/ENV_BACKGROUND_TASKS.md` — add 2 new env var explanations
+- [x] Update CHANGELOG.md — v0.24.0
+- [x] Update TASKS.md
+- [x] Update PLAN.md
+
+## Previous Phase
 - `Admin Bot Panel` ✅ COMPLETE (v0.23.0)
 
 ### v0.23.0 — Telegram Bot API Admin Panel

@@ -68,6 +68,8 @@ class PositionManager:
         self._breakeven_lock_pips: float = settings.safety.breakeven_lock_pips
         self._trailing_stop_pips: float = settings.safety.trailing_stop_pips
         self._partial_close_percent: int = settings.safety.partial_close_percent
+        self._partial_close_trigger_pips: float = settings.safety.partial_close_trigger_pips
+        self._partial_close_lot: float = settings.safety.partial_close_lot
         self._poll_seconds: int = settings.safety.position_manager_poll_seconds
         self._magic: int = settings.execution.bot_magic_number
 
@@ -212,6 +214,7 @@ class PositionManager:
             self._breakeven_trigger_pips > 0
             or self._trailing_stop_pips > 0
             or self._partial_close_percent > 0
+            or self._partial_close_trigger_pips > 0
         ):
             return True
 
@@ -245,6 +248,8 @@ class PositionManager:
             breakeven_lock_pips=self._breakeven_lock_pips,
             trailing_stop_pips=self._trailing_stop_pips,
             partial_close_percent=self._partial_close_percent,
+            partial_close_trigger_pips=self._partial_close_trigger_pips,
+            partial_close_lot=self._partial_close_lot,
             poll_seconds=self._poll_seconds,
             cached_tickets=len(self._ticket_to_channel),
         )
@@ -314,6 +319,8 @@ class PositionManager:
             "breakeven_lock_pips": self._breakeven_lock_pips,
             "trailing_stop_pips": self._trailing_stop_pips,
             "partial_close_percent": self._partial_close_percent,
+            "partial_close_trigger_pips": self._partial_close_trigger_pips,
+            "partial_close_lot": self._partial_close_lot,
         }
 
         if not self._channel_manager:
@@ -532,8 +539,19 @@ class PositionManager:
             )
 
         # Partial close
+        pc_trigger_pips = rules.get("partial_close_trigger_pips", 0)
+        pc_lot = rules.get("partial_close_lot", 0)
         pc_percent = rules["partial_close_percent"]
-        if pc_percent > 0:
+
+        if pc_trigger_pips > 0 and pc_lot > 0:
+            # New: trigger by pips, close fixed lot
+            self._apply_partial_close_by_pips(
+                mt5, pos, profit_pips, symbol_info,
+                trigger_pips=pc_trigger_pips,
+                close_lot=pc_lot,
+            )
+        elif pc_percent > 0:
+            # Legacy: trigger near TP1, close by percent
             self._apply_partial_close(
                 mt5, pos, profit_pips, symbol_info,
                 close_percent=pc_percent,
@@ -727,6 +745,87 @@ class PositionManager:
             retcode = result.retcode if result else -1
             log_event(
                 "partial_close_failed",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                retcode=retcode,
+            )
+
+    def _apply_partial_close_by_pips(
+        self, mt5, pos, profit_pips: float, symbol_info,
+        trigger_pips: float = 0, close_lot: float = 0,
+    ) -> None:
+        """Close fixed lot when profit reaches N pips.
+
+        After close:
+        - TP stays as-is (let remaining run to TP)
+        - SL stays as-is (trailing will protect)
+        - Each ticket only triggers once (_partially_closed set)
+        """
+        if pos.ticket in self._partially_closed:
+            return
+
+        if profit_pips < trigger_pips:
+            return
+
+        # Guard: can't close more than current volume
+        if close_lot >= pos.volume:
+            log_event(
+                "partial_close_lot_exceeds_volume",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                close_lot=close_lot,
+                current_volume=pos.volume,
+            )
+            return
+
+        # Snap to lot step
+        close_volume = round(
+            round(close_lot / symbol_info.volume_step) * symbol_info.volume_step, 2,
+        )
+        close_volume = max(symbol_info.volume_min, close_volume)
+
+        if close_volume <= 0:
+            return
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": pos.symbol,
+            "volume": close_volume,
+            "type": mt5.ORDER_TYPE_SELL if pos.type == 0 else mt5.ORDER_TYPE_BUY,
+            "position": pos.ticket,
+            "deviation": 20,
+            "magic": self._magic,
+            "comment": f"auto_partial:{pos.ticket}",
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+
+        tick = mt5.symbol_info_tick(pos.symbol)
+        if tick:
+            request["price"] = tick.bid if pos.type == 0 else tick.ask
+
+        result = mt5.order_send(request)
+        if result and result.retcode in (10008, 10009, 10010):
+            self._partially_closed.add(pos.ticket)
+            remaining = round(pos.volume - close_volume, 2)
+            log_event(
+                "auto_partial_close_executed",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                closed_lot=close_volume,
+                remaining_lot=remaining,
+                trigger_pips=trigger_pips,
+                profit_pips=round(profit_pips, 1),
+            )
+            self._send_position_alert(
+                pos.ticket, "auto_partial_close", pos.symbol,
+                f"✂️ **Auto Partial Close** `{pos.symbol}` #{pos.ticket}\n"
+                f"Closed {close_volume} lot at +{round(profit_pips, 1)}p\n"
+                f"Remaining: {remaining} lot (TP + trailing SL)",
+            )
+        else:
+            retcode = result.retcode if result else -1
+            log_event(
+                "auto_partial_close_failed",
                 ticket=pos.ticket,
                 symbol=pos.symbol,
                 retcode=retcode,

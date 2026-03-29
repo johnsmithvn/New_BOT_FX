@@ -319,6 +319,7 @@ Outputs:
 - Breakeven: move SL to entry + lock pips when profit reaches trigger.
 - Trailing stop: trail SL at fixed pip distance from current price.
 - Partial close: close percentage of volume near TP1.
+- Auto partial close (v0.24.0): close fixed lot when profit >= N pips, keep TP + trailing SL.
 - Only manages positions matching bot's magic number.
 - Per-channel rules via `ChannelManager` (v0.6.0)
 - Telegram alerts on breakeven/trailing/partial with per-ticket 60s throttle (v0.7.1)
