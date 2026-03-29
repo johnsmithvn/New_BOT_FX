@@ -599,7 +599,6 @@ class Storage:
             """,
             (peak_pips, peak_price, peak_time, fingerprint),
         )
-        self._conn.commit()
 
     def get_signal_reply_info(
         self, fingerprint: str,

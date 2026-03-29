@@ -249,16 +249,14 @@ class TradeTracker:
         # Determine close reason
         close_reason = self._infer_close_reason(deal)
 
-        # Get entry price from deal
+        # Get entry price from stored order data, if available
         entry_price = None
-        try:
-            import MetaTrader5 as mt5
-            # Look up the opening deal for this position
-            order_price = order.get("price")
-            if order_price:
+        order_price = order.get("price")
+        if order_price is not None:
+            try:
                 entry_price = float(order_price)
-        except Exception:
-            pass
+            except (TypeError, ValueError):
+                entry_price = None
 
         # Get peak profit data from position_manager
         peak_pips = None

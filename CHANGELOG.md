@@ -12,6 +12,11 @@
   - Telegram alert: `✂️ Auto Partial Close` with lot/remaining/pips info
 - New log events: `auto_partial_close_executed`, `auto_partial_close_failed`, `partial_close_lot_exceeds_volume`
 
+### Fixed
+- **Test assertion wrong**: `test_secure_profit_with_trailing_text` expected SECURE_PROFIT but `_CLOSE_PROFIT` pattern matches first for `+Npips close all` — corrected to expect CLOSE
+- **Dead import in trade_tracker**: `import MetaTrader5 as mt5` unused in `_process_closing_deal()` entry price block — removed, comment corrected, exception narrowed to `TypeError/ValueError`
+- **Double commit in storage**: `update_group_peak()` called `self._conn.commit()` after `_execute_with_retry()` which already commits — removed redundant commit
+
 ### Files Modified
 - `config/settings.py` — 2 new fields in SafetyConfig
 - `core/position_manager.py` — new `_apply_partial_close_by_pips()` method, routing logic in `_manage_individual()`

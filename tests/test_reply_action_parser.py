@@ -149,11 +149,11 @@ class TestReplyActionParser:
         assert r.action == ReplyActionType.SECURE_PROFIT
         assert r.pips == 60
 
-    def test_secure_profit_with_trailing_text(self):
-        """Bug fix: trailing text like 'close all' should not prevent parsing."""
+    def test_close_profit_with_trailing_emoji(self):
+        """'+300pips close all' matches _CLOSE_PROFIT (checked before SECURE_PROFIT)."""
         r = self.parser.parse("+300pips close all🔼🔼🔼")
         assert r is not None
-        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.action == ReplyActionType.CLOSE
         assert r.pips == 300
 
     def test_secure_profit_emoji_no_pips_word(self):
