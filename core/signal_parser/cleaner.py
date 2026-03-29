@@ -42,10 +42,14 @@ def clean(raw_text: str, max_length: int = 2000) -> str | None:
 
 
 def _strip_emoji(text: str) -> str:
-    """Remove emoji and pictographic characters."""
+    """Remove emoji and pictographic characters.
+
+    Replaces with space (not empty) so adjacent words don't merge.
+    Example: 'Now🔼BUY' → 'Now BUY' instead of 'NowBUY'.
+    """
     return "".join(
-        ch for ch in text
-        if unicodedata.category(ch) not in ("So", "Sk", "Cs")
+        " " if unicodedata.category(ch) in ("So", "Sk", "Cs") else ch
+        for ch in text
     )
 
 

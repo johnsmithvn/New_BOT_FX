@@ -127,3 +127,82 @@ class TestReplyActionParser:
     def test_raw_text_preserved(self):
         r = self.parser.parse("  SL 2035  ")
         assert r.raw_text == "SL 2035"
+
+    # ── SECURE_PROFIT ─────────────────────────────────────────────
+
+    def test_secure_profit_basic(self):
+        r = self.parser.parse("+30")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 30
+
+    def test_secure_profit_with_pips_word(self):
+        r = self.parser.parse("+ 45 pips")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 45
+
+    def test_secure_profit_with_emoji(self):
+        """Bug fix: trailing emojis should not prevent parsing."""
+        r = self.parser.parse("+60pips🔼🔼🔼")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 60
+
+    def test_close_profit_with_trailing_emoji(self):
+        """'+300pips close all' matches _CLOSE_PROFIT (checked before SECURE_PROFIT)."""
+        r = self.parser.parse("+300pips close all🔼🔼🔼")
+        assert r is not None
+        assert r.action == ReplyActionType.CLOSE
+        assert r.pips == 300
+
+    def test_secure_profit_emoji_no_pips_word(self):
+        """Bug fix: +100pips💫💫💫 should parse."""
+        r = self.parser.parse("+100pips💫💫💫")
+        assert r is not None
+        assert r.action == ReplyActionType.SECURE_PROFIT
+        assert r.pips == 100
+
+    # ── CANCEL ────────────────────────────────────────────────────
+
+    def test_cancel_exact(self):
+        r = self.parser.parse("cancel")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancel_uppercase(self):
+        r = self.parser.parse("CANCEL")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancel_with_trailing_text(self):
+        """v0.22.2: 'Cancel wait😍😍' was not parsed — regex used $ anchor."""
+        r = self.parser.parse("Cancel wait")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancel_all(self):
+        r = self.parser.parse("cancel all")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_miss_as_cancel(self):
+        r = self.parser.parse("miss")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_skip_as_cancel(self):
+        r = self.parser.parse("skip")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancell_double_l(self):
+        r = self.parser.parse("cancell")
+        assert r is not None
+        assert r.action == ReplyActionType.CANCEL
+
+    def test_cancelled_not_matched(self):
+        """'cancelled' should NOT match — word boundary after 'cancel' excludes it."""
+        r = self.parser.parse("cancelled the order")
+        assert r is None
+

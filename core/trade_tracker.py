@@ -42,11 +42,13 @@ class TradeTracker:
         alerter: TelegramAlerter,
         magic_number: int,
         poll_seconds: int = 30,
+        position_manager=None,
     ) -> None:
         self._storage = storage
         self._alerter = alerter
         self._magic = magic_number
         self._poll_seconds = poll_seconds
+        self._position_manager = position_manager
         self._poll_task: asyncio.Task | None = None
         self._cleanup_task: asyncio.Task | None = None
         # Throttle partial close replies: {position_id: last_reply_epoch}
@@ -247,6 +249,26 @@ class TradeTracker:
         # Determine close reason
         close_reason = self._infer_close_reason(deal)
 
+        # Get entry price from stored order data, if available
+        entry_price = None
+        order_price = order.get("price")
+        if order_price is not None:
+            try:
+                entry_price = float(order_price)
+            except (TypeError, ValueError):
+                entry_price = None
+
+        # Get peak profit data from position_manager
+        peak_pips = None
+        peak_price = None
+        peak_time = None
+        if self._position_manager and base_fp:
+            peak = self._position_manager.get_group_peak(base_fp)
+            if peak:
+                peak_pips = peak["pips"]
+                peak_price = peak["price"]
+                peak_time = peak["time"]
+
         # Store trade in DB (deal_ticket UNIQUE prevents double-processing)
         row_id = self._storage.store_trade(
             ticket=deal.position_id,
@@ -262,6 +284,10 @@ class TradeTracker:
             close_reason=close_reason,
             source_chat_id=source_chat_id,
             source_message_id=source_message_id,
+            entry_price=entry_price,
+            peak_pips=peak_pips,
+            peak_price=peak_price,
+            peak_time=peak_time,
         )
 
         if row_id is None:
@@ -276,6 +302,7 @@ class TradeTracker:
             pnl=deal.profit,
             volume=deal.volume,
             channel_id=channel_id,
+            peak_pips=peak_pips,
         )
 
         # Suppress PnL reply if ticket was closed via reply command
@@ -330,16 +357,46 @@ class TradeTracker:
     def _resolve_order(self, position_id: int) -> dict | None:
         """Resolve MT5 position_id to a DB order.
 
-        Two-step lookup:
+        Three-step lookup:
         1. Direct match: orders.ticket == position_id (MARKET orders)
         2. Position ticket match: orders.position_ticket == position_id (filled pending)
+        3. Fallback: Query MT5 history for the opening order and match by order ticket
         """
         order = self._storage.get_order_by_ticket(position_id)
         if order:
             return order
 
         order = self._storage.get_order_by_position_ticket(position_id)
-        return order
+        if order:
+            return order
+
+        # Fallback: look up the original order via MT5 history
+        try:
+            import MetaTrader5 as mt5
+            history = mt5.history_orders_get(position=position_id)
+            if history:
+                for h_order in history:
+                    if h_order.magic == self._magic:
+                        db_order = self._storage.get_order_by_ticket(h_order.ticket)
+                        if db_order:
+                            # Update mapping for future lookups
+                            self._storage.update_position_ticket(
+                                h_order.ticket, position_id,
+                            )
+                            log_event(
+                                "trade_tracker_resolved_via_history",
+                                order_ticket=h_order.ticket,
+                                position_id=position_id,
+                            )
+                            return db_order
+        except Exception as exc:
+            log_event(
+                "trade_tracker_history_lookup_error",
+                position_id=position_id,
+                error=str(exc),
+            )
+
+        return None
 
     def _infer_close_reason(self, deal) -> str:
         """Infer why this deal was executed."""
@@ -390,13 +447,8 @@ class TradeTracker:
         )
 
         try:
-            msg_id = int(source_message_id) if source_message_id else None
-            if msg_id:
-                await self._alerter.reply_to_message(
-                    source_chat_id, msg_id, message,
-                )
-            else:
-                await self._alerter.send_debug(message)
+            # Send PnL to admin chat (bot has no posting rights in source channel)
+            await self._alerter.send_debug(message)
         except Exception as exc:
             log_event(
                 "trade_tracker_reply_failed",

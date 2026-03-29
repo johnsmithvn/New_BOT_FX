@@ -1,4 +1,216 @@
 # CHANGELOG
+## 0.24.0 - 2026-03-29
+
+### Added
+- **Auto partial close at N pips** — new position management mode that closes a fixed lot when unrealized profit reaches a configurable pip threshold
+  - `PARTIAL_CLOSE_TRIGGER_PIPS`: profit pips to trigger (0 = disabled, uses legacy TP1-based logic)
+  - `PARTIAL_CLOSE_LOT`: fixed lot to close when trigger hit (e.g. 0.02)
+  - After close: TP stays as-is, SL stays as-is, trailing SL continues protecting
+  - Each position only triggers once (same `_partially_closed` set)
+  - Guard: `PARTIAL_CLOSE_LOT >= pos.volume` → log warning + skip
+  - When `PARTIAL_CLOSE_TRIGGER_PIPS > 0` and `PARTIAL_CLOSE_LOT > 0`, overrides legacy `PARTIAL_CLOSE_PERCENT` (TP1-based)
+  - Telegram alert: `✂️ Auto Partial Close` with lot/remaining/pips info
+- New log events: `auto_partial_close_executed`, `auto_partial_close_failed`, `partial_close_lot_exceeds_volume`
+
+### Fixed
+- **Test assertion wrong**: `test_secure_profit_with_trailing_text` expected SECURE_PROFIT but `_CLOSE_PROFIT` pattern matches first for `+Npips close all` — corrected to expect CLOSE
+- **Dead import in trade_tracker**: `import MetaTrader5 as mt5` unused in `_process_closing_deal()` entry price block — removed, comment corrected, exception narrowed to `TypeError/ValueError`
+- **Double commit in storage**: `update_group_peak()` called `self._conn.commit()` after `_execute_with_retry()` which already commits — removed redundant commit
+
+### Files Modified
+- `config/settings.py` — 2 new fields in SafetyConfig
+- `core/position_manager.py` — new `_apply_partial_close_by_pips()` method, routing logic in `_manage_individual()`
+- `.env` — 2 new env vars
+- `.env.example` — 2 new env vars
+- `docs/STRATEGY_CONFIG_GUIDE.md` — NEW: unified strategy configuration reference (replaces scattered config docs)
+- `docs/logic/BOT_FLOW_WITH_CURRENT_CONFIG.md` — NEW: exact bot flow trace for each channel with current config
+
+## 0.23.0 - 2026-03-28
+
+### Added
+- **Telegram Bot API admin panel** (`core/admin_bot.py`) — interactive inline keyboard for order management
+  - `/start` or `/menu` → 4-button admin panel
+  - 📋 List open positions (symbol, side, volume, PnL, ticket)
+  - ⏳ List pending orders (symbol, type, price, age, ticket)
+  - ❌ Cancel all pending orders (with confirmation step)
+  - 🔴 Close all orders (with confirmation step)
+  - Security: restricted to `TELEGRAM_BOT_ADMIN_ID` only
+- New env vars: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_ADMIN_ID`
+- New dependency: `python-telegram-bot>=20.0`
+
+### Changed
+- **`telegram_alerter.py` rewritten** — all alerts/debug/PnL now route through Bot API instead of Telethon user session
+  - Removed Telethon dependency from alerter
+  - `reply_to_message()` now sends to admin bot chat (flat message, no longer reply-under-signal)
+  - `set_client()` removed, replaced by `set_bot()`
+- **`main.py`** — AdminBot wired into component initialization, startup, and shutdown lifecycle
+- **`settings.py`** — added `bot_token` and `bot_admin_id` to `TelegramConfig`
+
+### Files Modified
+- `core/admin_bot.py` — NEW
+- `core/telegram_alerter.py` — rewritten (Bot API transport)
+- `main.py` — AdminBot wiring
+- `config/settings.py` — 2 new config fields
+- `.env.example` — 2 new env vars
+- `requirements.txt` — python-telegram-bot added
+
+## 0.22.3 - 2026-03-27
+
+### Changed
+- **ARCHITECTURE.md rewrite** — entire document rewritten to match v0.22.2 codebase state:
+  - Added 6 undocumented modules: `core/models.py`, `core/health.py`, `core/circuit_breaker.py`, `core/telegram_alerter.py`, `core/reply_action_parser.py`, `run.py`
+  - Updated dashboard structure: `dashboard/` → `dashboard/api/routes.py` + `dashboard/db/queries.py`
+  - Expanded API endpoints table from 8 to 20 endpoints
+  - Corrected data contracts: added `entry_range`, `is_now`, `parse_confidence`, `parse_source` on `ParsedSignal`
+  - Updated data flow from 8 to 12 steps
+  - Updated storage migrations V1–V4 → V1–V7
+  - Updated position manager: trailing alert threshold 5→10, peak profit tracking, P10 group management details
+  - Added pipeline features: G2 default SL, SL buffer, SL cap, force MARKET re-entries
+  - Added reply action types: SECURE_PROFIT, CANCEL, CLOSE_PROFIT
+  - Added Dashboard V2 section with full page list, chart toggle, signal lifecycle, unit tests
+- **OBSERVABILITY.md rewrite** — added 7 new event sections:
+  - Message Delete events (v0.11.0)
+  - Pipeline Guard events (v0.19.0–v0.22.1): `default_sl_generated`, `sl_distance_capped`, `sl_buffer_applied`, `entry_skipped_sl_too_close`
+  - Peak Profit events (v0.22.0): `group_peak_updated`, `group_peak_final`
+  - Health & Infrastructure events: health server, circuit breaker state, position manager lifecycle, alert system, schema migrations
+  - Expanded existing sections with missing events
+  - Corrected trailing alert threshold documentation (5→10 pips)
+- **DASHBOARD_FEATURES.md** — fixed 7 outdated API response formats:
+  - `/api/overview` response: added `total_signals`, `total_swap`, `total_pnl`, `last_trade_time`
+  - `/api/active` response: added `fingerprint`, `entry_prices`, `current_group_sl`, `sl_mode`, `created_at`
+  - 4 DELETE endpoints: corrected response format to `{ok: true, deleted: {...}}`
+  - Settings version corrected (v0.16.6 → v0.16.2 hardcoded)
+- **ENV_BACKGROUND_TASKS.md** — added 3 missing background tasks (TradeTracker, Heartbeat, HealthCheckServer), 10+ missing env vars, new sections (Exposure Guard, Dashboard, Watchdog)
+- **FLOW_AND_SETUP_GUIDE.md** — version v0.16.6→v0.22.3, added 7 strategy keys (v0.19.0), 8 rules keys (v0.10.0–v0.19.0), `per_entry` volume split, expanded decision table (+5 rows), expanded file structure (+14 entries)
+- **MONITORING.md** — corrected trailing threshold 5→10 pips, removed dead alerts (`bot_started`/`bot_stopped`), added 8 new alerts (group, secure profit, SL breach, peak, health), expanded log queries, added health endpoint to data sources
+- **ROADMAP.md** — added R11 milestone (Trading Logic Hardening & Observability v0.19.0–v0.22.x)
+- **PLAN.md** — updated current phase to Documentation Audit, added v0.19.1–v0.22.3 to Done list (+7 entries)
+- **PROJECT.md** — version v0.16.6→v0.22.3, added 20+ feature lines (reply actions, pipeline guards, peak profit, dashboard, health endpoint), expanded tech stack
+- **LOGIC_PIPELINE_DEEP_DIVE.md** — added 4 missing ParsedSignal fields (`entry_range`, `is_now`, `parse_confidence`, `parse_source`), added v0.19.0+ pipeline guard notice (G1-G12)
+
+### Files Modified
+- `docs/ARCHITECTURE.md` — full rewrite
+- `docs/OBSERVABILITY.md` — full rewrite
+- `docs/DASHBOARD_FEATURES.md` — API response corrections
+- `docs/ENV_BACKGROUND_TASKS.md` — full rewrite
+- `docs/FLOW_AND_SETUP_GUIDE.md` — version + config key updates
+- `docs/MONITORING.md` — alert catalog + log queries update
+- `docs/ROADMAP.md` — R11 milestone added
+- `docs/PLAN.md` — phase + Done list update
+- `docs/PROJECT.md` — version + features + tech stack update
+- `docs/logic/LOGIC_PIPELINE_DEEP_DIVE.md` — ParsedSignal + guards update
+
+## 0.22.2 - 2026-03-27
+
+### Changed
+- **Breakeven diagnostic logging** — `reply_breakeven_fail` and `reply_breakeven_ok` log events now include `entry`, `new_sl`, `bid`, `ask`, `lock_pips` fields for post-mortem analysis. Previously only logged `ticket` and `retcode`, making it impossible to determine why MT5 rejected the SL modification (e.g. retcode 10016 INVALID_STOPS).
+- **Secure profit diagnostics** — `secure_profit_single` log event now includes `be_result` (success/fail string from executor), `bid`, `ask` so breakeven failures during `+pip` reply are immediately visible without cross-referencing logs.
+
+### Fixed
+- **Critical: Emoji-adjacent keywords not parsed** — `_strip_emoji()` in `cleaner.py` deleted emoji characters, merging adjacent words (e.g. `Now🔼BUY` → `NowBUY`). `\bBUY\b` regex then failed to match. Fix: replace emoji with space instead of empty string (`Now🔼BUY` → `Now BUY`).
+- **Typo-tolerant side detection** — Added fuzzy matching for common BUY/SELL typos: `SEL`, `SELLL`, `SEEL`, `SSEL`, `SSELL`, `SEELL` → SELL; `BBUY`, `BUUY`, `BYU` → BUY. Intentionally excludes `BY`/`BU` to avoid false positives.
+- **Cancel reply with trailing text** — `_CANCEL` regex used `$` (full string match) so `Cancel wait😍😍` was ignored as `reply_not_action`. Changed to `\b` (word boundary) to allow trailing words.
+- **Entry detector didn't recognize typo side keywords** — `entry_detector.py` had its own `BUY|SELL` regex that didn't include `SEL` and other typos. Side was detected correctly but entry price extraction failed. Unified side keywords via shared `_SIDE_KW` constant.
+- **SECURE_PROFIT/CANCEL unhandled in executor** — `reply_command_executor.execute()` had no case for `SECURE_PROFIT` or `CANCEL`, falling through to `Unknown action`. Added handlers: `SECURE_PROFIT` → breakeven, `CANCEL` → no-op for open positions.
+
+### Files Modified
+- `core/reply_command_executor.py` — `_breakeven()` method enhanced logging
+- `core/position_manager.py` — `secure_profit_group()` single-order branch enhanced logging
+- `core/signal_parser/cleaner.py` — `_strip_emoji()` replaces with space instead of empty string
+- `core/signal_parser/side_detector.py` — Added `SEL` alias for `SELL`
+- `core/signal_parser/entry_detector.py` — Unified side keywords via `_SIDE_KW` constant
+- `core/reply_action_parser.py` — `_CANCEL` regex relaxed to allow trailing text
+
+## 0.22.1 - 2026-03-26
+
+### Fixed
+- **Peak profit tracking** — `_update_group_peak()` and `get_group_peak()` were never implemented in `position_manager.py` despite being called at line 511 and referenced by `trade_tracker.py`. All 17 trades had `peak_pips: NULL`. Now properly tracks and persists peak unrealized P&L per group.
+- **Phantom trades** — `trade_tracker._resolve_order()` now has 3-step lookup (ticket → position_ticket → MT5 history). Previously LIMIT orders that filled created orphan trades with `position_ticket: None` (50% of all orders).
+
+### Added
+- **SL buffer** — `strategy.sl_buffer_pips` widens SL by N pips away from entry to avoid spike-triggered SL hits. BUY: SL moves lower, SELL: SL moves higher. Uses `estimate_pip_size()` for consistent pip units. Applied in both `execute_signal_plans()` and `handle_reentry()` paths. Default: 0 (disabled). Logged as `sl_buffer_applied` event.
+- **Max SL distance cap** — `strategy.max_sl_distance_pips` caps SL when signal SL is too far from entry. If SL distance > N pips, replaces SL with `default_sl_pips_from_zone`. Applied BEFORE `sl_buffer_pips`. Default: 0 (disabled). Logged as `sl_distance_capped` event.
+- DB migration V7: `orders.volume`, `orders.bid`, `orders.ask` columns for market snapshot at entry time
+- `store_order()` now accepts `volume`, `bid`, `ask` params — all 5 pipeline call sites updated
+- MT5 `history_orders_get(position=)` fallback in `_resolve_order()` with auto position_ticket backfill
+
+### Files Modified
+- `core/position_manager.py` — added `_update_group_peak()`, `get_group_peak()`
+- `core/storage.py` — V7 migration, `store_order()` expanded
+- `core/pipeline.py` — 5 `store_order()` calls updated, `sl_buffer_pips` logic in 2 paths
+- `core/trade_tracker.py` — 3-step `_resolve_order()` with MT5 history fallback
+- `config/channels.json` — added `sl_buffer_pips: 0` to defaults
+
+## 0.22.0 - 2026-03-26
+
+### Added
+- **Peak profit tracking** — position_manager now tracks the highest unrealized P&L per signal group during its lifetime
+- DB migration V6: `signal_groups` and `trades` tables gain `peak_pips`, `peak_price`, `peak_time` columns; `trades` gains `entry_price`
+- `Storage.update_group_peak()` persists peak data periodically (every +10p) and on group completion
+- `PositionManager.get_group_peak()` exposes peak data for trade_tracker integration
+- `trade_tracked` log event now includes `peak_pips` field
+
+### Changed
+- **Log spam reduction** — removed `daily_risk_guard_no_deals` log (was 270×/day), trailing log now only fires when SL moves ≥ 10 pips (was every movement, ~54×/day)
+- `TradeTracker` now accepts `position_manager` param for peak data access
+- `_TRAILING_ALERT_MIN_PIPS` increased from 5 to 10
+
+### Files Modified
+- `core/storage.py` — migration V6, `store_trade()` expanded, `update_group_peak()` added
+- `core/position_manager.py` — `_group_peak` dict, `_update_group_peak()`, `get_group_peak()`, trailing log throttle
+- `core/trade_tracker.py` — peak data + entry_price integration in `_process_closing_deal()`
+- `core/daily_risk_guard.py` — removed noisy `daily_risk_guard_no_deals` log
+- `main.py` — wire `position_manager` into `TradeTracker`
+## 0.21.5 - 2026-03-25
+
+### Changed
+- **Reply parser expanded** — `_SECURE_PROFIT` regex now matches `done Npips` and `near N pips` formats (previously only `+N` prefix)
+- **New `_CLOSE_PROFIT` pattern** — `+Npips close all` and `+Npips close entry XXXX` replies now correctly trigger CLOSE action instead of SECURE_PROFIT
+- Parse priority: CLOSE_PROFIT checked before SECURE_PROFIT to prevent partial match
+
+### Files Modified
+- `core/reply_action_parser.py`
+
+## 0.21.4 - 2026-03-25
+
+### Fixed
+- Fixed bug where `PositionManager` failed to resurrect a `COMPLETED` group when a re-entry order triggered after the original base order had expired or closed. `add_order_to_group()` now properly sets `GroupStatus.ACTIVE` and calls `Storage.reactivate_group_db()`. This ensures group reply commands (`+30pips`, `close`, etc.) work correctly for re-entry orders even if the base order was missed.
+
+### Files Modified
+- `core/position_manager.py`
+- `core/storage.py`
+
+## 0.21.3 - 2026-03-25
+
+### Changed
+- Removed all reply-to-source-channel logic — bot no longer tries to post messages in source signal channels (requires admin privileges). All trade outcomes and reply command results are now sent to admin chat only.
+
+### Files Modified
+- `main.py` — removed 6 `reply_to_message_sync()` calls
+- `core/trade_tracker.py` — PnL reply now uses `send_debug()` (admin chat) instead of `reply_to_message()`
+
+## 0.21.2 - 2026-03-25
+
+### Fixed
+- **Critical: Premature group completion** — `_check_positions()` only checked `mt5.positions_get()` (filled positions) when determining if a group is complete. Pending LIMIT/STOP orders (from `mt5.orders_get()`) were not checked, causing groups to be marked COMPLETED within seconds of registration. This stopped ALL auto SL management (breakeven, trailing) for positions that started as pending orders.
+- Same fix applied to `_restore_groups_from_db()` — pending orders now count as alive during restart recovery.
+
+### Files Modified
+- `core/position_manager.py` — `_check_positions()` and `_restore_groups_from_db()` now check both `positions_get()` AND `orders_get()` before completing a group
+
+## 0.21.1 - 2026-03-25
+
+### Fixed
+- **Critical: Reply handler crash** — `main.py:1346` called `get_channel_rules()` but `ChannelManager` only has `get_rules()`. Crashed ALL reply command execution (SL, close, BE, TP actions) with `AttributeError`.
+- **SECURE_PROFIT regex** — `_SECURE_PROFIT` pattern used `$` anchor which rejected messages with trailing emojis/text (e.g. `+60pips🔼🔼🔼`). Changed to `\b` word boundary.
+- **Trade outcome reply failure** — `telegram_alerter.py` passed string chat_id to Telethon `get_entity()` which requires `int` for numeric peer IDs. Added string→int conversion.
+
+### Files Modified
+- `main.py` — `get_channel_rules()` → `get_rules()`
+- `core/reply_action_parser.py` — `_SECURE_PROFIT` regex `$` → `\b`
+- `core/telegram_alerter.py` — chat_id string→int conversion in `reply_to_message()`
+- `tests/test_reply_action_parser.py` — 5 new SECURE_PROFIT test cases
+
 ## 0.21.0 - 2026-03-24
 
 ### Added

@@ -199,6 +199,22 @@ _MIGRATIONS: dict[int, str] = {
         -- V5: Add symbol column to orders (fixes reply-command lookup)
         ALTER TABLE orders ADD COLUMN symbol TEXT;
     """,
+    6: """
+        -- V6: Peak profit tracking per group and per trade
+        ALTER TABLE signal_groups ADD COLUMN peak_pips REAL;
+        ALTER TABLE signal_groups ADD COLUMN peak_price REAL;
+        ALTER TABLE signal_groups ADD COLUMN peak_time TEXT;
+        ALTER TABLE trades ADD COLUMN peak_pips REAL;
+        ALTER TABLE trades ADD COLUMN peak_price REAL;
+        ALTER TABLE trades ADD COLUMN peak_time TEXT;
+        ALTER TABLE trades ADD COLUMN entry_price REAL;
+    """,
+    7: """
+        -- V7: Market snapshot at order entry (bid/ask/spread + volume)
+        ALTER TABLE orders ADD COLUMN volume REAL;
+        ALTER TABLE orders ADD COLUMN bid REAL;
+        ALTER TABLE orders ADD COLUMN ask REAL;
+    """,
 }
 
 
@@ -359,6 +375,9 @@ class Storage:
         source_chat_id: str = "",
         source_message_id: str = "",
         symbol: str = "",
+        volume: float | None = None,
+        bid: float | None = None,
+        ask: float | None = None,
     ) -> int:
         """Persist an order execution record.
 
@@ -367,18 +386,21 @@ class Storage:
             source_chat_id: Telegram chat ID for reply threading.
             source_message_id: Telegram message ID for reply threading.
             symbol: Trading symbol (e.g. XAUUSD).
+            volume: Lot size executed.
+            bid: Market bid price at order time.
+            ask: Market ask price at order time.
         """
         cursor = self._execute_with_retry(
             """
             INSERT INTO orders
                 (ticket, fingerprint, order_kind, price, sl, tp,
                  retcode, success, channel_id, source_chat_id,
-                 source_message_id, symbol)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 source_message_id, symbol, volume, bid, ask)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ticket, fingerprint, order_kind, price, sl, tp,
              retcode, int(success), channel_id, source_chat_id,
-             source_message_id, symbol),
+             source_message_id, symbol, volume, bid, ask),
         )
         return cursor.lastrowid
 
@@ -528,6 +550,10 @@ class Storage:
         close_reason: str = "",
         source_chat_id: str = "",
         source_message_id: str = "",
+        entry_price: float | None = None,
+        peak_pips: float | None = None,
+        peak_price: float | None = None,
+        peak_time: str | None = None,
     ) -> int | None:
         """Persist a trade outcome (closing deal).
 
@@ -540,20 +566,39 @@ class Storage:
                     (ticket, deal_ticket, fingerprint, channel_id,
                      close_volume, close_price, close_time, pnl,
                      commission, swap, close_reason,
-                     source_chat_id, source_message_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_chat_id, source_message_id,
+                     entry_price, peak_pips, peak_price, peak_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ticket, deal_ticket, fingerprint, channel_id,
                     close_volume, close_price, close_time, pnl,
                     commission, swap, close_reason,
                     source_chat_id, source_message_id,
+                    entry_price, peak_pips, peak_price, peak_time,
                 ),
             )
             return cursor.lastrowid
         except sqlite3.IntegrityError:
             # deal_ticket UNIQUE constraint — already processed
             return None
+
+    def update_group_peak(
+        self,
+        fingerprint: str,
+        peak_pips: float,
+        peak_price: float,
+        peak_time: str,
+    ) -> None:
+        """Update peak profit data for a signal group."""
+        self._execute_with_retry(
+            """
+            UPDATE signal_groups
+            SET peak_pips = ?, peak_price = ?, peak_time = ?
+            WHERE fingerprint = ?
+            """,
+            (peak_pips, peak_price, peak_time, fingerprint),
+        )
 
     def get_signal_reply_info(
         self, fingerprint: str,
@@ -770,6 +815,15 @@ class Storage:
         self._execute_with_retry(
             """UPDATE signal_groups
                SET status = 'completed', updated_at = datetime('now')
+               WHERE fingerprint = ?""",
+            (fingerprint,),
+        )
+
+    def reactivate_group_db(self, fingerprint: str) -> None:
+        """Mark a signal group as active in DB (resurrection on re-entry)."""
+        self._execute_with_retry(
+            """UPDATE signal_groups
+               SET status = 'active', updated_at = datetime('now')
                WHERE fingerprint = ?""",
             (fingerprint,),
         )

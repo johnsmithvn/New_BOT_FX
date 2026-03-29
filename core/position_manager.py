@@ -68,6 +68,8 @@ class PositionManager:
         self._breakeven_lock_pips: float = settings.safety.breakeven_lock_pips
         self._trailing_stop_pips: float = settings.safety.trailing_stop_pips
         self._partial_close_percent: int = settings.safety.partial_close_percent
+        self._partial_close_trigger_pips: float = settings.safety.partial_close_trigger_pips
+        self._partial_close_lot: float = settings.safety.partial_close_lot
         self._poll_seconds: int = settings.safety.position_manager_poll_seconds
         self._magic: int = settings.execution.bot_magic_number
 
@@ -92,7 +94,11 @@ class PositionManager:
         # Alert throttle: (ticket, event_type) -> last_alert_epoch
         self._last_alert_time: dict[tuple[int, str], float] = {}
         self._ALERT_COOLDOWN = 60  # seconds per (ticket, event_type)
-        self._TRAILING_ALERT_MIN_PIPS = 5.0  # only alert if SL moved >= 5 pips
+        self._TRAILING_ALERT_MIN_PIPS = 10.0  # only alert if SL moved >= 10 pips
+
+        # ── Peak profit tracking per group ───────────────────────
+        # {fingerprint: {"pips": float, "price": float, "time": str}}
+        self._group_peak: dict[str, dict] = {}
 
         # P10g: Restore groups from DB on startup
         # NOTE: Do NOT call _restore_groups_from_db() here — MT5 is not yet
@@ -135,11 +141,16 @@ class PositionManager:
             fp = row["fingerprint"]
             tickets = row.get("tickets", [])
 
-            # Verify at least one ticket is still open
+            # Verify at least one ticket is still open (position or pending order)
             has_open = False
             for ticket in tickets:
                 positions = mt5.positions_get(ticket=ticket)
                 if positions and len(positions) > 0:
+                    has_open = True
+                    break
+                # Also check pending orders (LIMIT/STOP not yet filled)
+                orders = mt5.orders_get(ticket=ticket)
+                if orders and len(orders) > 0:
                     has_open = True
                     break
 
@@ -203,6 +214,7 @@ class PositionManager:
             self._breakeven_trigger_pips > 0
             or self._trailing_stop_pips > 0
             or self._partial_close_percent > 0
+            or self._partial_close_trigger_pips > 0
         ):
             return True
 
@@ -236,6 +248,8 @@ class PositionManager:
             breakeven_lock_pips=self._breakeven_lock_pips,
             trailing_stop_pips=self._trailing_stop_pips,
             partial_close_percent=self._partial_close_percent,
+            partial_close_trigger_pips=self._partial_close_trigger_pips,
+            partial_close_lot=self._partial_close_lot,
             poll_seconds=self._poll_seconds,
             cached_tickets=len(self._ticket_to_channel),
         )
@@ -305,6 +319,8 @@ class PositionManager:
             "breakeven_lock_pips": self._breakeven_lock_pips,
             "trailing_stop_pips": self._trailing_stop_pips,
             "partial_close_percent": self._partial_close_percent,
+            "partial_close_trigger_pips": self._partial_close_trigger_pips,
+            "partial_close_lot": self._partial_close_lot,
         }
 
         if not self._channel_manager:
@@ -342,6 +358,7 @@ class PositionManager:
         bot_positions = [p for p in positions if p.magic == self._magic]
         open_tickets = {p.ticket for p in bot_positions}
 
+
         # ── P10: Process groups first (once per group) ───────────
         processed_groups: set[str] = set()
 
@@ -360,12 +377,22 @@ class PositionManager:
             self._manage_individual(mt5, pos)
 
         # ── P10: Detect completed groups (all tickets closed) ────
+        # Must also check pending orders — tickets may be LIMIT/STOP
+        # that haven't filled yet. Only complete group when ticket is
+        # in NEITHER positions_get() NOR orders_get().
+        pending_orders = mt5.orders_get()
+        pending_tickets: set[int] = set()
+        if pending_orders:
+            pending_tickets = {o.ticket for o in pending_orders if o.magic == self._magic}
+
+        all_known_tickets = open_tickets | pending_tickets
+
         for fp in list(self._groups):
             group = self._groups[fp]
             if group.status != GroupStatus.ACTIVE:
                 continue
-            group_open = [t for t in group.tickets if t in open_tickets]
-            if not group_open:
+            group_alive = [t for t in group.tickets if t in all_known_tickets]
+            if not group_alive:
                 self._complete_group(group)
 
         # Cleanup is scheduled daily at 1 AM — see _daily_cleanup_loop()
@@ -485,8 +512,14 @@ class PositionManager:
         else:
             return
 
+        # ── Peak profit tracking ─────────────────────────────────
+        fp = self._ticket_to_group.get(pos.ticket)
+        if fp and profit_pips > 0:
+            self._update_group_peak(fp, profit_pips, current_price)
+
         # Get per-channel rules for this position
         rules = self._get_rules_for_ticket(pos.ticket)
+
 
         # Breakeven
         be_trigger = rules["breakeven_trigger_pips"]
@@ -506,8 +539,19 @@ class PositionManager:
             )
 
         # Partial close
+        pc_trigger_pips = rules.get("partial_close_trigger_pips", 0)
+        pc_lot = rules.get("partial_close_lot", 0)
         pc_percent = rules["partial_close_percent"]
-        if pc_percent > 0:
+
+        if pc_trigger_pips > 0 and pc_lot > 0:
+            # New: trigger by pips, close fixed lot
+            self._apply_partial_close_by_pips(
+                mt5, pos, profit_pips, symbol_info,
+                trigger_pips=pc_trigger_pips,
+                close_lot=pc_lot,
+            )
+        elif pc_percent > 0:
+            # Legacy: trigger near TP1, close by percent
             self._apply_partial_close(
                 mt5, pos, profit_pips, symbol_info,
                 close_percent=pc_percent,
@@ -620,10 +664,12 @@ class PositionManager:
                 new_sl=new_sl,
                 profit_pips=round(profit_pips, 1),
             )
-            # Only alert if SL moved significantly
+            # Only send Telegram alert if SL moved significantly
             pip_size = estimate_pip_size(pos.symbol)
             last_sl = self._last_trailing_sl.get(pos.ticket)
-            if last_sl is None or abs(new_sl - last_sl) / pip_size >= self._TRAILING_ALERT_MIN_PIPS:
+            sl_moved_pips = abs(new_sl - last_sl) / pip_size if last_sl else float("inf")
+
+            if sl_moved_pips >= self._TRAILING_ALERT_MIN_PIPS:
                 self._last_trailing_sl[pos.ticket] = new_sl
                 self._send_position_alert(
                     pos.ticket, "trailing_alert", pos.symbol,
@@ -699,6 +745,87 @@ class PositionManager:
             retcode = result.retcode if result else -1
             log_event(
                 "partial_close_failed",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                retcode=retcode,
+            )
+
+    def _apply_partial_close_by_pips(
+        self, mt5, pos, profit_pips: float, symbol_info,
+        trigger_pips: float = 0, close_lot: float = 0,
+    ) -> None:
+        """Close fixed lot when profit reaches N pips.
+
+        After close:
+        - TP stays as-is (let remaining run to TP)
+        - SL stays as-is (trailing will protect)
+        - Each ticket only triggers once (_partially_closed set)
+        """
+        if pos.ticket in self._partially_closed:
+            return
+
+        if profit_pips < trigger_pips:
+            return
+
+        # Guard: can't close more than current volume
+        if close_lot >= pos.volume:
+            log_event(
+                "partial_close_lot_exceeds_volume",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                close_lot=close_lot,
+                current_volume=pos.volume,
+            )
+            return
+
+        # Snap to lot step
+        close_volume = round(
+            round(close_lot / symbol_info.volume_step) * symbol_info.volume_step, 2,
+        )
+        close_volume = max(symbol_info.volume_min, close_volume)
+
+        if close_volume <= 0:
+            return
+
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": pos.symbol,
+            "volume": close_volume,
+            "type": mt5.ORDER_TYPE_SELL if pos.type == 0 else mt5.ORDER_TYPE_BUY,
+            "position": pos.ticket,
+            "deviation": 20,
+            "magic": self._magic,
+            "comment": f"auto_partial:{pos.ticket}",
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+
+        tick = mt5.symbol_info_tick(pos.symbol)
+        if tick:
+            request["price"] = tick.bid if pos.type == 0 else tick.ask
+
+        result = mt5.order_send(request)
+        if result and result.retcode in (10008, 10009, 10010):
+            self._partially_closed.add(pos.ticket)
+            remaining = round(pos.volume - close_volume, 2)
+            log_event(
+                "auto_partial_close_executed",
+                ticket=pos.ticket,
+                symbol=pos.symbol,
+                closed_lot=close_volume,
+                remaining_lot=remaining,
+                trigger_pips=trigger_pips,
+                profit_pips=round(profit_pips, 1),
+            )
+            self._send_position_alert(
+                pos.ticket, "auto_partial_close", pos.symbol,
+                f"✂️ **Auto Partial Close** `{pos.symbol}` #{pos.ticket}\n"
+                f"Closed {close_volume} lot at +{round(profit_pips, 1)}p\n"
+                f"Remaining: {remaining} lot (TP + trailing SL)",
+            )
+        else:
+            retcode = result.retcode if result else -1
+            log_event(
+                "auto_partial_close_failed",
                 ticket=pos.ticket,
                 symbol=pos.symbol,
                 retcode=retcode,
@@ -837,6 +964,20 @@ class PositionManager:
         group.entry_prices[ticket] = entry_price
         self._ticket_to_group[ticket] = fingerprint
         self.register_ticket(ticket, group.channel_id)
+
+        # Resurrect group if it was completed (e.g. L0 pending expired, but L1 triggered later)
+        if group.status == GroupStatus.COMPLETED:
+            group.status = GroupStatus.ACTIVE
+            if self._storage:
+                try:
+                    self._storage.reactivate_group_db(fingerprint)
+                except Exception as e:
+                    log_event("group_db_reactivate_error", fingerprint=fingerprint, error=str(e))
+            log_event(
+                "group_resurrected",
+                fingerprint=fingerprint,
+                ticket=ticket,
+            )
 
         log_event(
             "group_order_added",
@@ -1050,6 +1191,37 @@ class PositionManager:
                     f"SL → {new_sl}",
                 )
 
+    # ── Peak Profit Tracking ────────────────────────────────────────
+
+    def _update_group_peak(
+        self, fingerprint: str, profit_pips: float, current_price: float,
+    ) -> None:
+        """Update peak profit for a group if current profit exceeds it."""
+        from datetime import datetime, timezone
+
+        existing = self._group_peak.get(fingerprint)
+        if existing is None or profit_pips > existing["pips"]:
+            self._group_peak[fingerprint] = {
+                "pips": round(profit_pips, 1),
+                "price": current_price,
+                "time": datetime.now(timezone.utc).isoformat(),
+            }
+            # Persist periodically (only when new peak exceeds by ≥ 10 pips)
+            if self._storage and (
+                existing is None or profit_pips - existing["pips"] >= 10
+            ):
+                try:
+                    peak = self._group_peak[fingerprint]
+                    self._storage.update_group_peak(
+                        fingerprint, peak["pips"], peak["price"], peak["time"],
+                    )
+                except Exception:
+                    pass  # Non-critical — will persist on group completion
+
+    def get_group_peak(self, fingerprint: str) -> dict | None:
+        """Get peak profit data for a group (used by trade_tracker)."""
+        return self._group_peak.get(fingerprint)
+
     def _complete_group(self, group: OrderGroup) -> None:
         """Mark a group as completed when all tickets are closed.
 
@@ -1058,31 +1230,46 @@ class PositionManager:
         """
         group.status = GroupStatus.COMPLETED
 
+        # ── Peak profit data ─────────────────────────────────────
+        peak = self._group_peak.pop(group.fingerprint, None)
+        peak_pips = peak["pips"] if peak else None
+        peak_time = peak["time"] if peak else None
+
         log_event(
             "group_completed",
             fingerprint=group.fingerprint,
             symbol=group.symbol,
             side=group.side.value if isinstance(group.side, Side) else group.side,
             total_orders=len(group.tickets),
+            peak_pips=round(peak_pips, 1) if peak_pips else None,
+            peak_time=peak_time,
         )
 
         # Clean up reverse lookup
         for ticket in group.tickets:
             self._ticket_to_group.pop(ticket, None)
 
-        # Send completion alert
+        # Send completion alert with peak info
+        peak_info = f"\nPeak: +{peak_pips:.0f}p" if peak_pips else ""
         self._send_group_alert(
             group,
             "group_completed",
             f"📊 **Group completed** `{group.symbol}`\n"
             f"Orders: {len(group.tickets)} | "
-            f"FP: {group.fingerprint[:8]}",
+            f"FP: {group.fingerprint[:8]}{peak_info}",
         )
 
-        # P10g: Mark completed in DB
+        # P10g: Mark completed in DB + persist peak
         if self._storage:
             try:
                 self._storage.complete_group_db(group.fingerprint)
+                if peak:
+                    self._storage.update_group_peak(
+                        group.fingerprint,
+                        peak["pips"],
+                        peak["price"],
+                        peak["time"],
+                    )
             except Exception as e:
                 log_event("group_db_complete_error", fingerprint=group.fingerprint, error=str(e))
 
@@ -1387,15 +1574,21 @@ class PositionManager:
         else:
             # Only 1 order: just set BE
             ticket = open_tickets[0]
+            tick = mt5.symbol_info_tick(group.symbol)
+            bid = tick.bid if tick else 0.0
+            ask = tick.ask if tick else 0.0
             from core.reply_action_parser import ReplyAction, ReplyActionType
             be_action = ReplyAction(action=ReplyActionType.BREAKEVEN)
-            reply_executor.execute(ticket, be_action, dry_run=dry_run)
+            be_result = reply_executor.execute(ticket, be_action, dry_run=dry_run)
             be_tickets.append(ticket)
 
             log_event(
                 "secure_profit_single",
                 fingerprint=fingerprint,
                 be_ticket=ticket,
+                be_result=be_result,
+                bid=bid,
+                ask=ask,
             )
 
         return {
@@ -1537,6 +1730,52 @@ class PositionManager:
             "current_sl": group.current_group_sl,
             "reply_close_strategy": group.reply_close_strategy,
         }
+
+    # ── Peak profit tracking ─────────────────────────────────────
+
+    def _update_group_peak(
+        self, fingerprint: str, profit_pips: float, current_price: float,
+    ) -> None:
+        """Update peak unrealized profit for a group.
+
+        Called every poll cycle from _check_position() when profit > 0.
+        Only updates if current profit exceeds previous peak.
+        Persists to DB for post-trade analysis.
+        """
+        existing = self._group_peak.get(fingerprint)
+        if existing and profit_pips <= existing["pips"]:
+            return  # Not a new peak
+
+        now = datetime.now(timezone.utc).isoformat()
+        self._group_peak[fingerprint] = {
+            "pips": round(profit_pips, 1),
+            "price": current_price,
+            "time": now,
+        }
+
+        # Persist to DB
+        if self._storage:
+            try:
+                self._storage.update_group_peak(
+                    fingerprint, round(profit_pips, 1), current_price, now,
+                )
+            except Exception as exc:
+                log_event(
+                    "peak_persist_error",
+                    fingerprint=fingerprint,
+                    error=str(exc),
+                )
+
+    def get_group_peak(self, fingerprint: str) -> dict | None:
+        """Get peak profit data for a group.
+
+        Called by TradeTracker when recording a closing deal to store
+        the peak unrealized profit alongside the trade record.
+
+        Returns:
+            {"pips": float, "price": float, "time": str} or None
+        """
+        return self._group_peak.get(fingerprint)
 
     def _send_group_alert(
         self, group: OrderGroup, alert_type: str, message: str,

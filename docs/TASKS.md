@@ -1,6 +1,111 @@
 # TASKS
 
 ## Current Phase
+- `Auto Partial Close at N Pips` ✅ COMPLETE (v0.24.0)
+
+### v0.24.0 — Auto Partial Close at N Pips
+- [x] `config/settings.py` — add `partial_close_trigger_pips`, `partial_close_lot` to SafetyConfig
+- [x] `core/position_manager.py` — add `_apply_partial_close_by_pips()`, wire into `_manage_individual()`
+- [x] `.env` — add `PARTIAL_CLOSE_TRIGGER_PIPS`, `PARTIAL_CLOSE_LOT`
+- [x] `.env.example` — add same 2 new env vars
+- [x] `docs/ARCHITECTURE.md` — add auto partial close bullet
+- [x] `docs/ENV_BACKGROUND_TASKS.md` — add 2 new env var explanations
+- [x] Update CHANGELOG.md — v0.24.0
+- [x] Update TASKS.md
+- [x] Update PLAN.md
+
+## Previous Phase
+- `Admin Bot Panel` ✅ COMPLETE (v0.23.0)
+
+### v0.23.0 — Telegram Bot API Admin Panel
+- [x] Create `core/admin_bot.py` — Bot API handler, inline keyboards, security guard
+- [x] Rewrite `core/telegram_alerter.py` — route all output through Bot API
+- [x] Modify `main.py` — wire AdminBot into startup/shutdown lifecycle
+- [x] Modify `config/settings.py` — add `bot_token`, `bot_admin_id`
+- [x] Update `.env.example` — add `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_ADMIN_ID`
+- [x] Update `requirements.txt` — add `python-telegram-bot>=20.0`
+- [x] Update CHANGELOG.md — v0.23.0
+- [x] Update TASKS.md
+
+## Previous Phase
+- `Documentation Audit` ✅ COMPLETE (v0.22.3)
+- [x] Read all 27+ core modules to identify documentation gaps
+- [x] Rewrite `docs/ARCHITECTURE.md` — added 6 missing modules, updated dashboard structure, expanded API endpoints (8→20), corrected data contracts, storage migrations (V1-V7)
+- [x] Rewrite `docs/OBSERVABILITY.md` — added 7 new event sections, corrected trailing alert threshold (5→10)
+- [x] Fix `docs/DASHBOARD_FEATURES.md` — corrected 7 API response formats, added missing response fields
+- [x] Verify `docs/DEBUG_SIGNAL.md` — confirmed accurate against source
+- [x] Rewrite `docs/ENV_BACKGROUND_TASKS.md` — added 3 missing background tasks, 10+ missing env vars, new sections
+- [x] Update `docs/FLOW_AND_SETUP_GUIDE.md` — version v0.16.6→v0.22.3, +7 strategy keys, +8 rules keys, +14 file structure entries
+- [x] Update `docs/MONITORING.md` — corrected trailing threshold, removed dead alerts, added 8 new alert types
+- [x] Update `docs/ROADMAP.md` — added R11 milestone (v0.19.0–v0.22.x)
+- [x] Update `docs/PLAN.md` — current phase to Documentation Audit, +7 Done entries (v0.19.1–v0.22.3)
+- [x] Update `docs/PROJECT.md` — version v0.16.6→v0.22.3, +20 feature lines, expanded tech stack
+- [x] Update `docs/logic/LOGIC_PIPELINE_DEEP_DIVE.md` — +4 ParsedSignal fields, v0.19.0+ guard notice
+- [x] Update CHANGELOG.md — v0.22.3
+- [x] Update TASKS.md
+
+## Previous Phase
+- `Breakeven Diagnostic Logging` ✅ COMPLETE (v0.22.2)
+
+### v0.22.2 — Breakeven Diagnostic Logging + Parse Fixes
+- [x] Add bid/ask/entry/new_sl/lock_pips to `reply_breakeven_fail` and `reply_breakeven_ok` log events (`reply_command_executor.py`)
+- [x] Add be_result/bid/ask to `secure_profit_single` log event (`position_manager.py`)
+- [x] Fix `_strip_emoji()` — replace emoji with space instead of empty string to prevent word merging (`cleaner.py`)
+- [x] Add typo-tolerant side detection: `SEL/SELLL/SEEL/SSEL/SEELL` → SELL, `BBUY/BUUY/BYU` → BUY (`side_detector.py`)
+- [x] Fix `_CANCEL` regex — allow trailing text like `Cancel wait😍😍` (`reply_action_parser.py`)
+- [x] Fix `entry_detector.py` — unify side keywords so `SEL GOLD zone 4427 - 4429` extracts price range correctly
+- [x] Fix `reply_command_executor.py` — add `SECURE_PROFIT` (→ breakeven) and `CANCEL` handlers to `execute()`
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phase
+- `Data Logging Fixes` ✅ COMPLETE (v0.22.1)
+- [x] Fix `_update_group_peak()` and `get_group_peak()` — methods were called but never defined in `position_manager.py`
+- [x] DB Migration V7: `orders.volume`, `orders.bid`, `orders.ask` for market snapshot
+- [x] Update all 5 `store_order()` calls in `pipeline.py` with volume/bid/ask/symbol
+- [x] Fix `trade_tracker._resolve_order()` — 3-step lookup with MT5 history fallback
+- [x] Update CHANGELOG
+- [x] Update TASKS.md
+
+## Previous Phase
+- `Peak Profit Tracking + Log Cleanup` ✅ COMPLETE (v0.22.0)
+
+### v0.22.0 — Peak Profit Tracking + Log Cleanup
+- [x] DB Migration V6: `peak_pips`, `peak_price`, `peak_time` on `signal_groups` + `trades`; `entry_price` on `trades`
+- [x] `PositionManager._group_peak` dict tracks peak P&L per group during poll loop
+- [x] `_complete_group()` persists peak to DB + includes peak in log/alert
+- [x] `TradeTracker._process_closing_deal()` passes peak + entry_price to `store_trade()`
+- [x] Removed `daily_risk_guard_no_deals` log (270×/day spam)
+- [x] Trailing log throttled: only log when SL moves ≥ 10 pips
+- [x] Update CHANGELOG
+
+## Previous Phase
+- `Reply Parser Expansion` ✅ COMPLETE (v0.21.5)
+
+### v0.21.5 — Reply Parser Expansion
+- [x] Expand `_SECURE_PROFIT` regex to match `done Npips`, `near N pips` formats
+- [x] Add `_CLOSE_PROFIT` pattern for `+Npips close all/entry` → CLOSE action
+- [x] Parse priority: CLOSE_PROFIT before SECURE_PROFIT
+- [x] Test 21/21 cases pass
+- [x] Typo audit across codebase — no issues found
+- [x] Update CHANGELOG
+
+## Previous Phase
+- `Bug Fixes` ✅ COMPLETE (v0.21.2)
+
+### v0.21.2 — Premature Group Completion Fix
+- [x] Fix `_check_positions()` — check `orders_get()` (pending) alongside `positions_get()` (filled)
+- [x] Fix `_restore_groups_from_db()` — same pending order check
+- [x] Update CHANGELOG
+
+### v0.21.1 — Reply Handler Bug Fixes
+- [x] Fix `get_channel_rules()` → `get_rules()` typo in `main.py:1346`
+- [x] Fix `_SECURE_PROFIT` regex to handle trailing emojis (`reply_action_parser.py`)
+- [x] Fix `reply_to_message()` chat_id string→int for Telethon (`telegram_alerter.py`)
+- [x] Add 5 new SECURE_PROFIT test cases
+- [x] Update CHANGELOG
+
+## Previous Phase
 - `Codebase Stability Audit` ✅ COMPLETE (v0.19.1)
 
 ### v0.19.1 — Stability Audit (C1-C6, M1-M5)

@@ -1,4 +1,4 @@
-# 🔄 FLOW & SETUP GUIDE — telegram-mt5-bot v0.16.6
+# 🔄 FLOW & SETUP GUIDE — telegram-mt5-bot v0.22.3
 
 > Tài liệu gốc cho user: vẽ chi tiết luồng hoạt động, cấu hình thay đổi luồng, và hướng dẫn setup.
 
@@ -184,6 +184,7 @@ flowchart LR
 | `"equal"` | `[0.02, 0.02, 0.02]` — chia đều |
 | `"pyramid"` | `[0.03, 0.02, 0.01]` — entry đầu lot lớn nhất |
 | `"risk_based"` | Weighted theo khoảng cách SL. Level xa SL → lot lớn hơn (rủi ro/pip thấp hơn) |
+| `"per_entry"` | Mỗi level nhận full `FIXED_LOT_SIZE`. VD: lot=0.01, 3 levels → mỗi level 0.01 (v0.19.0) |
 
 #### `strategy.reentry_step_pips` (chỉ cho scale_in)
 
@@ -192,6 +193,18 @@ flowchart LR
 | `0` | scale_in bị disable → fallback single |
 | `20` | XAUUSD: step = 20 × 0.1 = $2.0. BUY entry=2030 → levels: 2030, 2028, 2026 |
 | `10` | EURUSD: step = 10 × 0.0001 = 0.001. SELL entry=1.0850 → levels: 1.085, 1.086, 1.087 |
+
+#### Các key bổ sung trong `strategy` (v0.19.0–v0.22.1)
+
+| Field | Default | Ảnh hưởng |
+|-------|---------|-----------|
+| `min_sl_distance_pips` | `0` (disabled) | Skip order nếu giá quá gần SL |
+| `default_sl_pips_from_zone` | `0` (disabled) | Tự tạo SL từ zone khi signal không có SL |
+| `max_sl_distance_pips` | `0` (disabled) | Cap SL khi signal SL quá xa entry |
+| `sl_buffer_pips` | `0` (disabled) | Nới rộng SL thêm N pips tránh spike (chỉ cho SL gốc từ signal) |
+| `reentry_tolerance_pips` | `0` (exact) | Cho phép re-entry trigger trong khoảng N pips |
+| `max_reentry_distance_pips` | `0` (disabled) | Skip re-entry nếu giá quá xa level |
+| `execute_all_immediately` | `false` | `true` → tất cả levels đặt LIMIT/STOP ngay lập tức (không dùng RangeMonitor) |
 
 #### `strategy.signal_ttl_minutes`
 
@@ -208,6 +221,14 @@ flowchart LR
 | `breakeven_lock_pips` | `2` | Khi breakeven trigger, SL = entry + lock_pips |
 | `trailing_stop_pips` | `0` (disabled) | SL tự động theo giá với khoảng cách trail |
 | `partial_close_percent` | `0` (disabled) | Đóng N% volume khi giá chạm vùng TP |
+| `group_trailing_pips` | `0` (disabled) | Group trailing SL — trail cả nhóm order theo giá (v0.10.0) |
+| `group_be_on_partial_close` | `true` | Tự set BE cho remaining orders khi partial close trong group |
+| `reply_close_strategy` | `"highest_entry"` | Strategy khi reply "close": `highest_entry`, `lowest_entry`, `oldest` (v0.10.0) |
+| `secure_profit_action` | `"close_worst_be_rest"` | Reply "+N pip": đóng worst entry + BE rest (v0.19.0) |
+| `reply_be_lock_pips` | `1` | Reply "be" sets SL = entry ± N pip thay vì exact entry (v0.19.0) |
+| `sl_mode` | `"signal"` | Nguồn SL cho group: `signal`, `zone`, `fixed` (v0.10.0) |
+| `sl_max_pips_from_zone` | `0` | Max SL distance từ zone (chỉ cho sl_mode=zone) |
+| `order_types_allowed` | `["MARKET","LIMIT","STOP"]` | Cho phép loại order nào. Loại STOP → fallback MARKET/LIMIT |
 
 #### `risk` — Per-Channel Risk Override
 
@@ -398,11 +419,11 @@ cp config/channels.example.json config/channels.json
 ```bash
 # DRY RUN đầu tiên — LUÔN test trước!
 DRY_RUN=true
-venv\Scripts\python.exe main.py
+python run.py bot  # hoặc: venv\Scripts\python.exe main.py
 
 # Bạn sẽ thấy:
 # =======================================================
-#   telegram-mt5-bot  v0.16.6  [DRY RUN]
+#   telegram-mt5-bot  v0.22.3  [DRY RUN]
 # =======================================================
 #   Risk mode    : RISK_MODE.FIXED_LOT
 #   Max spread   : 5.0 pips
@@ -453,8 +474,13 @@ DEBUG_SIGNAL_DECISION=true      # Giữ debug để monitor
 | 1 signal = nhiều order từ range | `strategy.mode: "range"`, `max_entries: 3` | channels.json |
 | Tự động mua thêm khi giá giảm | `strategy.mode: "scale_in"`, `reentry_step_pips: 20` | channels.json |
 | Lot lớn ở entry đầu, nhỏ ở sau | `strategy.volume_split: "pyramid"` | channels.json |
+| Mỗi entry nhận full lot size | `strategy.volume_split: "per_entry"` | channels.json |
 | Tự chuyển SL khi có lãi | `rules.breakeven_trigger_pips: 50` | channels.json |
 | Trailing stop | `rules.trailing_stop_pips: 40` | channels.json |
+| Tự tạo SL khi signal không có | `strategy.default_sl_pips_from_zone: 30` | channels.json |
+| Chặn SL quá xa | `strategy.max_sl_distance_pips: 100` | channels.json |
+| Nới rộng SL tránh spike | `strategy.sl_buffer_pips: 3` | channels.json |
+| Reply +pip đóng worst + BE rest | `rules.secure_profit_action: "close_worst_be_rest"` | channels.json |
 | Dừng trading sau 3 lần thua liên tiếp | `MAX_CONSECUTIVE_LOSSES=3` | .env |
 | Dừng trading sau $100 loss/ngày | `MAX_DAILY_LOSS=100.0` | .env |
 | Chỉ cho phép 2 GOLD order mở | `MAX_SAME_SYMBOL_TRADES=2` | .env |
@@ -467,7 +493,8 @@ DEBUG_SIGNAL_DECISION=true      # Giữ debug để monitor
 
 ```
 Forex/
-├── main.py                     # Bot orchestration
+├── main.py                     # Bot orchestration (Bot class)
+├── run.py                      # Unified launcher (bot/dash/v2/combo)
 ├── .env                        # Environment variables (BẮT BUỘC)
 ├── .env.example                # Template
 ├── config/
@@ -475,17 +502,32 @@ Forex/
 │   ├── channels.example.json   # Template
 │   └── settings.py             # Load .env → Settings object
 ├── core/
+│   ├── models.py               # Data contracts: ParsedSignal, EntryPlan, OrderGroup
 │   ├── pipeline.py             # SignalPipeline — sole orchestrator
 │   ├── entry_strategy.py       # Plan entries + split volume
 │   ├── signal_state_manager.py # PENDING→PARTIAL→COMPLETED
 │   ├── range_monitor.py        # Background re-entry trigger
+│   ├── position_manager.py     # BE/trailing/partial/group management
+│   ├── health.py               # HealthStats + HTTP /health server
+│   ├── circuit_breaker.py      # Circuit breaker state machine
+│   ├── telegram_alerter.py     # Rate-limited Telegram alerts
 │   ├── signal_parser/          # Parse Telegram → ParsedSignal
 │   ├── signal_validator.py     # 8 validation rules
 │   ├── risk_manager.py         # Volume calculation
 │   ├── order_builder.py        # MARKET/LIMIT/STOP decision
 │   ├── trade_executor.py       # MT5 order_send with retry
+│   ├── trade_tracker.py        # Background PnL tracking
 │   ├── channel_manager.py      # Load channels.json
+│   ├── storage.py              # SQLite persistence (V1–V7 migrations)
 │   └── ...                     # (xem ARCHITECTURE.md)
+├── utils/
+│   ├── symbol_mapper.py        # Symbol alias + pip size helper
+│   └── logger.py               # Loguru config
+├── dashboard/
+│   ├── dashboard.py            # FastAPI app (V1 + API backend)
+│   ├── api/routes.py           # 20 REST endpoints
+│   └── db/queries.py           # DashboardDB SQL queries
+├── dashboard-v2/               # React SPA (Vite + Recharts)
 ├── data/
 │   └── bot.db                  # SQLite database
 └── logs/

@@ -12,13 +12,16 @@ import re
 
 from core.models import Side
 
+# Side keywords for entry patterns — must stay in sync with side_detector.py
+_SIDE_KW = r"(?:BUY|SELL|SEL|LONG|SHORT|BBUY|BUUY|BYU|SEEL|SSEL|SSELL|SEELL)"
+
 # Pattern for explicit numeric entry range.
 # Matches: ENTRY 2030 - 2035, BUY GOLD 2030/2035, BUY GOLD ZONE 2030 TO 2035
 _ENTRY_RANGE_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bENTRY\s*(?:PRICE)?\s*:?\s*(\d+\.?\d*)\s*[-–/]\s*(\d+\.?\d*)"),
+    re.compile(r"\bENTRY\s*(?:PRICE)?\s*:?\s*(\d+\.?\d*)\s*[-\u2013/]\s*(\d+\.?\d*)"),
     re.compile(r"\bENTRY\s*(?:PRICE)?\s*:?\s*(\d+\.?\d*)\s+TO\s+(\d+\.?\d*)"),
-    re.compile(r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\s*[-–/]\s*(\d+\.?\d*)"),
-    re.compile(r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\s+TO\s+(\d+\.?\d*)"),
+    re.compile(rf"\b{_SIDE_KW}\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\s*[-\u2013/]\s*(\d+\.?\d*)"),
+    re.compile(rf"\b{_SIDE_KW}\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\s+TO\s+(\d+\.?\d*)"),
 ]
 
 # Pattern for explicit numeric entry price.
@@ -86,7 +89,7 @@ def detect(text: str, side: Side | None = None) -> tuple[float | None, list[floa
         # Try to find a standalone price near BUY/SELL keyword.
         # Pattern: BUY <price> or SELL <price> (allows multiple words in between)
         side_price = re.search(
-            r"\b(?:BUY|SELL|LONG|SHORT)\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\b",
+            rf"\b{_SIDE_KW}\s+(?:[A-Z]+\s+)*(\d+\.?\d*)\b",
             text,
         )
         if side_price:

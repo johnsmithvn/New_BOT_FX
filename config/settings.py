@@ -58,6 +58,8 @@ class TelegramConfig:
     source_chats: list[str | int]
     admin_chat: str | int
     session_reset_hours: int
+    bot_token: str              # Bot API token from @BotFather
+    bot_admin_id: int           # Numeric Telegram user ID for security
 
 
 @dataclass(frozen=True)
@@ -100,6 +102,8 @@ class SafetyConfig:
     breakeven_lock_pips: float     # pips above entry to lock SL
     trailing_stop_pips: float      # 0 = disabled
     partial_close_percent: int     # 0 = disabled; % of volume at TP1
+    partial_close_trigger_pips: float  # 0 = disabled; pips of profit to trigger auto partial close
+    partial_close_lot: float           # fixed lot to close when trigger_pips reached; 0 = use percent mode
     position_manager_poll_seconds: int
 
 
@@ -181,6 +185,8 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         source_chats=source_chats,
         admin_chat=admin_chat,
         session_reset_hours=_env_int("SESSION_RESET_HOURS", 12),
+        bot_token=_env("TELEGRAM_BOT_TOKEN", ""),
+        bot_admin_id=_env_int("TELEGRAM_BOT_ADMIN_ID", 0),
     )
 
     mt5 = MT5Config(
@@ -217,6 +223,8 @@ def load_settings(env_path: str | Path | None = None) -> Settings:
         breakeven_lock_pips=_env_float("BREAKEVEN_LOCK_PIPS", 2.0),
         trailing_stop_pips=_env_float("TRAILING_STOP_PIPS", 0.0),
         partial_close_percent=_env_int("PARTIAL_CLOSE_PERCENT", 0),
+        partial_close_trigger_pips=_env_float("PARTIAL_CLOSE_TRIGGER_PIPS", 0.0),
+        partial_close_lot=_env_float("PARTIAL_CLOSE_LOT", 0.0),
         position_manager_poll_seconds=_env_int("POSITION_MANAGER_POLL_SECONDS", 5),
     )
 

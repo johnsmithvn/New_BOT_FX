@@ -33,6 +33,19 @@ class TestClean:
         assert "🔥" not in result
         assert "BUY GOLD" in result
 
+    def test_emoji_replaced_with_space_not_deleted(self):
+        """v0.22.2: Emoji between words must become space, not empty.
+        Otherwise 'Now🔼BUY' becomes 'NowBUY' and side detector fails."""
+        result = clean("Now🔼BUY GOLD")
+        assert "NOW BUY GOLD" == result  # space between NOW and BUY
+
+    def test_emoji_between_words_preserves_separation(self):
+        """Multiple emojis between words should still produce single space."""
+        result = clean("SELL🔽🔽GOLD")
+        # After emoji→space + collapse whitespace: "SELL GOLD"
+        assert "SELL GOLD" in result
+        assert "SELLGOLD" not in result
+
     def test_collapse_multiple_spaces(self):
         result = clean("BUY   GOLD   2030")
         assert result == "BUY GOLD 2030"

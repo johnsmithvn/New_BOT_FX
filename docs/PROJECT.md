@@ -2,9 +2,9 @@
 
 ## Project Overview
 - Name: `telegram-mt5-bot`
-- Version: `v0.16.6`
+- Version: `v0.23.0`
 - Goal: Run a low-latency Python bot that reads Telegram trading signals and executes MT5 orders safely.
-- Scope: Single-process runtime, signal-to-trade automation, operational reliability, channel-driven multi-order strategy.
+- Scope: Single-process runtime, signal-to-trade automation, operational reliability, channel-driven multi-order strategy, web analytics dashboard.
 
 ## Goals
 - Parse common Telegram signal formats with high consistency.
@@ -77,6 +77,30 @@ Signal trace must be possible using a unique signal fingerprint across logs and 
   - Selective close via reply (highest/lowest entry, oldest)
   - Auto-breakeven after partial group close
   - DB persistence for restart recovery
+- Reply actions expanded (v0.19.0):
+  - SECURE_PROFIT (`+N pip`) — close worst entry + BE remaining
+  - CANCEL — cancel pending orders for signal
+  - CLOSE_PROFIT — close profitable entries only
+- Pipeline guards (v0.19.0–v0.22.1):
+  - G1: Min SL distance guard
+  - G2: Default SL from zone (auto-generate)
+  - G7: Max re-entry distance guard
+  - G8: Force MARKET for re-entries
+  - G11: SL breach cancel (cancel pending on SL hit)
+  - SL buffer (nới rộng SL tránh spike)
+  - Max SL distance cap
+- Peak profit tracking per signal group (v0.22.0)
+- Market snapshot at entry: volume, bid, ask stored per order (v0.22.1)
+- `per_entry` volume split: each plan gets full lot size (v0.19.0)
+- `SYMBOL_SUFFIX` for broker-specific symbol mapping (v0.21.0)
+- Health check endpoint on port 8080 (`/health`) (v0.14.0)
+- Dashboard V1: FastAPI + Jinja2 (3 pages, 7 API endpoints) (v0.12.0)
+- Dashboard V2: React SPA (7 pages, 20 API endpoints, signal lifecycle, cascade delete) (v0.15.0–v0.16.2)
+- Unified launcher `run.py` (bot/dash/v2/combo modes) (v0.14.0)
+- Telegram Bot API admin panel with inline keyboard order management (v0.23.0):
+  - List open positions, list pending orders
+  - Cancel all pending / close all (with confirmation)
+  - All alerts/debug/PnL routed through Bot API
 
 ## Users
 - Primary: Solo or small-team discretionary traders using Telegram signal channels.
@@ -88,7 +112,9 @@ Signal trace must be possible using a unique signal fingerprint across logs and 
 - Trading terminal bridge: `MetaTrader5` Python package
 - Config: `python-dotenv`
 - Logging: `loguru`
-- Local persistence: SQLite (`sqlite3`)
+- Dashboard V1: `fastapi`, `jinja2`, `chart.js`
+- Dashboard V2: `react`, `vite`, `recharts`, `tanstack-query`, `framer-motion`
+- Local persistence: SQLite (`sqlite3`) — 7 schema migrations (V1–V7)
 
 ## Repository Structure
 - `config/` — settings loader

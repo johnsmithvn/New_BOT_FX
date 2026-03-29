@@ -25,23 +25,23 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 
 | Endpoint | Mô Tả | Dữ Liệu Trả Về |
 |----------|--------|-----------------|
-| `/api/overview` | Thống kê tổng hợp | `net_pnl`, `win_rate`, `wins`, `losses`, `total_trades`, `active_groups`, `avg_pnl`, `total_commission` |
+| `/api/overview` | Thống kê tổng hợp | `net_pnl`, `total_pnl`, `total_commission`, `total_swap`, `win_rate`, `wins`, `losses`, `total_trades`, `active_groups`, `avg_pnl`, `total_signals`, `last_trade_time` |
 | `/api/daily-pnl?days=N` | PnL theo ngày | `[{date, net_pnl, trades}]` |
 | `/api/equity-curve?days=N` | Đường cong vốn tích lũy | `[{date, cumulative_pnl}]` |
 | `/api/channels` | Hiệu suất theo channel | `[{channel_id, channel_name, total_pnl, wins, losses, total_trades, avg_pnl, win_rate}]` |
 | `/api/symbol-stats` | Hiệu suất theo symbol | `[{symbol, total_pnl, avg_pnl, wins, losses, total_trades, win_rate}]` |
 | `/api/trades?page=&per_page=&...` | Lịch sử giao dịch (phân trang) | `{trades: [...], total, page, per_page, total_pnl, avg_pnl}` |
-| `/api/active` | Vị thế đang mở | `[{symbol, side, tickets, channel_name}]` |
+| `/api/active` | Vị thế đang mở | `[{fingerprint, symbol, side, channel_id, channel_name, tickets, entry_prices, current_group_sl, sl_mode, created_at}]` |
 | `/api/channel-list` | Danh sách channel ID + tên | `[{id, name}]` |
 | `/api/export/csv` | Xuất CSV | File CSV download |
 | `/api/signals?page=&per_page=&...` | Signals phân trang (v0.16.0) | `{signals: [...], total, page, per_page}` |
 | `/api/signals/{fingerprint}` | Signal lifecycle detail (v0.16.0) | `{signal, orders, trades, events, groups}` |
-| `DELETE /api/signals/{fingerprint}` | Cascade delete signal (v0.16.0) | `{deleted: {signals, orders, trades, events}}` |
-| `DELETE /api/orders/{order_id}` | Xóa 1 order (v0.16.0) | `{deleted: true}` |
-| `DELETE /api/trades/{trade_id}` | Xóa 1 trade (v0.16.0) | `{deleted: true}` |
-| `GET /api/data/counts` | Đếm rows per table (v0.16.0) | `{signals: N, orders: N, ...}` |
-| `DELETE /api/data/all` | Xóa toàn bộ data (v0.16.0) | `{cleared: [...tables]}` |
-| `DELETE /api/data/{table}` | Xóa 1 bảng (v0.16.0) | `{cleared: table_name}` |
+| `DELETE /api/signals/{fingerprint}` | Cascade delete signal (v0.16.0) | `{ok: true, deleted: {signals, orders, trades, events, signal_groups, active_signals}}` |
+| `DELETE /api/orders/{order_id}` | Xóa 1 order + trades liên quan (v0.16.0) | `{ok: true, deleted: {orders: N, trades: N}}` |
+| `DELETE /api/trades/{trade_id}` | Xóa 1 trade (v0.16.0) | `{ok: true, deleted: {trades: N}}` |
+| `GET /api/data/counts` | Đếm rows per table (v0.16.0) | `{signals: N, orders: N, events: N, trades: N, active_signals: N, signal_groups: N, tracker_state: N, schema_versions: N}` |
+| `DELETE /api/data/all` | Xóa toàn bộ data (v0.16.0) | `{ok: true, deleted: {signals: N, orders: N, ...}}` |
+| `DELETE /api/data/{table}` | Xóa 1 bảng (v0.16.0) | `{ok: true, table: name, deleted: N}` |
 | `GET /api/signal-status-counts` | Signal status counts (v0.16.2) | `{executed: N, rejected: N, failed: N, received: N}` |
 
 ---
@@ -366,7 +366,7 @@ Tổng hợp toàn bộ UI/UX, chức năng, và ý nghĩa từng biểu đồ c
 |-----|---------|
 | **Connection Status** | Hiện trạng kết nối API (● Live = xanh, ● Offline = đỏ) |
 | **API Key** | Nhập/thay đổi dashboard API key (bảo mật, gửi qua header `X-API-Key`) |
-| **About** | Thông tin version (v0.16.6), tech stack |
+| **About** | Thông tin version (v0.16.2 hardcoded in Settings.jsx), tech stack |
 
 ---
 

@@ -46,8 +46,11 @@ _CLOSE_PARTIAL = r"^close\s+(\d+)\s*%$"
 _MOVE_SL = r"^(?:sl|move\s+sl|stoploss|stop\s+loss)\s+([\d]+(?:\.[\d]+)?)$"
 _MOVE_TP = r"^(?:tp|move\s+tp|take\s+profit)\s+([\d]+(?:\.[\d]+)?)$"
 _BREAKEVEN = r"^(be|breakeven|break\s+even|sl\s+entry)$"
-_SECURE_PROFIT = r"^\+\s*(\d+)\s*(?:pip|pips|p)?$"  # G3: +30, +50 pip, +120 pips
-_CANCEL = r"^(cancell?|cancel\s*all|hủy|huy|miss|bỏ|bo|skip)$"  # Cancel pending orders
+# G3: "+30", "+50 pip", "+120pips🔼", "done 100pips", "near 60 pips"
+_SECURE_PROFIT = r"^(?:\+|done|near)\s*(\d+)\s*(?:pip|pips|p)?\b"
+# G3+close: "+300pips close all", "+50pips close entry 4578"
+_CLOSE_PROFIT = r"^\+\s*(\d+)\s*(?:pip|pips|p)?\s+close(?:\s+(?:all|entry\s+[\d.]+))?\b"
+_CANCEL = r"^(cancell?|cancel\s*all|hủy|huy|miss|bỏ|bo|skip)\b"  # Cancel pending orders; allows trailing text like "cancel wait"
 
 
 class ReplyActionParser:
@@ -79,7 +82,18 @@ class ReplyActionParser:
         # Also try lowercase for Vietnamese
         match_lower = cleaned_upper.lower()
 
-        # G3: SECURE_PROFIT — "+30", "+50 pip" (before BREAKEVEN)
+        # G3+close: "+300pips close all" → CLOSE (before SECURE_PROFIT)
+        m = re.match(_CLOSE_PROFIT, match_text, re.IGNORECASE)
+        if m:
+            pips = int(m.group(1))
+            if pips > 0:
+                return ReplyAction(
+                    action=ReplyActionType.CLOSE,
+                    pips=pips,
+                    raw_text=cleaned,
+                )
+
+        # G3: SECURE_PROFIT — "+30", "+50 pip", "done 100pips", "near 60 pips"
         m = re.match(_SECURE_PROFIT, match_text, re.IGNORECASE)
         if m:
             pips = int(m.group(1))

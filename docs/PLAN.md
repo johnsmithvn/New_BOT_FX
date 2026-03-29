@@ -1,7 +1,7 @@
 # PLAN
 
 ## Current Phase
-- Phase: `Trading Logic Gaps`
+- Phase: `Auto Partial Close at N Pips`
 - Status: `complete`
 
 ## Execution Phases
@@ -200,6 +200,15 @@
 - v0.17.0: Signal analysis fixes — fingerprint dedup, "Now" keyword MARKET, `execute_all_immediately`
 - v0.18.0: Trading logic gaps G1-G6 — SL guard, default SL, +pip parser, secure profit, re-entry tolerance, cancel pending
 - v0.19.0: Trading logic gaps G7-G12 — max re-entry distance, force MARKET, step levels, SL breach cancel, per_entry split, reply BE lock
+- v0.19.1: Reply CLOSE_PROFIT action, CANCEL reply action, cancel ALL/SYMBOL management commands, trailing text support in reply parser
+- v0.20.0: Parse hardening — typo-tolerant side detection (SEL/SELLL/BBUY/BYU), emoji-to-space cleaner, centralized `estimate_pip_size()` replacing 12 `point * 10` heuristics
+- v0.21.0: SYMBOL_SUFFIX support, 3-step ticket resolution in TradeTracker, `dynamic_deviation_multiplier` exposure
+- v0.22.0: Peak profit tracking per signal group with DB persistence (migration V6), trailing alert threshold 5→10 pips
+- v0.22.1: SL buffer + max SL distance cap, market snapshot at entry (migration V7)
+- v0.22.2: Breakeven diagnostic logging, parse fix for `is_now` flag
+- v0.22.3: Full documentation audit — 8 docs rewritten/updated, R11 milestone added to ROADMAP
+- v0.23.0: Telegram Bot API admin panel — `core/admin_bot.py`, inline keyboard order management, alert/debug routing via Bot API, `telegram_alerter.py` rewritten
+- v0.24.0: Auto partial close at N pips — `PARTIAL_CLOSE_TRIGGER_PIPS` + `PARTIAL_CLOSE_LOT` ENV vars, `_apply_partial_close_by_pips()` in position_manager
 
 
 
